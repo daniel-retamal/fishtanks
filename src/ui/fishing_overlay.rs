@@ -22,7 +22,6 @@ use crate::util::{Metronome, hyperbolic_scale};
 
 const DAMPING: f32 = 0.95;
 const PLAYER_FORCE: f32 = 0.028;
-const MAX_VELOCITY: f32 = 0.05;
 const REEL_RATE: f32 = 0.009;
 const COFFEE_REEL_RATE_PER_STACK: f32 = 0.002;
 const WALL_BOUNCE: f32 = -0.5;
@@ -72,7 +71,9 @@ const WAVE_SPAWN_MIN_SECS: f32 = 0.08;
 const WAVE_COLOR: Color = CYAN;
 const INITIAL_WAVE_COUNT: u32 = 6;
 
-const REEL_FOOTER_LEFT: &str = " ←→ steer  ↓ reel";
+const REEL_FOOTER_LEFT: &str = " ←→ control the fish  ↓ reel";
+const REEL_FOOTER_SHORT: &str = " ←→ steer  ↓ reel";
+const FOOTER_GAP: usize = 4;
 const CATCH_FOOTER_LEFT: &str = " ↓ catch once fish bites";
 
 const ART_FRAMES: [[&str; 6]; 5] = [
@@ -134,29 +135,31 @@ pub enum Temper {
     Legendary,
 }
 
-#[derive(Clone, Copy)]
-enum Pull {
-    Snap(f32),
-    Spring(f32),
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Sides {
+    Alternate,
+    Random,
 }
 
-impl Pull {
-    fn towards(self, target: f32, pos: f32) -> f32 {
-        match self {
-            Pull::Snap(force) => (target - pos).signum() * force,
-            Pull::Spring(stiffness) => (target - pos) * stiffness,
-        }
-    }
+struct Rest {
+    chance: f64,
+    spots: Range<f32>,
+    steps: Range<f32>,
 }
 
 struct Temperament {
-    pull: Pull,
-    dart_after_home: f64,
-    dart_after_dart: f64,
-    home: Range<f32>,
-    home_steps: Range<f32>,
+    pull: f32,
+    top_speed: f32,
+    rest: Option<Rest>,
+    sides: Sides,
     dart_reach: Range<f32>,
     dart_steps: Range<f32>,
+}
+
+#[derive(Clone, Copy, Default, Debug)]
+struct Swim {
+    resting: bool,
+    left: bool,
 }
 
 impl Temper {
@@ -174,47 +177,58 @@ impl Temper {
     fn temperament(self) -> Temperament {
         match self {
             Temper::Normal => Temperament {
-                pull: Pull::Spring(0.006),
-                dart_after_home: 1.0,
-                dart_after_dart: 0.0,
-                home: 0.44..0.56,
-                home_steps: 30.0..60.0,
-                dart_reach: 0.12..0.25,
-                dart_steps: 18.0..36.0,
+                pull: 0.018,
+                top_speed: 0.025,
+                rest: None,
+                sides: Sides::Alternate,
+                dart_reach: 0.05..0.20,
+                dart_steps: 45.0..90.0,
             },
             Temper::Legendary => Temperament {
-                pull: Pull::Snap(0.022),
-                dart_after_home: 0.7,
-                dart_after_dart: 0.7,
-                home: 0.30..0.70,
-                home_steps: 20.0..50.0,
+                pull: 0.022,
+                top_speed: 0.05,
+                rest: Some(Rest {
+                    chance: 0.3,
+                    spots: 0.30..0.70,
+                    steps: 20.0..50.0,
+                }),
+                sides: Sides::Random,
                 dart_reach: 0.05..0.20,
                 dart_steps: 20.0..50.0,
             },
         }
     }
 
-    fn next_target(self, darting: bool, rng: &mut impl RngExt) -> (bool, f32, f32) {
+    fn next_swim(self, swim: Swim, rng: &mut impl RngExt) -> (Swim, f32, f32) {
         let temperament = self.temperament();
-        let chance = if darting {
-            temperament.dart_after_dart
-        } else {
-            temperament.dart_after_home
-        };
-        if !rng.random_bool(chance) {
+        if let Some(rest) = temperament
+            .rest
+            .filter(|rest| !swim.resting && rng.random_bool(rest.chance))
+        {
+            let resting = Swim {
+                resting: true,
+                ..swim
+            };
             return (
-                false,
-                rng.random_range(temperament.home),
-                rng.random_range(temperament.home_steps),
+                resting,
+                rng.random_range(rest.spots),
+                rng.random_range(rest.steps),
             );
         }
-        let reach = rng.random_range(temperament.dart_reach);
-        let target = if rng.random::<bool>() {
-            reach
-        } else {
-            1.0 - reach
+        let left = match temperament.sides {
+            Sides::Alternate => !swim.left,
+            Sides::Random => rng.random(),
         };
-        (true, target, rng.random_range(temperament.dart_steps))
+        let reach = rng.random_range(temperament.dart_reach);
+        let target = if left { reach } else { 1.0 - reach };
+        (
+            Swim {
+                resting: false,
+                left,
+            },
+            target,
+            rng.random_range(temperament.dart_steps),
+        )
     }
 }
 
@@ -271,7 +285,7 @@ pub struct FishingState {
     pub reel_anim_tick: u32,
     pub forced_temper: Option<Temper>,
     temper: Temper,
-    darting: bool,
+    swim: Swim,
     hooked: Option<LootKind>,
     reel_steps: u32,
 }
@@ -309,7 +323,10 @@ impl FishingState {
             reel_anim_tick: 0,
             forced_temper: None,
             temper: Temper::default(),
-            darting: false,
+            swim: Swim {
+                resting: false,
+                left: rng.random(),
+            },
             hooked: None,
             reel_steps: 0,
         }
@@ -447,16 +464,16 @@ impl FishingState {
     fn tick_reel(&mut self, coffee_stacks: u32, milk: MilkBuffs) {
         let safe_zone = milk.safe_zone();
         let grace_secs = milk.grace_secs();
-        let pull = self.temper.temperament().pull;
+        let temperament = self.temper.temperament();
 
         if !self.no_fight {
             self.target_timer -= 1.0;
             if self.target_timer <= 0.0 {
-                (self.darting, self.target_pos, self.target_timer) =
-                    self.temper.next_target(self.darting, &mut rand::rng());
+                (self.swim, self.target_pos, self.target_timer) =
+                    self.temper.next_swim(self.swim, &mut rand::rng());
             }
-            self.fish_velocity +=
-                pull.towards(self.target_pos, self.fish_pos) * milk.fish_force_mult();
+            let pull = (self.target_pos - self.fish_pos).signum() * temperament.pull;
+            self.fish_velocity += pull * milk.fish_force_mult();
         }
 
         if self.is_pushing_left {
@@ -467,7 +484,9 @@ impl FishingState {
         }
 
         self.fish_velocity *= DAMPING;
-        self.fish_velocity = self.fish_velocity.clamp(-MAX_VELOCITY, MAX_VELOCITY);
+        self.fish_velocity = self
+            .fish_velocity
+            .clamp(-temperament.top_speed, temperament.top_speed);
         self.fish_pos = (self.fish_pos + self.fish_velocity).clamp(0.0, 1.0);
 
         if self.fish_pos <= 0.0 || self.fish_pos >= 1.0 {
@@ -972,7 +991,7 @@ fn draw_reel_panels(buf: &mut Buffer, geom: &FishingGeometry, state: &FishingSta
         geom.inner_x,
         sep2_y + 1,
         geom.inner_w,
-        REEL_FOOTER_LEFT,
+        reel_footer(geom.inner_w),
     );
 }
 
@@ -1078,9 +1097,17 @@ fn draw_footer(buf: &mut Buffer, x: u16, y: u16, inner_w: u16, left: &str) {
     buf.set_string(x, y, truncate_to_width(left, total), style);
     let left_w = visual_width(left);
     let right_w = visual_width(right);
-    if left_w + 4 + right_w <= total {
+    if left_w + FOOTER_GAP + right_w <= total {
         buf.set_string(x + total as u16 - right_w as u16 - 1, y, right, style);
     }
+}
+
+fn reel_footer(inner_w: u16) -> &'static str {
+    let whole = visual_width(REEL_FOOTER_LEFT) + FOOTER_GAP + visual_width(HINT_CLOSE);
+    if whole <= inner_w as usize {
+        return REEL_FOOTER_LEFT;
+    }
+    REEL_FOOTER_SHORT
 }
 
 fn visual_width(s: &str) -> usize {
@@ -1230,25 +1257,42 @@ mod temper_tests {
     use super::*;
 
     const FIGHTS: usize = 200;
+    const HOLD_ONLY_FIGHTS: usize = 2000;
     const REACTION_STEPS: usize = 8;
-    const PATIENT_REEL_ZONE: f32 = 0.3;
+    const LOOKAHEAD_STEPS: f32 = 3.0;
+    const STEER_DEADBAND: f32 = 0.06;
+    const CAREFUL_REEL_ZONE: f32 = 0.32;
     const FIGHT_STEPS: usize = 30 * 120;
     const ROLLS: usize = 20_000;
     const CHANCE_SLACK: f64 = 0.02;
+    const SWIMS: usize = 1000;
 
-    fn patient_angler_lands(temper: Temper) -> bool {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Angler {
+        HoldsDown,
+        ReelsOnGreen,
+        Steers,
+    }
+
+    fn lands(temper: Temper, angler: Angler) -> bool {
         let mut state = FishingState {
             forced_temper: Some(temper),
             ..FishingState::default()
         };
         state.hook(LootKind::Food(1));
-        let mut seen: VecDeque<f32> = VecDeque::new();
+        let mut seen: VecDeque<(f32, f32)> = VecDeque::new();
         for _ in 0..FIGHT_STEPS {
-            seen.push_back(state.fish_pos);
+            seen.push_back((state.fish_pos, state.fish_velocity));
             if seen.len() > REACTION_STEPS {
                 seen.pop_front();
             }
-            state.is_reeling = (seen[0] - 0.5).abs() * 2.0 < PATIENT_REEL_ZONE;
+            let (pos, velocity) = seen[0];
+            let ahead = pos + velocity * (REACTION_STEPS as f32 + LOOKAHEAD_STEPS);
+            let steers = angler == Angler::Steers;
+            state.is_pushing_left = steers && ahead > 0.5 + STEER_DEADBAND;
+            state.is_pushing_right = steers && ahead < 0.5 - STEER_DEADBAND;
+            state.is_reeling =
+                angler == Angler::HoldsDown || (ahead - 0.5).abs() * 2.0 < CAREFUL_REEL_ZONE;
             state.tick(DEFAULT_FPS, 0, MilkBuffs::default(), None);
             if state.captured || state.game_over {
                 return state.captured;
@@ -1257,8 +1301,77 @@ mod temper_tests {
         false
     }
 
-    fn landed(temper: Temper) -> usize {
-        (0..FIGHTS).filter(|_| patient_angler_lands(temper)).count()
+    fn landed(temper: Temper, angler: Angler, fights: usize) -> usize {
+        (0..fights).filter(|_| lands(temper, angler)).count()
+    }
+
+    #[test]
+    fn holding_down_and_nothing_else_never_lands_a_fish() {
+        for temper in [Temper::Normal, Temper::Legendary] {
+            assert_eq!(
+                landed(temper, Angler::HoldsDown, HOLD_ONLY_FIGHTS),
+                0,
+                "{temper:?}"
+            );
+            assert_eq!(
+                landed(temper, Angler::ReelsOnGreen, FIGHTS),
+                0,
+                "{temper:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_angler_who_steers_against_the_pull_lands_a_normal_fish() {
+        assert!(landed(Temper::Normal, Angler::Steers, FIGHTS) * 10 >= FIGHTS * 9);
+    }
+
+    #[test]
+    fn a_normal_fish_pulls_to_alternate_sides_and_never_rests() {
+        let mut rng = rand::rng();
+        let mut swim = Swim::default();
+        for _ in 0..SWIMS {
+            let (next, target, _) = Temper::Normal.next_swim(swim, &mut rng);
+            assert!(!next.resting);
+            assert_ne!(next.left, swim.left, "it pulls the other way each time");
+            assert_eq!(target < 0.5, next.left);
+            swim = next;
+        }
+    }
+
+    #[test]
+    fn a_legendary_fish_never_rests_twice_in_a_row() {
+        let mut rng = rand::rng();
+        let mut swim = Swim::default();
+        let mut rested = 0;
+        for _ in 0..SWIMS {
+            let (next, _, _) = Temper::Legendary.next_swim(swim, &mut rng);
+            assert!(!(swim.resting && next.resting));
+            rested += usize::from(next.resting);
+            swim = next;
+        }
+        assert!(rested > 0, "it still rests");
+    }
+
+    #[test]
+    fn a_normal_fish_swims_slower_than_a_legendary_one() {
+        let top_speed = |temper: Temper| {
+            let mut state = FishingState {
+                forced_temper: Some(temper),
+                no_escape: true,
+                ..FishingState::default()
+            };
+            state.hook(LootKind::Food(1));
+            (0..FIGHT_STEPS)
+                .map(|_| {
+                    state.tick(DEFAULT_FPS, 0, MilkBuffs::default(), None);
+                    state.fish_velocity.abs()
+                })
+                .fold(0.0, f32::max)
+        };
+        let normal = Temper::Normal.temperament().top_speed;
+        assert!(top_speed(Temper::Normal) <= normal + f32::EPSILON);
+        assert!(top_speed(Temper::Legendary) > normal);
     }
 
     #[test]
@@ -1280,38 +1393,6 @@ mod temper_tests {
         }
         assert!(Temper::legendary_chance(Rarity::Common) < Temper::legendary_chance(Rarity::Rare));
         assert!(Temper::legendary_chance(Rarity::Rare) < 1.0);
-    }
-
-    #[test]
-    fn a_patient_angler_who_reels_on_green_lands_a_normal_fish_and_rarely_a_legendary_one() {
-        assert!(
-            landed(Temper::Normal) * 10 >= FIGHTS * 9,
-            "a normal fish is fair"
-        );
-        assert!(
-            landed(Temper::Legendary) * 5 <= FIGHTS,
-            "a legendary fish needs steering"
-        );
-    }
-
-    #[test]
-    fn a_normal_fish_glides_where_a_legendary_one_snaps() {
-        let top_speed = |temper: Temper| {
-            let mut state = FishingState {
-                forced_temper: Some(temper),
-                ..FishingState::default()
-            };
-            state.hook(LootKind::Food(1));
-            state.no_escape = true;
-            (0..FIGHT_STEPS)
-                .map(|_| {
-                    state.tick(DEFAULT_FPS, 0, MilkBuffs::default(), None);
-                    state.fish_velocity.abs()
-                })
-                .sum::<f32>()
-                / FIGHT_STEPS as f32
-        };
-        assert!(top_speed(Temper::Normal) * 2.0 < top_speed(Temper::Legendary));
     }
 
     #[test]
