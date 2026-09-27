@@ -847,8 +847,8 @@ pub fn void_seed_sprite_rows() -> Vec<Vec<(char, Color)>> {
     void_seed_art().rows(WHITE)
 }
 
-const GOLDEN_PEARL_NAME: &str = "Pearl of Great Price";
-const GOLDEN_PEARL_DESCRIPTION: &str = "The merchant sold everything he had for this one. Each gate of the city is a single pearl, and this one fell. Opens a Gate to Heaven, The Heaventank. The dead get a wall of their own";
+const GOLDEN_PEARL_NAME: &str = "Golden Pearl";
+const GOLDEN_PEARL_DESCRIPTION: &str = "An irritant, forgiven in a thousand coats of nacre. It remembers every fish that ever let go. Opens a Gate to Heaven, The Heaventank. Only Holyfishes may enter";
 const GOLDEN_PEARL_SPRITE_LINES: &[&str] = &[
     r#"   .-""-."#,
     r"  / o    \",

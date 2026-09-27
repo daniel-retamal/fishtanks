@@ -1484,17 +1484,17 @@ fn the_normal_legendary_and_pearl_demo_runs_keystroke_for_keystroke() {
     tui.snap("a sale opens no heaven");
     tui.key(KeyCode::Esc);
 
-    tui.run("/give pearl of great price");
-    tui.run("/consume pearl of great price");
+    tui.run("/give golden pearl");
+    tui.run("/consume golden pearl");
     tui.screen().expect_find("Name your");
     tui.type_text(HEAVEN_NAME);
     tui.key(KeyCode::Enter);
     tui.run("/names");
     tui.tick_n(FIGHT_TICKS);
     let wall = &tui.app.tanks[tui.app.current_tank];
-    assert_eq!(wall.name, HEAVEN_NAME, "a grown tank switches you into it");
+    assert_eq!(wall.name, HEAVEN_NAME, "a new tank switches you into it");
     assert!(wall.souls().iter().any(|soul| soul.name == "Ann"));
     tui.snap("the pearl grew Heaven and Ann was waiting for it");
-    tui.run("/give pearl of great price");
+    tui.run("/give golden pearl");
     assert_eq!(tui.app.inventory.get(&StockItem::GOLDEN_PEARL), None);
 }

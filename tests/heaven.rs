@@ -47,9 +47,9 @@ fn living(tui: &Tui, name: &str) -> Option<String> {
         .map(|t| t.name.clone())
 }
 
-fn grow_heaven(tui: &mut Tui) {
-    tui.run("/give pearl of great price");
-    tui.run("/consume pearl of great price");
+fn open_heaven(tui: &mut Tui) {
+    tui.run("/give golden pearl");
+    tui.run("/consume golden pearl");
     tui.type_text(HEAVEN);
     tui.key(KeyCode::Enter);
     tui.run(&format!("/switch \"{HOME}\""));
@@ -58,7 +58,7 @@ fn grow_heaven(tui: &mut Tui) {
 fn home_with(names: &[&str]) -> Tui {
     let mut tui = Tui::new();
     tui.clear_tank();
-    grow_heaven(&mut tui);
+    open_heaven(&mut tui);
     for name in names {
         tui.run(&format!("/spawn salmon \"{name}\""));
     }
@@ -66,18 +66,18 @@ fn home_with(names: &[&str]) -> Tui {
 }
 
 #[test]
-fn a_death_opens_no_heaven_and_the_pearl_that_grows_one_hangs_every_waiting_soul() {
+fn a_death_opens_no_heaven_and_the_pearl_that_opens_one_hangs_every_waiting_soul() {
     let mut tui = Tui::new();
     tui.clear_tank();
     tui.run("/spawn salmon \"Ann\"");
     tui.run("/sell fish \"Ann\"");
     assert!(
         heaven(&tui).is_none(),
-        "heaven is grown, never opened by a death"
+        "heaven is opened by a pearl, never by a death"
     );
     assert!(tui.app.graveyard.iter().any(|f| f.name == "Ann"));
 
-    grow_heaven(&mut tui);
+    open_heaven(&mut tui);
     assert_eq!(soul_names(&tui), ["Ann"], "the dead were waiting for it");
 }
 
@@ -238,7 +238,7 @@ fn heaven_is_never_bought_and_one_pearl_is_all_a_player_can_hold() {
 
     tui.run("/give heaventank");
     tui.run("/buy heaventank");
-    tui.run("/give pearl of great price");
+    tui.run("/give golden pearl");
 
     assert_eq!(tui.app.tanks.len(), tanks);
     assert_eq!(heavens(&tui), 1);
@@ -263,9 +263,9 @@ fn an_empty_heaven_sells_like_a_found_legendary_tank_and_frees_the_pearl() {
         tui.app.graveyard.iter().any(|f| f.name == "Ann"),
         "the dead stay dead"
     );
-    tui.run("/give pearl of great price");
+    tui.run("/give golden pearl");
     assert_eq!(pearls(&tui), 1);
-    grow_heaven(&mut tui);
+    open_heaven(&mut tui);
     assert_eq!(soul_names(&tui), ["Ann"], "a new heaven hangs the old dead");
 }
 
@@ -297,7 +297,7 @@ fn the_dead_cannot_be_moved_mutated_sold_or_killed_again() {
 fn the_heaventank_index_lists_the_dead_and_every_other_index_stays_among_the_living() {
     let mut tui = Tui::with_size(100, 30);
     tui.clear_tank();
-    grow_heaven(&mut tui);
+    open_heaven(&mut tui);
     tui.run("/spawn salmon \"Ann\"");
     tui.run("/spawn salmon \"Bob\"");
     tui.run("/kill \"Ann\"");
@@ -322,7 +322,7 @@ fn the_heaventank_index_lists_the_dead_and_every_other_index_stays_among_the_liv
 fn a_holy_fish_that_lives_in_heaven_shows_as_alive_beside_the_dead() {
     let mut tui = Tui::with_size(100, 30);
     tui.clear_tank();
-    grow_heaven(&mut tui);
+    open_heaven(&mut tui);
     tui.run("/spawn salmon \"Ann\"");
     tui.run("/kill \"Ann\"");
     tui.run(&format!("/switch \"{HEAVEN}\""));
@@ -337,7 +337,7 @@ fn a_holy_fish_that_lives_in_heaven_shows_as_alive_beside_the_dead() {
 fn a_dead_row_in_the_index_opens_nothing() {
     let mut tui = Tui::with_size(100, 30);
     tui.clear_tank();
-    grow_heaven(&mut tui);
+    open_heaven(&mut tui);
     tui.run("/spawn salmon \"Ann\"");
     tui.run("/kill \"Ann\"");
     tui.run(&format!("/index \"{HEAVEN}\""));

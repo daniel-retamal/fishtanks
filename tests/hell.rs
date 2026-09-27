@@ -53,8 +53,8 @@ fn found_hell(tui: &mut Tui, name: &str) {
 }
 
 fn found_heaven(tui: &mut Tui) {
-    tui.run("/add pearl of great price 1");
-    tui.run("/consume pearl of great price");
+    tui.run("/add golden pearl 1");
+    tui.run("/consume golden pearl");
     tui.type_text("Heaventank");
     tui.key(KeyCode::Enter);
     tui.run(&format!("/switch \"{HOME}\""));
@@ -136,7 +136,7 @@ fn each_afterlife_founded_after_its_dead_died_gathers_them() {
 
     found_hell(&mut tui, PIT);
     assert_eq!(damned(&tui, PIT), ["Ann"]);
-    assert!(heaven_souls(&tui).is_empty(), "no heaven grows by itself");
+    assert!(heaven_souls(&tui).is_empty(), "no heaven opens by itself");
 
     found_heaven(&mut tui);
     assert_eq!(heaven_souls(&tui), ["Bob"]);

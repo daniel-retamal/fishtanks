@@ -1,4 +1,4 @@
-# JOURNEY · death: a sold fish opens no heaven; the Pearl of Great Price grows the Heaventank, and the
+# JOURNEY · death: a sold fish opens no heaven; the Golden Pearl opens the gate to the Heaventank, and the
 # dead who were waiting hang on its wall. A pearl is FOUND, never bought, and a journey cannot fish on
 # cue, so it is handed over in debug mode, which is switched straight back off.
 
@@ -12,11 +12,11 @@ snap no heaven opens on its own
 key esc
 
 run !debugmode
-run /give pearl of great price
+run /give golden pearl
 run !debugmode
-run /consume pearl of great price
+run /consume golden pearl
 expect Name your
-snap the pearl names the tank it grows
+snap the pearl names the tank it opens
 type Heaventank
 key enter
 absent Name your

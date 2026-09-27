@@ -116,11 +116,7 @@ fn rich_game() -> Tui {
     tui.run("/mutate \"Mo\" eyeincrease");
     tui.run("/mutate \"Mo\" telophase");
     tui.run("/kill \"Adam\"");
-    grow(
-        &mut tui,
-        "pearl of great price",
-        TankKind::Heaven.display_name(),
-    );
+    grow(&mut tui, "golden pearl", TankKind::Heaven.display_name());
     grow(&mut tui, "necronomicon", HELL_NAME);
     tui.run("/spawn salmon \"Sinner\"");
     tui.run("/kill \"Sinner\"");
