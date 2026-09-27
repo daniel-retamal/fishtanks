@@ -1,5 +1,6 @@
 /target
 /target-test
+/target-publish
 *.txt
 /.claude
 /.vscode
