@@ -35,9 +35,9 @@ const JACKPOT_WEIGHT_SCALE: u64 = 100_000;
 const JUNK_NAME: &str = "Junk";
 pub const JUNK_PER_JUNKFISH: u32 = 100;
 pub const JUNK_OUTLINE: Color = DARK_GRAY;
-const JUNK_WEIGHT: u32 = 21;
-const COFFEE_WEIGHT: u32 = 21;
-const BAIT_WEIGHT: u32 = 20;
+const CASH_SLOTS: u32 = 2;
+const FOOD_SLOTS: u32 = 2;
+const SUNDRY_SLOTS: u32 = 1;
 
 const JUNK_FILLER_CHARS: &[char] = &['&', '@', '€', '%', '$', '#', 'X', '<', '>'];
 const JUNK_COLORS: &[Color] = &[GRAY, BROWN, GREEN, LIGHT_GREEN];
@@ -1145,11 +1145,13 @@ impl LootPool {
             .iter()
             .map(|&s| (s.config().rarity.catch_weight(), PoolSlot::Species(s)))
             .collect();
-        slots.push((Rarity::Common.catch_weight(), PoolSlot::Cash));
-        slots.push((Rarity::Common.catch_weight(), PoolSlot::Food));
-        slots.push((JUNK_WEIGHT, PoolSlot::Junk));
-        slots.push((COFFEE_WEIGHT, PoolSlot::Consumable(ConsumableKind::Coffee)));
-        slots.push((BAIT_WEIGHT, PoolSlot::Consumable(ConsumableKind::Bait)));
+        let common = Rarity::Common.catch_weight();
+        let sundry = SUNDRY_SLOTS * common;
+        slots.push((CASH_SLOTS * common, PoolSlot::Cash));
+        slots.push((FOOD_SLOTS * common, PoolSlot::Food));
+        slots.push((sundry, PoolSlot::Junk));
+        slots.push((sundry, PoolSlot::Consumable(ConsumableKind::Coffee)));
+        slots.push((sundry, PoolSlot::Consumable(ConsumableKind::Bait)));
         let mut pool = Self {
             slots,
             devils_luck: 0,
@@ -1578,15 +1580,63 @@ mod tests {
         }
     }
 
+    const STARDEW_NON_FISH_SHARE: f64 = 1.0 / 3.0;
+    const SHARE_TOLERANCE: f64 = 0.03;
+
     #[test]
-    fn junk_coffee_and_bait_share_one_common_slot_so_each_is_common() {
-        assert_eq!(
-            JUNK_WEIGHT + COFFEE_WEIGHT + BAIT_WEIGHT,
-            Rarity::Common.catch_weight(),
-            "the sundries split one Common catch between them"
+    fn non_fish_loot_is_a_third_of_a_wild_cast() {
+        let pool = LootPool::default_pool();
+        let total: u32 = pool.slots.iter().map(|(weight, _)| weight).sum();
+        let fish: u32 = pool.species_weights().map(|(weight, _)| weight).sum();
+        let share = f64::from(total - fish) / f64::from(total);
+        assert!(
+            (share - STARDEW_NON_FISH_SHARE).abs() < SHARE_TOLERANCE,
+            "non-fish loot is {share:.3} of a wild cast"
         );
+    }
+
+    #[test]
+    fn cash_and_food_outweigh_each_sundry_and_each_sundry_is_a_common_catch() {
+        let pool = LootPool::default_pool();
+        let weight_of = |wanted: fn(&PoolSlot) -> bool| -> u32 {
+            pool.slots
+                .iter()
+                .filter(|(_, slot)| wanted(slot))
+                .map(|(weight, _)| weight)
+                .sum()
+        };
+        let common = Rarity::Common.catch_weight();
+        let sundries = [
+            weight_of(|slot| matches!(slot, PoolSlot::Junk)),
+            weight_of(|slot| matches!(slot, PoolSlot::Consumable(ConsumableKind::Coffee))),
+            weight_of(|slot| matches!(slot, PoolSlot::Consumable(ConsumableKind::Bait))),
+        ];
+        for weight in sundries {
+            assert_eq!(weight, common);
+            assert!(weight_of(|slot| matches!(slot, PoolSlot::Cash)) > weight);
+            assert!(weight_of(|slot| matches!(slot, PoolSlot::Food)) > weight);
+        }
         for sundry in [StockItem::Junk, StockItem::COFFEE, StockItem::BAIT] {
             assert_eq!(sundry.rarity(), Rarity::Common, "{}", sundry.display_name());
+        }
+    }
+
+    #[test]
+    fn a_seed_keeps_its_legendary_weight() {
+        let pool = LootPool::default_pool();
+        for seed in ConsumableKind::seeds() {
+            let weight: u32 = pool
+                .slots
+                .iter()
+                .filter(|(_, slot)| matches!(slot, PoolSlot::Consumable(kind) if *kind == seed))
+                .map(|(weight, _)| weight)
+                .sum();
+            assert_eq!(
+                weight,
+                Rarity::Legendary.catch_weight(),
+                "{}",
+                seed.display_name()
+            );
         }
     }
 
