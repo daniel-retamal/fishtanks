@@ -80,6 +80,11 @@ impl App {
     pub fn handle_input(&mut self, event: Event) {
         self.note_input(&event);
         self.held_keys.hear(&event);
+        if matches!(event, Event::FocusLost) {
+            let lifted = self.held_keys.let_go();
+            self.lift_console_keys(lifted);
+            self.hold_the_rod();
+        }
         if let Event::Resize(w, h) = event {
             self.terminal_height = h;
             self.terminal_width = w;
@@ -99,6 +104,8 @@ impl App {
             self.handle_catch_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Naming { .. })) {
             self.handle_naming_input(event);
+        } else if matches!(self.active_overlay, Some(Overlay::Junkfish(_))) {
+            self.handle_junkfish_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Cheat(_))) {
             self.handle_cheat_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Notice(_))) {
@@ -467,24 +474,27 @@ impl App {
             return;
         }
         self.held_keys.press(held.code);
-        let mut catch_failed = false;
-        if let Some(s) = self.fishing_state_mut()
-            && !s.game_over
-            && !s.captured
-            && s.is_catching()
-            && held.code == KeyCode::Down
-        {
-            if s.is_biting() {
-                s.start_reeling();
-            } else {
-                catch_failed = true;
+        let strike = self.fishing_state().and_then(|s| {
+            let striking =
+                !s.game_over && !s.captured && s.is_catching() && held.code == KeyCode::Down;
+            striking.then(|| s.is_biting())
+        });
+        match strike {
+            Some(true) => self.hook_the_catch(),
+            Some(false) => {
+                self.close_overlay();
+                return;
             }
-        }
-        if catch_failed {
-            self.close_overlay();
-            return;
+            None => {}
         }
         self.hold_the_rod();
+    }
+
+    fn hook_the_catch(&mut self) {
+        let catch = self.roll_catch(self.current_tank, &mut rand::rng());
+        if let Some(s) = self.fishing_state_mut() {
+            s.hook(catch);
+        }
     }
 
     fn hold_the_rod(&mut self) {
@@ -590,13 +600,11 @@ impl App {
                     .inventory_state()
                     .and_then(|s| s.items.get(s.selected))
                     .map(|item| item.name.clone());
-                if let Some(name) = selected_name
-                    && let Some(kind) = ConsumableKind::all()
-                        .into_iter()
-                        .find(|k| k.display_name() == name)
+                if let Some(stock) =
+                    selected_name.and_then(|name| StockItem::from_display_name(&name))
                 {
-                    self.try_consume_kind(
-                        kind,
+                    self.try_consume_stock(
+                        stock,
                         crate::ui::consume_picker::ConsumePickerSource::FromInventory,
                     );
                 }
@@ -830,6 +838,34 @@ impl App {
                     input.handle_action(&action);
                 }
             }
+        }
+    }
+
+    fn handle_junkfish_input(&mut self, event: Event) {
+        let Some(action) = classify(&event) else {
+            return;
+        };
+        let Some(Overlay::Junkfish(popup)) = &mut self.active_overlay else {
+            return;
+        };
+        match action {
+            InputAction::Quit => self.running = false,
+            InputAction::Cancel => {
+                self.close_overlay();
+                self.reopen_inventory_on(StockItem::Junk.display_name());
+            }
+            InputAction::Confirm => {
+                if popup.name_input.is_empty() {
+                    return;
+                }
+                let name = names::title_case(popup.name_input.as_str());
+                let Some(Overlay::Junkfish(popup)) = self.active_overlay.take() else {
+                    return;
+                };
+                self.close_overlay();
+                self.assemble_junkfish(popup.fish, name);
+            }
+            _ => popup.name_input.handle_action(&action),
         }
     }
 
@@ -2683,33 +2719,40 @@ impl App {
             }
             commands::Action::Consume { name } => {
                 let normalized: String = name.to_ascii_lowercase().split_whitespace().collect();
-                let Some(kind) = ConsumableKind::all().into_iter().find(|k| {
-                    let dn: String = k
-                        .display_name()
-                        .to_ascii_lowercase()
-                        .split_whitespace()
-                        .collect();
-                    dn == normalized
-                }) else {
+                let Some(stock) = ConsumableKind::all()
+                    .into_iter()
+                    .map(StockItem::Consumable)
+                    .chain([StockItem::Junk])
+                    .find(|stock| {
+                        let dn: String = stock
+                            .display_name()
+                            .to_ascii_lowercase()
+                            .split_whitespace()
+                            .collect();
+                        dn == normalized
+                    })
+                else {
                     return false;
                 };
-                self.try_consume_kind(
-                    kind,
+                self.try_consume_stock(
+                    stock,
                     crate::ui::consume_picker::ConsumePickerSource::FromCommand,
                 )
             }
             commands::Action::Fish {
                 no_escape,
                 no_fight,
+                temper,
             } => {
                 let milk = self.milk_buffs();
                 let mut state = FishingState::new(milk, &mut rand::rng());
                 state.no_escape = no_escape || self.cheats.no_escape;
                 state.no_fight = no_fight;
-                if no_fight {
-                    state.start_reeling();
-                }
+                state.forced_temper = temper;
                 self.set_overlay(Overlay::Fishing(state));
+                if no_fight {
+                    self.hook_the_catch();
+                }
                 true
             }
             commands::Action::Switch(tank_name) => {

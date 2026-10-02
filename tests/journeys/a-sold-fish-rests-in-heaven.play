@@ -1,16 +1,26 @@
-# JOURNEY · death: the first fish that dies opens the Heaventank, and the dead hang on its wall.
-# Selling is a death. Heaven is never bought: it appears by itself, and you stay where you were.
+# JOURNEY · death: a sold fish opens no heaven; the Golden Pearl opens the gate to the Heaventank, and the
+# dead who were waiting hang on its wall. A pearl is FOUND, never bought, and a journey cannot fish on
+# cue, so it is handed over in debug mode, which is switched straight back off.
 
 clear
 include scenes/start-with-a-stake.play
 include scenes/buy-a-fish.play Merluza Ann
 run /sell fish "Ann"
 run /fishtanks
-expect Heaventank
-snap heaven appeared on its own after the first death
+absent Heaventank
+snap no heaven opens on its own
 key esc
 
-run /switch "Heaventank"
+run !debugmode
+run /give golden pearl
+run !debugmode
+run /consume golden pearl
+expect Name your
+snap the pearl names the tank it opens
+type Heaventank
+key enter
+absent Name your
+
 run /names
 tick 20
 snap the dead drift behind the clouds and the gate
@@ -22,5 +32,6 @@ expect Dead
 snap the heaven index lists the dead
 key esc
 
+run /switch "Fishtank"
 run /index
 absent Dead

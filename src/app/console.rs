@@ -78,10 +78,12 @@ impl App {
         if held.down {
             let lifted = self.held_keys.press(held.code);
             self.lift_console_keys(lifted);
-        } else {
-            self.held_keys.release(held.code);
+            self.console_key(held.code, true);
+            return;
         }
-        self.console_key(held.code, held.down);
+        if self.held_keys.release(held.code) {
+            self.console_key(held.code, false);
+        }
     }
 
     pub(super) fn lift_console_keys(&mut self, lifted: Vec<KeyCode>) {

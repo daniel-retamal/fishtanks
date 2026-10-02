@@ -13,6 +13,7 @@ use fishtank::{
     loot::{ConsumableKind, StockItem},
     tank::FEED_PORTION,
     testing::Tui,
+    ui::fishing_overlay::Temper,
 };
 
 const REEL_DIR: &str = env!("CARGO_TARGET_TMPDIR");
@@ -1240,9 +1241,10 @@ fn the_phase_five_demo_written_in_the_plan_still_runs_keystroke_for_keystroke() 
 
 const DEMO_SECONDS_AT_30: usize = 30;
 const FEED_ROUNDS_SLACK: usize = 2;
+const FEED_WAITS_PER_PORTION: usize = 3;
 const FEED_WAIT_SECS: usize = 12;
 const COINS: [&str; 5] = ["Coin1", "Coin2", "Coin3", "Coin4", "Coin5"];
-const COIN_PAYOUT_SECS: usize = 12;
+const COIN_PAYOUT_SECS: usize = 36;
 const LEFTOVER_WAIT_SECS: usize = 30;
 const COIN_RATE_DRIFT: f64 = 0.45;
 const REEL_TICKS: usize = 240;
@@ -1332,17 +1334,22 @@ fn the_economy_demo_runs_keystroke_for_keystroke() {
     );
     tui.snap("1 · /feed: thirty pellets shower down");
     let mut rounds = 1;
+    let mut waits = 1;
     seconds_at(&mut tui, DEMO_SECONDS_AT_30, FEED_WAIT_SECS);
-    while tank_fish(&tui, "Kip").seeks_food() && rounds < feed_rounds_max {
-        tui.run("/feed");
+    while tank_fish(&tui, "Kip").seeks_food() && waits < feed_rounds_max * FEED_WAITS_PER_PORTION {
+        if tui.app.tanks[tui.app.current_tank].food.is_empty() {
+            tui.run("/feed");
+            rounds += 1;
+        }
         seconds_at(&mut tui, DEMO_SECONDS_AT_30, FEED_WAIT_SECS);
-        rounds += 1;
+        waits += 1;
     }
     let kip = tank_fish(&tui, "Kip");
     assert!(
         !kip.seeks_food(),
-        "Kip reached its cap in {rounds} portions"
+        "Kip reached its cap in {rounds} portions and {waits} waits"
     );
+    assert!(rounds <= feed_rounds_max, "Kip ate {rounds} portions");
     let fattened = kip.sell_value();
     let config = kip.species.config();
     let size = kip.size_category as usize;
@@ -1442,4 +1449,58 @@ fn the_economy_demo_runs_keystroke_for_keystroke() {
             >= Money::from(FOOD_BUY_PRICE) * pellets_to_cap as Money
     );
     assert_no_broken_borders(&tui);
+}
+
+const BITE_TICKS: usize = 30 * 90;
+const FIGHT_TICKS: usize = 60;
+const HEAVEN_NAME: &str = "Heaventank";
+
+fn strike(tui: &mut Tui, flag: &str) {
+    tui.run(&format!("/fish --no-escape {flag}"));
+    for _ in 0..BITE_TICKS {
+        if tui.app.fishing_state().is_some_and(|s| s.is_biting()) {
+            break;
+        }
+        tui.tick_n(1);
+    }
+    tui.key(KeyCode::Down);
+    tui.tick_n(FIGHT_TICKS);
+}
+
+#[test]
+fn the_normal_legendary_and_pearl_demo_runs_keystroke_for_keystroke() {
+    let mut tui = filmed("demo-fish-tempers-and-the-pearl");
+
+    strike(&mut tui, "--normal");
+    let state = tui.app.fishing_state().expect("the fish is on the line");
+    assert_eq!(state.temper(), Temper::Normal);
+    tui.snap("a Normal fish two seconds in: green water in the middle, red at the sides");
+    tui.key(KeyCode::Esc);
+
+    strike(&mut tui, "--legendary");
+    let state = tui.app.fishing_state().expect("the fish is on the line");
+    assert_eq!(state.temper(), Temper::Legendary);
+    tui.snap("a Legendary fish two seconds in");
+    tui.key(KeyCode::Esc);
+
+    tui.run("/spawn salmon \"Ann\"");
+    tui.run("/sell fish \"Ann\"");
+    tui.run("/fishtanks");
+    tui.screen().expect_absent(HEAVEN_NAME);
+    tui.snap("a sale opens no heaven");
+    tui.key(KeyCode::Esc);
+
+    tui.run("/give golden pearl");
+    tui.run("/consume golden pearl");
+    tui.screen().expect_find("Name your");
+    tui.type_text(HEAVEN_NAME);
+    tui.key(KeyCode::Enter);
+    tui.run("/names");
+    tui.tick_n(FIGHT_TICKS);
+    let wall = &tui.app.tanks[tui.app.current_tank];
+    assert_eq!(wall.name, HEAVEN_NAME, "a new tank switches you into it");
+    assert!(wall.souls().iter().any(|soul| soul.name == "Ann"));
+    tui.snap("the pearl grew Heaven and Ann was waiting for it");
+    tui.run("/give golden pearl");
+    assert_eq!(tui.app.inventory.get(&StockItem::GOLDEN_PEARL), None);
 }

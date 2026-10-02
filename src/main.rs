@@ -46,11 +46,10 @@ fn main() -> ExitCode {
     };
     closing::listen();
     let mut terminal = ratatui::init();
-    let releases = terminal_events::report_key_releases();
-    app.expect_key_releases(releases);
+    let asked = terminal_events::ask_for_key_releases();
     let result = run(&mut terminal, &mut app, &mut watch);
     let saved = app.persist_and_wait();
-    terminal_events::stop_reporting_key_releases(releases);
+    terminal_events::stop_asking_for_key_releases(asked);
     if let Err(error) = ratatui::try_restore() {
         warn(format!("fishtank could not tidy the terminal: {error}"));
     }

@@ -52,6 +52,14 @@ fn found_hell(tui: &mut Tui, name: &str) {
     tui.run(&format!("/switch \"{HOME}\""));
 }
 
+fn found_heaven(tui: &mut Tui) {
+    tui.run("/add golden pearl 1");
+    tui.run("/consume golden pearl");
+    tui.type_text("Heaventank");
+    tui.key(KeyCode::Enter);
+    tui.run(&format!("/switch \"{HOME}\""));
+}
+
 fn home_with(names: &[&str]) -> Tui {
     let mut tui = Tui::with_size(100, 30);
     tui.clear_tank();
@@ -85,6 +93,7 @@ fn a_fish_the_devil_marked_hangs_on_the_helltank_wall_and_never_in_heaven() {
 fn an_unmarked_death_never_reaches_hell() {
     let mut tui = home_with(&["Bob"]);
     found_hell(&mut tui, PIT);
+    found_heaven(&mut tui);
     tui.run("/kill \"Bob\"");
     assert!(damned(&tui, PIT).is_empty());
     assert_eq!(heaven_souls(&tui), ["Bob"]);
@@ -117,7 +126,7 @@ fn the_damned_on_the_wall_count_as_devils_luck() {
 }
 
 #[test]
-fn a_helltank_founded_after_the_damned_died_gathers_them() {
+fn each_afterlife_founded_after_its_dead_died_gathers_them() {
     let mut tui = home_with(&["Ann", "Bob"]);
     for fish in tui.app.tanks[0].fish.iter_mut().filter(|f| f.name == "Ann") {
         fish.devil_marked = true;
@@ -126,8 +135,10 @@ fn a_helltank_founded_after_the_damned_died_gathers_them() {
     tui.run("/kill \"Bob\"");
 
     found_hell(&mut tui, PIT);
-
     assert_eq!(damned(&tui, PIT), ["Ann"]);
+    assert!(heaven_souls(&tui).is_empty(), "no heaven opens by itself");
+
+    found_heaven(&mut tui);
     assert_eq!(heaven_souls(&tui), ["Bob"]);
 }
 

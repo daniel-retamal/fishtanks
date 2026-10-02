@@ -93,6 +93,24 @@ fn every_robotics_catch_card_draws_whole() {
 }
 
 #[test]
+fn every_seed_catch_card_draws_whole() {
+    let mut reel = Reel::new();
+    for seed in ConsumableKind::seeds() {
+        for size in [(CARD_COLS, CARD_ROWS)].into_iter().chain(SMALL_CARD_SIZES) {
+            reel.push(card_at(
+                &format!("{} · {}×{}", seed.display_name(), size.0, size.1),
+                LootKind::Item(ItemKind::Consumable(seed)),
+                size,
+            ));
+        }
+    }
+    reel.save(Path::new(REEL_DIR), "seed-catch-cards")
+        .expect("the reel is writable");
+    let report = reel.flaw_report();
+    assert!(report.is_empty(), "{report}");
+}
+
+#[test]
 fn a_catch_card_on_a_small_screen_wraps_its_art_above_the_text_and_keeps_its_hint() {
     let catches: [Catch; 5] = [
         ("fish", || LootKind::Fish(FishSpecies::Salmon)),

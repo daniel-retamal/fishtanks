@@ -1,6 +1,9 @@
+use crossterm::event::KeyCode;
 use fishtank::{
+    economy::Rarity,
     fishes::fish::Fish,
     fishes::species::FishSpecies,
+    loot::StockItem,
     tank::{Tank, TankKind},
     testing::Tui,
 };
@@ -22,6 +25,14 @@ fn heavens(tui: &Tui) -> usize {
         .count()
 }
 
+fn pearls(tui: &Tui) -> u32 {
+    tui.app
+        .inventory
+        .get(&StockItem::GOLDEN_PEARL)
+        .copied()
+        .unwrap_or(0)
+}
+
 fn soul_names(tui: &Tui) -> Vec<String> {
     heaven(tui)
         .map(|t| t.souls().iter().map(|f| f.name.clone()).collect())
@@ -36,9 +47,18 @@ fn living(tui: &Tui, name: &str) -> Option<String> {
         .map(|t| t.name.clone())
 }
 
+fn open_heaven(tui: &mut Tui) {
+    tui.run("/give golden pearl");
+    tui.run("/consume golden pearl");
+    tui.type_text(HEAVEN);
+    tui.key(KeyCode::Enter);
+    tui.run(&format!("/switch \"{HOME}\""));
+}
+
 fn home_with(names: &[&str]) -> Tui {
     let mut tui = Tui::new();
     tui.clear_tank();
+    open_heaven(&mut tui);
     for name in names {
         tui.run(&format!("/spawn salmon \"{name}\""));
     }
@@ -46,9 +66,24 @@ fn home_with(names: &[&str]) -> Tui {
 }
 
 #[test]
-fn selling_a_fish_opens_the_heaventank_and_hangs_the_fish_on_its_wall() {
+fn a_death_opens_no_heaven_and_the_pearl_that_opens_one_hangs_every_waiting_soul() {
+    let mut tui = Tui::new();
+    tui.clear_tank();
+    tui.run("/spawn salmon \"Ann\"");
+    tui.run("/sell fish \"Ann\"");
+    assert!(
+        heaven(&tui).is_none(),
+        "heaven is opened by a pearl, never by a death"
+    );
+    assert!(tui.app.graveyard.iter().any(|f| f.name == "Ann"));
+
+    open_heaven(&mut tui);
+    assert_eq!(soul_names(&tui), ["Ann"], "the dead were waiting for it");
+}
+
+#[test]
+fn selling_a_fish_hangs_it_on_the_heaven_wall() {
     let mut tui = home_with(&["Ann"]);
-    assert!(heaven(&tui).is_none(), "heaven waits for the first death");
 
     tui.run("/sell fish \"Ann\"");
 
@@ -97,11 +132,11 @@ fn there_is_only_ever_one_heaventank() {
 }
 
 #[test]
-fn a_fish_the_devil_marked_dies_without_opening_heaven_and_can_still_be_revived() {
+fn a_fish_the_devil_marked_never_hangs_in_heaven_and_can_still_be_revived() {
     let mut tui = home_with(&["Ann"]);
     tui.app.tanks[0].fish[0].devil_marked = true;
     tui.run("/kill \"Ann\"");
-    assert!(heaven(&tui).is_none(), "a damned soul opens no gate");
+    assert!(soul_names(&tui).is_empty(), "a damned soul is not let in");
     assert!(tui.app.graveyard.iter().any(|f| f.name == "Ann"));
 
     tui.run("/revive \"Ann\"");
@@ -195,19 +230,43 @@ fn whatever_arrives_in_heaven_that_is_not_holy_lands_in_the_next_tank() {
 }
 
 #[test]
-fn heaven_is_never_bought_sold_or_given() {
+fn heaven_is_never_bought_and_one_pearl_is_all_a_player_can_hold() {
     let mut tui = home_with(&["Ann"]);
     tui.run("/kill \"Ann\"");
     let tanks = tui.app.tanks.len();
     let cash = tui.app.purse.balance();
 
-    tui.run(&format!("/sell tank \"{HEAVEN}\""));
     tui.run("/give heaventank");
     tui.run("/buy heaventank");
+    tui.run("/give golden pearl");
 
     assert_eq!(tui.app.tanks.len(), tanks);
     assert_eq!(heavens(&tui), 1);
     assert_eq!(tui.app.purse.balance(), cash);
+    assert_eq!(pearls(&tui), 0, "no pearl beside a Heaventank");
+}
+
+#[test]
+fn an_empty_heaven_sells_like_a_found_legendary_tank_and_frees_the_pearl() {
+    let mut tui = home_with(&["Ann"]);
+    tui.run("/kill \"Ann\"");
+    let cash = tui.app.purse.balance();
+
+    tui.run(&format!("/sell tank \"{HEAVEN}\""));
+
+    assert_eq!(heavens(&tui), 0);
+    assert_eq!(
+        tui.app.purse.balance() - cash,
+        u64::from(Rarity::Legendary.catch_worth())
+    );
+    assert!(
+        tui.app.graveyard.iter().any(|f| f.name == "Ann"),
+        "the dead stay dead"
+    );
+    tui.run("/give golden pearl");
+    assert_eq!(pearls(&tui), 1);
+    open_heaven(&mut tui);
+    assert_eq!(soul_names(&tui), ["Ann"], "a new heaven hangs the old dead");
 }
 
 #[test]
@@ -238,6 +297,7 @@ fn the_dead_cannot_be_moved_mutated_sold_or_killed_again() {
 fn the_heaventank_index_lists_the_dead_and_every_other_index_stays_among_the_living() {
     let mut tui = Tui::with_size(100, 30);
     tui.clear_tank();
+    open_heaven(&mut tui);
     tui.run("/spawn salmon \"Ann\"");
     tui.run("/spawn salmon \"Bob\"");
     tui.run("/kill \"Ann\"");
@@ -262,6 +322,7 @@ fn the_heaventank_index_lists_the_dead_and_every_other_index_stays_among_the_liv
 fn a_holy_fish_that_lives_in_heaven_shows_as_alive_beside_the_dead() {
     let mut tui = Tui::with_size(100, 30);
     tui.clear_tank();
+    open_heaven(&mut tui);
     tui.run("/spawn salmon \"Ann\"");
     tui.run("/kill \"Ann\"");
     tui.run(&format!("/switch \"{HEAVEN}\""));
@@ -276,6 +337,7 @@ fn a_holy_fish_that_lives_in_heaven_shows_as_alive_beside_the_dead() {
 fn a_dead_row_in_the_index_opens_nothing() {
     let mut tui = Tui::with_size(100, 30);
     tui.clear_tank();
+    open_heaven(&mut tui);
     tui.run("/spawn salmon \"Ann\"");
     tui.run("/kill \"Ann\"");
     tui.run(&format!("/index \"{HEAVEN}\""));

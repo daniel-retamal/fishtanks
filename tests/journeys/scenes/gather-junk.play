@@ -1,0 +1,7 @@
+# SCENE · the junk a journey has gathered: $1 pieces, on top of the none a new game starts with.
+# Junk is fished, which no journey can do on cue, so it is handed over in debug mode, which is
+# switched straight back off, like the stake in start-with-a-stake.play.
+
+run !debugmode
+run /add junk $1
+run !debugmode

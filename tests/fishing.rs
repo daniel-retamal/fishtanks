@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{Event, KeyCode};
 use fishtank::testing::Tui;
-use fishtank::ui::input_action::Releases;
+use fishtank::ui::fishing_overlay::Temper;
 
 const CAST_TICKS: usize = 30 * 90;
 const CASTS: usize = 6;
@@ -21,23 +21,28 @@ enum Emulator {
     Windows,
     Kitty,
     AppleTerminal,
+    ConPty,
 }
 
 impl Emulator {
-    const ALL: [Emulator; 3] = [Emulator::Windows, Emulator::Kitty, Emulator::AppleTerminal];
-
-    fn open(self, tui: &mut Tui) {
-        if self == Emulator::Kitty {
-            tui.app.expect_key_releases(Releases::BeyondText);
-        }
-    }
+    const ALL: [Emulator; 4] = [
+        Emulator::Windows,
+        Emulator::Kitty,
+        Emulator::AppleTerminal,
+        Emulator::ConPty,
+    ];
 
     fn releases(self, code: KeyCode) -> bool {
         match self {
             Emulator::Windows => true,
             Emulator::Kitty => !matches!(code, KeyCode::Char(_) | KeyCode::Enter),
             Emulator::AppleTerminal => false,
+            Emulator::ConPty => true,
         }
+    }
+
+    fn pairs_every_press_with_a_release(self) -> bool {
+        self == Emulator::ConPty
     }
 
     fn repeats_every_held_key(self) -> bool {
@@ -105,20 +110,31 @@ impl Hand {
         let at = self.held.iter().position(|(held, _)| *held == code);
         match (at, down) {
             (None, true) => {
-                tui.key(code);
+                self.strike(tui, code);
                 self.held.push((code, 0));
             }
             (Some(i), false) => {
                 self.held.remove(i);
-                self.lift(tui, code);
+                if !self.terminal.pairs_every_press_with_a_release() {
+                    self.lift(tui, code);
+                }
             }
             _ => {}
         }
     }
 
+    fn strike(&mut self, tui: &mut Tui, code: KeyCode) {
+        tui.key(code);
+        if self.terminal.pairs_every_press_with_a_release() {
+            tui.release(code);
+        }
+    }
+
     fn let_go(&mut self, tui: &mut Tui) {
         for (code, _) in std::mem::take(&mut self.held) {
-            self.lift(tui, code);
+            if !self.terminal.pairs_every_press_with_a_release() {
+                self.lift(tui, code);
+            }
         }
     }
 
@@ -146,7 +162,7 @@ impl Hand {
             .map(|(code, _)| *code)
             .collect();
         for code in due {
-            tui.key(code);
+            self.strike(tui, code);
         }
         tui.tick_n(1);
     }
@@ -164,7 +180,7 @@ fn card_shown(tui: &mut Tui) -> bool {
 }
 
 fn reel_like_a_player(tui: &mut Tui, hand: &mut Hand, style: Style) -> bool {
-    hand.run(tui, "/fish");
+    hand.run(tui, "/fish --legendary");
     for _ in 0..CAST_TICKS {
         let Some(state) = tui.app.fishing_state() else {
             hand.let_go(tui);
@@ -198,7 +214,6 @@ fn reel_like_a_player(tui: &mut Tui, hand: &mut Hand, style: Style) -> bool {
 fn landed_casts(terminal: Emulator, cadence: Cadence, style: Style) -> usize {
     let mut tui = Tui::new();
     tui.clear_tank();
-    terminal.open(&mut tui);
     let mut hand = Hand::new(terminal, cadence);
     let mut landed = 0;
     for cast in 0..CASTS {
@@ -262,6 +277,17 @@ fn a_player_on_terminal_app_lands_every_cast_one_key_at_a_time() {
 }
 
 #[test]
+fn a_player_in_a_multiplexer_whose_every_key_up_comes_with_its_key_down_lands_every_cast() {
+    for cadence in [WINDOWS_CADENCE].into_iter().chain(MAC_CADENCES) {
+        assert_eq!(
+            landed_casts(Emulator::ConPty, cadence, Style::OneKeyAtATime),
+            CASTS,
+            "{cadence:?}"
+        );
+    }
+}
+
+#[test]
 fn the_down_that_hooks_the_fish_on_terminal_app_stops_reeling_like_a_tap() {
     let mut tui = Tui::new();
     tui.clear_tank();
@@ -302,9 +328,10 @@ fn a_terminal_that_reports_releases_reels_while_down_is_held_and_steered_with() 
     for terminal in [Emulator::Windows, Emulator::Kitty] {
         let mut tui = Tui::new();
         tui.clear_tank();
-        terminal.open(&mut tui);
         if terminal == Emulator::Windows {
             tui.release(KeyCode::Enter);
+        } else {
+            tui.key(KeyCode::Up).tick_n(1).release(KeyCode::Up);
         }
         hook_a_fish(&mut tui);
         tui.key(KeyCode::Right);
@@ -327,7 +354,6 @@ fn the_reel_says_how_to_reel_at_every_size() {
                 &format!("fishing-{terminal:?}-{cols}x{rows}"),
             );
             tui.clear_tank();
-            terminal.open(&mut tui);
             hook_a_fish(&mut tui);
             tui.tick_n(1);
             tui.snap(&format!("{terminal:?}: the reel and its hints"));
@@ -336,4 +362,69 @@ fn the_reel_says_how_to_reel_at_every_size() {
             }
         }
     }
+}
+
+#[test]
+fn a_window_that_loses_focus_lets_go_of_every_key() {
+    let mut tui = Tui::new();
+    tui.clear_tank();
+    tui.release(KeyCode::Enter);
+    hook_a_fish(&mut tui);
+    tui.key(KeyCode::Right);
+    tui.tick_n(TWO_SECONDS);
+    assert!(
+        reeling(&tui),
+        "held with no repeat on a terminal that sends key-ups"
+    );
+    tui.app.handle_input(Event::FocusLost);
+    tui.tick_n(1);
+    let state = tui.app.fishing_state().expect("no escape");
+    assert!(!state.is_reeling, "the key-up went to another window");
+    assert!(!state.is_pushing_right);
+}
+
+#[test]
+fn the_reel_shows_where_it_is_safe_to_reel_behind_the_control() {
+    for temper in ["--normal", "--legendary"] {
+        for (cols, rows) in FILM_SIZES {
+            let mut tui = Tui::with_size(cols, rows);
+            tui.film(
+                Path::new(env!("CARGO_TARGET_TMPDIR")),
+                &format!("fishing-zones{temper}-{cols}x{rows}"),
+            );
+            tui.clear_tank();
+            tui.run(&format!("/fish --no-escape {temper}"));
+            for _ in 0..CAST_TICKS {
+                if tui.app.fishing_state().is_some_and(|s| s.is_biting()) {
+                    break;
+                }
+                tui.tick_n(1);
+            }
+            tui.key(KeyCode::Down);
+            tui.tick_n(TWO_SECONDS);
+            tui.snap(&format!("{temper}: the water behind the control"));
+        }
+    }
+}
+
+#[test]
+fn the_debug_flags_choose_how_the_hooked_fish_fights() {
+    for (flag, temper) in [
+        ("--normal", Temper::Normal),
+        ("--legendary", Temper::Legendary),
+    ] {
+        let mut tui = Tui::new();
+        tui.clear_tank();
+        tui.run(&format!("/fish --no-fight {flag}"));
+        let state = tui.app.fishing_state().expect("fishing");
+        assert!(!state.is_catching(), "--no-fight hooks at once");
+        assert_eq!(state.temper(), temper, "{flag}");
+    }
+}
+
+#[test]
+fn a_player_cannot_choose_how_a_fish_fights() {
+    let mut tui = Tui::as_player(80, 24);
+    tui.run("/fish --legendary");
+    assert!(tui.app.fishing_state().is_none(), "a debug flag is refused");
 }

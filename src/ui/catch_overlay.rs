@@ -15,7 +15,8 @@ use crate::fishes::fish::{Direction, Fish};
 use crate::loot::{
     ConsumableKind, ItemKind, JunkSprite, LootKind, bait_sprite_rows, blank_blueprint_sprite_rows,
     blank_wafer_sprite_rows, coffee_sprite_rows, computer_sprite_rows, demoncore_sprite_rows,
-    fabricator_sprite_rows, milk_sprite_rows, part_sprite_rows, void_seed_sprite_rows,
+    fabricator_sprite_rows, golden_pearl_sprite_rows, milk_sprite_rows, part_sprite_rows,
+    void_seed_sprite_rows,
 };
 use crate::ui::{
     hint_bar::HintBar,
@@ -151,7 +152,7 @@ impl CatchState {
                 self.anim_phase = !self.anim_phase;
             }
         }
-        if is_demoncore(&self.loot) {
+        if glistens(&self.loot) {
             self.glisten_phase =
                 (self.glisten_phase + dt * DEMON_CORE_GLISTEN_SPEED).rem_euclid(TAU);
         }
@@ -348,7 +349,6 @@ fn draw_cells(buf: &mut Buffer, rows: &[Vec<(char, Color)>], x: u16, y: i32, are
 enum CardLine {
     Headline(String),
     Text(String, Color),
-    Aside(String),
     Gap,
     NameInput,
 }
@@ -360,7 +360,7 @@ impl CardLine {
 
     fn height(&self, width: u16) -> u16 {
         match self {
-            CardLine::Headline(text) | CardLine::Text(text, _) | CardLine::Aside(text) => {
+            CardLine::Headline(text) | CardLine::Text(text, _) => {
                 Self::wrapped(text, width).len() as u16
             }
             CardLine::Gap | CardLine::NameInput => 1,
@@ -371,9 +371,7 @@ impl CardLine {
         lines
             .iter()
             .filter_map(|line| match line {
-                CardLine::Headline(text) | CardLine::Text(text, _) | CardLine::Aside(text) => {
-                    Some(text)
-                }
+                CardLine::Headline(text) | CardLine::Text(text, _) => Some(text),
                 CardLine::Gap | CardLine::NameInput => None,
             })
             .flat_map(|text| text.split_whitespace())
@@ -418,19 +416,13 @@ impl CardLine {
                     );
                     y += 1;
                 }
-                CardLine::Headline(text) | CardLine::Text(text, _) | CardLine::Aside(text) => {
+                CardLine::Headline(text) | CardLine::Text(text, _) => {
                     let style = line.style();
                     for piece in Self::wrapped(text, body.width) {
                         if !fits(y) {
                             break;
                         }
-                        let piece_x = match line {
-                            CardLine::Aside(_) => {
-                                x + room.saturating_sub(table::visual_width(&piece) as u16)
-                            }
-                            _ => x,
-                        };
-                        buf.set_stringn(piece_x, y, &piece, room as usize, style);
+                        buf.set_stringn(x, y, &piece, room as usize, style);
                         y += 1;
                     }
                 }
@@ -443,7 +435,6 @@ impl CardLine {
         match self {
             CardLine::Headline(_) => base.fg(WHITE).add_modifier(Modifier::BOLD),
             CardLine::Text(_, color) => base.fg(*color),
-            CardLine::Aside(_) => base.fg(DARK_GRAY),
             CardLine::Gap | CardLine::NameInput => base.fg(WHITE),
         }
     }
@@ -460,8 +451,6 @@ fn card_lines(state: &CatchState) -> Vec<CardLine> {
         LootKind::Cash(cv) => vec![
             CardLine::Headline(CONGRATULATIONS.to_string()),
             CardLine::Text(format!("${} found!", cv.amount()), cv.color()),
-            CardLine::Gap,
-            CardLine::Aside(CASH_ASIDE.to_string()),
         ],
         LootKind::Food(amount) => vec![
             CardLine::Headline(CONGRATULATIONS.to_string()),
@@ -470,21 +459,22 @@ fn card_lines(state: &CatchState) -> Vec<CardLine> {
         LootKind::Item(item) => vec![
             CardLine::Text(format!("{}!", item.display_name()), WHITE),
             CardLine::Text(ADDED_TO_INVENTORY.to_string(), WHITE),
-            CardLine::Gap,
-            CardLine::Aside(format!(
-                "You now have {} {}(s)",
-                state.item_qty,
-                item.display_name()
-            )),
         ],
     }
 }
 
 fn card_hints(state: &CatchState) -> HintBar {
-    if state.is_fish() {
-        return HintBar::new(HINT_ENTER_CAPTURE);
+    let hints = HintBar::new(HINT_CLOSE);
+    match &state.loot {
+        LootKind::Fish(_) => HintBar::new(HINT_ENTER_CAPTURE),
+        LootKind::Cash(_) => hints.aside(CASH_ASIDE),
+        LootKind::Food(_) => hints,
+        LootKind::Item(item) => hints.aside(format!(
+            "You now have {} {}(s)",
+            state.item_qty,
+            item.display_name()
+        )),
     }
-    HintBar::new(HINT_CLOSE)
 }
 
 fn base_card_height(loot: &LootKind) -> u16 {
@@ -537,6 +527,15 @@ fn overlay_title(loot: &LootKind) -> String {
         LootKind::Item(item) => item.display_name(),
     };
     format!(" {catch} to the Fishtank! ")
+}
+
+fn glistens(loot: &LootKind) -> bool {
+    matches!(
+        loot,
+        LootKind::Item(ItemKind::Consumable(
+            ConsumableKind::DemonCore | ConsumableKind::GoldenPearl
+        ))
+    )
 }
 
 fn is_demoncore(loot: &LootKind) -> bool {
@@ -746,6 +745,7 @@ fn consumable_rows(kind: ConsumableKind, state: &CatchState) -> Option<Vec<Vec<(
         ConsumableKind::Fabricator => fabricator_sprite_rows(),
         ConsumableKind::BlankBlueprint => blank_blueprint_sprite_rows(),
         ConsumableKind::VoidSeed => void_seed_sprite_rows(),
+        ConsumableKind::GoldenPearl => golden_pearl_sprite_rows(state.glisten_phase),
         ConsumableKind::Necronomicon => return None,
     })
 }

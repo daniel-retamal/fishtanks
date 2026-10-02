@@ -29,6 +29,7 @@ struct Hint {
 pub struct HintBar {
     actions: Vec<Hint>,
     close: String,
+    aside: Option<String>,
 }
 
 impl HintBar {
@@ -36,7 +37,13 @@ impl HintBar {
         Self {
             actions: Vec::new(),
             close: close.to_string(),
+            aside: None,
         }
+    }
+
+    pub fn aside(mut self, note: impl Into<String>) -> Self {
+        self.aside = Some(note.into());
+        self
     }
 
     pub fn action(self, hint: impl Into<String>) -> Self {
@@ -80,12 +87,30 @@ impl HintBar {
         } else {
             CLOSE_GAP
         };
-        (EDGE_PAD * 2 + actions + gap + visual_width(&self.close)) as u16
+        let hints = EDGE_PAD * 2 + actions + gap + visual_width(&self.close);
+        let aside = self
+            .aside
+            .as_deref()
+            .map_or(0, |note| EDGE_PAD * 2 + visual_width(note));
+        hints.max(aside) as u16
+    }
+
+    fn aside_lines(&self, room: usize) -> Vec<HintLine> {
+        self.aside
+            .as_deref()
+            .map(|note| wrap_words(note, room))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|piece| HintLine {
+                close: Some(piece),
+                ..HintLine::default()
+            })
+            .collect()
     }
 
     pub fn lines(&self, width: u16) -> Vec<HintLine> {
         let room = (width as usize).saturating_sub(EDGE_PAD * 2).max(1);
-        let mut lines: Vec<HintLine> = Vec::new();
+        let mut lines: Vec<HintLine> = self.aside_lines(room);
         let mut current = HintLine::default();
         let mut used = 0;
         let pieces = self.actions.iter().flat_map(|hint| {
@@ -134,7 +159,12 @@ impl HintBar {
         let style = Style::default().fg(DARK_GRAY).bg(bg);
         let left_x = area.x + EDGE_PAD as u16;
         let right_edge = area.right().saturating_sub(EDGE_PAD as u16);
-        for (row, line) in self.lines(area.width).iter().enumerate() {
+        let lines = self.lines(area.width);
+        let asides = self
+            .aside_lines((area.width as usize).saturating_sub(EDGE_PAD * 2).max(1))
+            .len();
+        let unseen = asides.min(lines.len().saturating_sub(area.height as usize));
+        for (row, line) in lines.iter().skip(unseen).enumerate() {
             let y = area.y + row as u16;
             if y >= area.bottom() {
                 return;

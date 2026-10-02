@@ -4,7 +4,20 @@ use crate::fishes::species::{ALL_SPECIES, FishSpecies};
 use crate::loot::{ConsumableKind, MilkVariant};
 use crate::names::title_case;
 use crate::tank::TankKind;
+use crate::ui::fishing_overlay::Temper;
 use crate::void_ritual::{GiveTarget, parse_give_target};
+
+const TEMPER_FLAGS: [(&str, Temper); 2] = [
+    ("--normal", Temper::Normal),
+    ("--legendary", Temper::Legendary),
+];
+
+fn fish_temper(flags: &[&str]) -> Option<Temper> {
+    TEMPER_FLAGS
+        .iter()
+        .find(|(flag, _)| flags.contains(flag))
+        .map(|&(_, temper)| temper)
+}
 
 pub enum BuyTarget {
     Fish(FishSpecies),
@@ -1378,6 +1391,7 @@ pub enum Action {
     Fish {
         no_escape: bool,
         no_fight: bool,
+        temper: Option<Temper>,
     },
     Inventory,
     Shop,
@@ -1721,6 +1735,7 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
             Action::Fish {
                 no_escape: flags.contains(&"--no-escape"),
                 no_fight: flags.contains(&"--no-fight"),
+                temper: fish_temper(&flags),
             }
         }
         "exit" => Action::Exit,
@@ -1785,7 +1800,8 @@ impl Action {
             Fish {
                 no_escape,
                 no_fight,
-            } if *no_escape || *no_fight => Clearance::Debug,
+                temper,
+            } if *no_escape || *no_fight || temper.is_some() => Clearance::Debug,
             Feed
             | SetFps(_)
             | SetClock(_)
@@ -2017,7 +2033,8 @@ mod tests {
             parse("/fish", fish, tanks),
             Action::Fish {
                 no_escape: false,
-                no_fight: false
+                no_fight: false,
+                temper: None
             }
         ));
     }
@@ -2029,7 +2046,8 @@ mod tests {
             parse("/fish --no-escape", fish, tanks),
             Action::Fish {
                 no_escape: true,
-                no_fight: false
+                no_fight: false,
+                temper: None
             }
         ));
     }
@@ -2041,7 +2059,8 @@ mod tests {
             parse("/fish --no-fight", fish, tanks),
             Action::Fish {
                 no_escape: false,
-                no_fight: true
+                no_fight: true,
+                temper: None
             }
         ));
     }
@@ -2053,9 +2072,26 @@ mod tests {
             parse("/fish --no-escape --no-fight", fish, tanks),
             Action::Fish {
                 no_escape: true,
-                no_fight: true
+                no_fight: true,
+                temper: None
             }
         ));
+    }
+
+    #[test]
+    fn parse_fish_temper_flags() {
+        let (fish, tanks) = no_names();
+        for (line, forced) in [
+            ("/fish --normal", Temper::Normal),
+            ("/fish --legendary", Temper::Legendary),
+        ] {
+            let action = parse(line, fish, tanks);
+            assert!(
+                matches!(action, Action::Fish { temper: Some(temper), .. } if temper == forced),
+                "{line}"
+            );
+            assert_eq!(action.clearance(), Clearance::Debug, "{line}");
+        }
     }
 
     #[test]

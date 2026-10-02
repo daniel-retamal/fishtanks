@@ -8,7 +8,8 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::colors::{LIGHT_CYAN, LIGHT_GREEN, PINK, WHITE, YELLOW};
 use crate::sprite::{
-    Cell, EAR_LEFT, EAR_RIGHT, Feet, PosedExtension, TRANSPARENT, feet_row, painted_span,
+    Cell, EAR_LEFT, EAR_RIGHT, Feet, PosedExtension, TRANSPARENT, feet_row, opaque_line,
+    painted_span,
 };
 
 use crate::{
@@ -1734,7 +1735,10 @@ fn draw_gate_bar_tile(
             }
         }
         let screen_y = floor_y - 1 - (n - 1 - i as i32);
-        draw_gate_line(line.chars(), col, screen_y, area, buf, style);
+        let see_through = line
+            .chars()
+            .map(|ch| if ch == ' ' { TRANSPARENT } else { ch });
+        draw_gate_line(see_through, col, screen_y, area, buf, style);
     }
 }
 
@@ -1749,14 +1753,26 @@ fn draw_gate_block_tile(
     let n = GATE_BLOCK_TILE.len() as i32;
     for (i, &line) in GATE_BLOCK_TILE.iter().enumerate() {
         let screen_y = floor_y - 1 - (n - 1 - i as i32);
-        let marked = line.chars().enumerate().map(|(c, ch)| {
-            if c == GATE_BLOCK_MARK_COL {
-                marks[i]
-            } else {
-                ch
-            }
-        });
-        draw_gate_line(marked, col, screen_y, area, buf, style);
+        let marked: String = line
+            .chars()
+            .enumerate()
+            .map(|(c, ch)| {
+                if c == GATE_BLOCK_MARK_COL {
+                    marks[i]
+                } else {
+                    ch
+                }
+            })
+            .collect();
+        let solid = opaque_line(&marked, Color::Reset, |_, _| Color::Reset);
+        draw_gate_line(
+            solid.into_iter().map(|(ch, _)| ch),
+            col,
+            screen_y,
+            area,
+            buf,
+            style,
+        );
     }
 }
 
@@ -1772,7 +1788,7 @@ fn draw_gate_line(
         return;
     }
     for (c, ch) in line.enumerate() {
-        if ch == ' ' {
+        if ch == TRANSPARENT {
             continue;
         }
         let sx = area.x as i32 + col + c as i32;
@@ -2329,6 +2345,33 @@ mod tests {
             "the gate's bars stand in front of a low soul"
         );
         assert_eq!(gated[(bar_x.unwrap(), 27)].fg, LIGHT_YELLOW);
+    }
+
+    #[test]
+    fn a_gate_block_is_solid_and_hides_the_soul_behind_it() {
+        let mut tank = heaven_with_soul("Ann");
+        let block_x = (BARS_PER_BLOCK as i32 * GATE_BAR_W) as u16;
+        let floor_y = tank.height - 1;
+        let soul_y = floor_y - GATE_BLOCK_TILE.len() as u16 / 2;
+        for x in (0..GATE_BLOCK_W as u16).map(|dx| block_x + dx - 2) {
+            park_soul(&mut tank, f32::from(x), f32::from(soul_y));
+            let buf = render_tank(&tank, false);
+            for (row, line) in GATE_BLOCK_TILE.iter().enumerate() {
+                let y = floor_y - GATE_BLOCK_TILE.len() as u16 + row as u16;
+                let chars: Vec<char> = line.chars().collect();
+                let first = chars.iter().position(|&c| c != ' ').unwrap();
+                let last = chars.iter().rposition(|&c| c != ' ').unwrap();
+                for col in first..=last {
+                    let cell = &buf[(block_x + col as u16, y)];
+                    assert_eq!(
+                        cell.fg,
+                        LIGHT_YELLOW,
+                        "row {row} col {col}: {:?}",
+                        cell.symbol()
+                    );
+                }
+            }
+        }
     }
 
     #[test]

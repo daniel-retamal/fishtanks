@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 use crate::colors::{STEEL, WHITE};
-use crate::economy::Money;
+use crate::economy::{Money, grouped};
 use crate::ledger::{Direction, Flow, LEDGER_MINUTES, Ledger, Tally};
 use crate::ui::{
     command_bar::metric,
@@ -30,7 +30,6 @@ const MIN_LABEL_W: u16 = 5;
 const MIN_MONEY_W: u16 = 6;
 const RULE_LINE: &str = "──";
 const BACKGROUND: Color = Color::Reset;
-const THOUSANDS: usize = 3;
 const RULE_CLOSES_UP: char = '┴';
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -68,18 +67,6 @@ impl Amount {
 
 fn sign(value: i128) -> &'static str {
     if value < 0 { "-" } else { "" }
-}
-
-fn grouped(value: u128) -> String {
-    let digits = value.to_string();
-    let mut out = String::new();
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index).is_multiple_of(THOUSANDS) {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-    out
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

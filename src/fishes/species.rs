@@ -3,8 +3,9 @@ use std::sync::LazyLock;
 
 use ratatui::style::Color;
 
-use crate::economy::{Purchasable, Rarity, Sellable};
+use crate::economy::{Money, Purchasable, Rarity, Sellable};
 use crate::entities::food::{FOOD_BUY_PRICE, FOOD_WEIGHT_GAIN_G};
+use crate::loot::{CashValue, JUNK_OUTLINE};
 use crate::tank::TankKind;
 
 pub const SINGLE_EYE: usize = 1;
@@ -84,6 +85,7 @@ pub enum FishSpecies {
     Botfish,
     Cheatfish,
     Unfish,
+    Junkfish,
 }
 
 impl FishSpecies {
@@ -111,6 +113,19 @@ impl FishSpecies {
         self.config().rarity.fish_buy_price()
     }
 
+    pub fn from_junk() -> Option<FishSpecies> {
+        ALL_SPECIES
+            .iter()
+            .copied()
+            .find(|species| species.config().habitat == Habitat::Junkpile)
+    }
+
+    pub fn appraisal(self, size: SizeCategory, seed: u64) -> Money {
+        self.config()
+            .appraisal
+            .map_or(0, |appraisal| appraisal.worth(size, seed))
+    }
+
     pub fn is_obtainable(self) -> bool {
         let config = self.config();
         config.buyable || config.habitat != Habitat::Nowhere
@@ -121,8 +136,44 @@ impl FishSpecies {
 pub enum Habitat {
     Everywhere,
     Native(TankKind),
+    Junkpile,
     Nowhere,
 }
+
+impl Habitat {
+    pub fn is_fished(self) -> bool {
+        matches!(self, Habitat::Everywhere | Habitat::Native(_))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodyFill {
+    Species,
+    Junk,
+}
+
+const APPRAISAL_LUCK_BITS: u32 = 53;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Appraisal {
+    pub floor: Money,
+    pub ceiling: Money,
+}
+
+impl Appraisal {
+    pub fn worth(self, size: SizeCategory, seed: u64) -> Money {
+        let luck = (seed >> (u64::BITS - APPRAISAL_LUCK_BITS)) as f64
+            / (1u64 << APPRAISAL_LUCK_BITS) as f64;
+        let reach = (size as usize as f64 + luck) / SizeCategory::ALL.len() as f64;
+        let ratio = self.ceiling as f64 / self.floor as f64;
+        (self.floor as f64 * ratio.powf(reach)).round() as Money
+    }
+}
+
+const JUNKFISH_APPRAISAL: Appraisal = Appraisal {
+    floor: CashValue::HundredThousand.amount() as Money,
+    ceiling: CashValue::Million.amount() as Money,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tint {
@@ -254,6 +305,7 @@ pub struct SpeciesConfig {
     pub name: &'static str,
     pub body: BodyTemplate,
     pub body_source: BodySource,
+    pub body_fill: BodyFill,
     pub palette: &'static [Color],
     pub pattern: PatternKind,
     pub sway_speed: f32,
@@ -274,6 +326,7 @@ pub struct SpeciesConfig {
     pub eye_color: Option<Color>,
     pub zoomie_bubble_color: Tint,
     pub flavour: Flavour,
+    pub appraisal: Option<Appraisal>,
     pub sizes: [usize; 4],
     pub weight_base: [u32; 4],
     pub weight_cap: [u32; 4],
@@ -351,6 +404,7 @@ pub const ALL_SPECIES: &[FishSpecies] = &[
     FishSpecies::Holyfish,
     FishSpecies::Botfish,
     FishSpecies::Cheatfish,
+    FishSpecies::Junkfish,
 ];
 
 static BUYABLE_SPECIES: LazyLock<Vec<FishSpecies>> = LazyLock::new(|| {
@@ -475,6 +529,7 @@ static CASHFISH_PALETTE: [Color; 1] = [LIGHT_RED];
 static HOLYFISH_PALETTE: [Color; 1] = [GRAY];
 static BOTFISH_PALETTE: [Color; 1] = [DARK_GRAY];
 static CHEATFISH_PALETTE: [Color; 1] = [WHITE];
+static JUNKFISH_PALETTE: [Color; 1] = [JUNK_OUTLINE];
 
 static AKA_PALETTE: [Color; 1] = [RED];
 static KURO_PALETTE: [Color; 1] = [DARK_GRAY];
@@ -545,6 +600,7 @@ fn standard_config(
         name,
         body: BodyTemplate::Standard(body),
         body_source: BodySource::Species,
+        body_fill: BodyFill::Species,
         palette,
         pattern,
         sway_speed,
@@ -565,6 +621,7 @@ fn standard_config(
         eye_color: None,
         zoomie_bubble_color: Tint::Plain,
         flavour: ORDINARY_FLAVOUR,
+        appraisal: None,
         sizes,
         weight_base: STD_WEIGHT_BASE,
         weight_cap: STD_WEIGHT_CAP,
@@ -587,6 +644,7 @@ fn fixed_config(
         name,
         body: BodyTemplate::Fixed { left, right },
         body_source: BodySource::Species,
+        body_fill: BodyFill::Species,
         palette,
         pattern,
         sway_speed: 0.0,
@@ -607,6 +665,7 @@ fn fixed_config(
         eye_color: None,
         zoomie_bubble_color: Tint::Plain,
         flavour: ORDINARY_FLAVOUR,
+        appraisal: None,
         sizes,
         weight_base: STD_WEIGHT_BASE,
         weight_cap: STD_WEIGHT_CAP,
@@ -717,6 +776,7 @@ impl FishSpecies {
                     name: "Deadfish",
                     body: BodyTemplate::Alternating(DEADFISH_BC_SEMI, DEADFISH_BC_PLUS),
                     body_source: BodySource::Species,
+                    body_fill: BodyFill::Species,
                     palette: &DEADFISH_PALETTE,
                     pattern: Solid,
                     sway_speed: 0.04,
@@ -737,6 +797,7 @@ impl FishSpecies {
                     eye_color: None,
                     zoomie_bubble_color: Tint::Plain,
                     flavour: ORDINARY_FLAVOUR,
+                    appraisal: None,
                     sizes,
                     weight_base: STD_WEIGHT_BASE,
                     weight_cap: STD_WEIGHT_CAP,
@@ -898,10 +959,27 @@ impl FishSpecies {
                 config.flavour = CHEAT_FLAVOUR;
                 config
             }
+            Junkfish => {
+                let mut config = standard_config(
+                    "Junkfish",
+                    standard(EYE_ROUND, TailKind::Wide),
+                    &JUNKFISH_PALETTE,
+                    Solid,
+                    0.10,
+                    (2.0, 3.5),
+                    Legendary,
+                );
+                config.buyable = false;
+                config.habitat = Habitat::Junkpile;
+                config.body_fill = BodyFill::Junk;
+                config.appraisal = Some(JUNKFISH_APPRAISAL);
+                config
+            }
             Mutantfish => SpeciesConfig {
                 name: "Mutantfish",
                 body: BodyTemplate::Standard(standard(EYE_CIRCLE, TailKind::Wide)),
                 body_source: BodySource::MutantState,
+                body_fill: BodyFill::Species,
                 palette: &MUTANT_GREEN_PALETTE,
                 pattern: Solid,
                 sway_speed: 0.11,
@@ -922,6 +1000,7 @@ impl FishSpecies {
                 eye_color: None,
                 zoomie_bubble_color: Tint::Body,
                 flavour: MUTANT_FLAVOUR,
+                appraisal: None,
                 sizes: LEGENDARY_SIZES,
                 weight_base: [0, 250, 0, 0],
                 weight_cap: [0; 4],
@@ -948,6 +1027,7 @@ impl FishSpecies {
                 name: "Unfish",
                 body: BodyTemplate::Standard(standard(EYE_ROUND, TailKind::Wide)),
                 body_source: BodySource::UnfishState,
+                body_fill: BodyFill::Species,
                 palette: &UNFISH_PALETTE,
                 pattern: Solid,
                 sway_speed: 0.10,
@@ -968,6 +1048,7 @@ impl FishSpecies {
                 eye_color: None,
                 zoomie_bubble_color: Tint::Plain,
                 flavour: ORDINARY_FLAVOUR,
+                appraisal: None,
                 sizes: COMMON_SIZES,
                 weight_base: [1; 4],
                 weight_cap: [0; 4],
@@ -1030,6 +1111,50 @@ impl Sellable for FishSpecies {
     }
     fn display_name(&self) -> &str {
         self.config().name
+    }
+}
+
+#[cfg(test)]
+mod appraisal_tests {
+    use super::*;
+
+    const SEEDS: [u64; 5] = [0, 1, u64::MAX / 3, u64::MAX / 2, u64::MAX];
+
+    #[test]
+    fn a_junkfish_is_worth_a_jackpot_and_a_bigger_one_a_bigger_jackpot() {
+        let species = FishSpecies::from_junk().expect("some fish is made of junk");
+        let mut previous_ceiling = 0;
+        for size in SizeCategory::ALL {
+            let worths: Vec<Money> = SEEDS
+                .iter()
+                .map(|&seed| species.appraisal(size, seed))
+                .collect();
+            let lowest = *worths.iter().min().unwrap();
+            let highest = *worths.iter().max().unwrap();
+            assert!(lowest >= JUNKFISH_APPRAISAL.floor, "{size:?}");
+            assert!(highest <= JUNKFISH_APPRAISAL.ceiling, "{size:?}");
+            assert!(
+                lowest >= previous_ceiling,
+                "{size:?} is never worth less than a smaller one"
+            );
+            previous_ceiling = highest;
+        }
+        assert_eq!(
+            species.appraisal(SizeCategory::S, 0),
+            CashValue::HundredThousand.amount() as Money
+        );
+    }
+
+    #[test]
+    fn only_the_junkfish_carries_an_appraisal() {
+        for &species in ALL_SPECIES {
+            assert_eq!(
+                species.config().appraisal.is_some(),
+                species.config().habitat == Habitat::Junkpile,
+                "{}",
+                species.display_name()
+            );
+        }
     }
 }
 

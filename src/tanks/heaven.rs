@@ -15,8 +15,8 @@ const GATE_STYLE: GateStyle = GateStyle {
     floor: LIGHT_YELLOW,
 };
 
-const ANGEL_SPAWN_MIN: f32 = 3.0;
-const ANGEL_SPAWN_MAX: f32 = 7.0;
+const ANGEL_SPAWN_MIN: f32 = 10.0;
+const ANGEL_SPAWN_MAX: f32 = 20.0;
 const ANGEL_RISE_MIN: f32 = 2.0;
 const ANGEL_RISE_MAX: f32 = 4.5;
 

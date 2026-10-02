@@ -33,9 +33,11 @@ const JACKPOT_SHARE_OF_THE_TIER_BELOW: u64 = 2;
 const JACKPOT_WEIGHT_SCALE: u64 = 100_000;
 
 const JUNK_NAME: &str = "Junk";
-const JUNK_WEIGHT: u32 = 21;
-const COFFEE_WEIGHT: u32 = 21;
-const BAIT_WEIGHT: u32 = 20;
+pub const JUNK_PER_JUNKFISH: u32 = 100;
+pub const JUNK_OUTLINE: Color = DARK_GRAY;
+const CASH_SLOTS: u32 = 2;
+const FOOD_SLOTS: u32 = 2;
+const SUNDRY_SLOTS: u32 = 1;
 
 const JUNK_FILLER_CHARS: &[char] = &['&', '@', '€', '%', '$', '#', 'X', '<', '>'];
 const JUNK_COLORS: &[Color] = &[GRAY, BROWN, GREEN, LIGHT_GREEN];
@@ -45,16 +47,15 @@ pub struct JunkSprite {
     pub rows: Vec<Vec<(char, Color)>>,
 }
 
-fn junk_color(rng: &mut impl RngExt) -> Color {
-    JUNK_COLORS[rng.random_range(0..JUNK_COLORS.len())]
-}
-
-fn junk_char(rng: &mut impl RngExt) -> char {
-    JUNK_FILLER_CHARS[rng.random_range(0..JUNK_FILLER_CHARS.len())]
+pub fn junk_cell(rng: &mut impl RngExt) -> (char, Color) {
+    (
+        JUNK_FILLER_CHARS[rng.random_range(0..JUNK_FILLER_CHARS.len())],
+        JUNK_COLORS[rng.random_range(0..JUNK_COLORS.len())],
+    )
 }
 
 fn junk_row_top() -> Vec<(char, Color)> {
-    let dark = DARK_GRAY;
+    let dark = JUNK_OUTLINE;
     vec![
         (' ', dark),
         (' ', dark),
@@ -65,37 +66,30 @@ fn junk_row_top() -> Vec<(char, Color)> {
         ('_', dark),
         ('.', dark),
     ]
+}
+
+const JUNK_MID_FILL: usize = 4;
+const JUNK_BOT_FILL: usize = 7;
+
+fn junk_row(
+    rng: &mut impl RngExt,
+    left: &[char],
+    fill: usize,
+    right: &[char],
+) -> Vec<(char, Color)> {
+    let outline = |&glyph: &char| (glyph, JUNK_OUTLINE);
+    let mut row: Vec<(char, Color)> = left.iter().map(outline).collect();
+    row.extend((0..fill).map(|_| junk_cell(rng)));
+    row.extend(right.iter().map(outline));
+    row
 }
 
 fn junk_row_mid(rng: &mut impl RngExt) -> Vec<(char, Color)> {
-    let dark = DARK_GRAY;
-    vec![
-        (' ', dark),
-        (' ', dark),
-        ('(', dark),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (')', dark),
-        ('.', dark),
-    ]
+    junk_row(rng, &[' ', ' ', '('], JUNK_MID_FILL, &[')', '.'])
 }
 
 fn junk_row_bot(rng: &mut impl RngExt) -> Vec<(char, Color)> {
-    let dark = DARK_GRAY;
-    vec![
-        ('.', dark),
-        ('(', dark),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (')', dark),
-    ]
+    junk_row(rng, &['.', '('], JUNK_BOT_FILL, &[')'])
 }
 
 impl JunkSprite {
@@ -303,6 +297,7 @@ pub enum ConsumableKind {
     DemonCore,
     Computer,
     VoidSeed,
+    GoldenPearl,
     BlankWafer,
     Part(Part),
     Fabricator,
@@ -319,6 +314,7 @@ impl ConsumableKind {
         v.push(ConsumableKind::DemonCore);
         v.push(ConsumableKind::Computer);
         v.push(ConsumableKind::VoidSeed);
+        v.push(ConsumableKind::GoldenPearl);
         for &part in Part::ALL {
             v.push(ConsumableKind::Part(part));
         }
@@ -381,6 +377,7 @@ impl ConsumableKind {
             ConsumableKind::DemonCore => DEMON_CORE_NAME,
             ConsumableKind::Computer => COMPUTER_NAME,
             ConsumableKind::VoidSeed => VOID_SEED_NAME,
+            ConsumableKind::GoldenPearl => GOLDEN_PEARL_NAME,
             ConsumableKind::BlankWafer => BLANK_WAFER_NAME,
             ConsumableKind::Part(part) => part.display_name(),
             ConsumableKind::Fabricator => FABRICATOR_NAME,
@@ -394,6 +391,7 @@ impl ConsumableKind {
             ConsumableKind::DemonCore => Some(TankKind::Rad),
             ConsumableKind::Computer => Some(TankKind::Matrix),
             ConsumableKind::VoidSeed => Some(TankKind::Void),
+            ConsumableKind::GoldenPearl => Some(TankKind::Heaven),
             _ => None,
         }
     }
@@ -434,6 +432,7 @@ impl ConsumableKind {
             ConsumableKind::DemonCore => DEMON_CORE_PANEL_INNER_W,
             ConsumableKind::Computer => computer_art().panel_inner_w(),
             ConsumableKind::VoidSeed => void_seed_art().panel_inner_w(),
+            ConsumableKind::GoldenPearl => golden_pearl_art().panel_inner_w(),
             ConsumableKind::BlankWafer => blank_wafer_art().panel_inner_w(),
             ConsumableKind::Part(part) => part_art(part).panel_inner_w(),
             ConsumableKind::Fabricator => fabricator_art().panel_inner_w(),
@@ -450,6 +449,7 @@ impl ConsumableKind {
             ConsumableKind::DemonCore => DEMON_CORE_HOOK_COL,
             ConsumableKind::Computer => computer_art().hook_col(),
             ConsumableKind::VoidSeed => void_seed_art().hook_col(),
+            ConsumableKind::GoldenPearl => golden_pearl_art().hook_col(),
             ConsumableKind::BlankWafer => blank_wafer_art().hook_col(),
             ConsumableKind::Part(part) => part_art(part).hook_col(),
             ConsumableKind::Fabricator => fabricator_art().hook_col(),
@@ -466,6 +466,7 @@ impl ConsumableKind {
             ConsumableKind::DemonCore => DEMON_CORE_HOOK_ROW,
             ConsumableKind::Computer => computer_art().hook_row(),
             ConsumableKind::VoidSeed => void_seed_art().hook_row(),
+            ConsumableKind::GoldenPearl => golden_pearl_art().hook_row(),
             ConsumableKind::BlankWafer => blank_wafer_art().hook_row(),
             ConsumableKind::Part(part) => part_art(part).hook_row(),
             ConsumableKind::Fabricator => fabricator_art().hook_row(),
@@ -482,6 +483,7 @@ impl ConsumableKind {
             | ConsumableKind::DemonCore
             | ConsumableKind::Computer
             | ConsumableKind::VoidSeed
+            | ConsumableKind::GoldenPearl
             | ConsumableKind::BlankWafer
             | ConsumableKind::Part(_)
             | ConsumableKind::Fabricator
@@ -498,6 +500,7 @@ impl ConsumableKind {
             | ConsumableKind::DemonCore
             | ConsumableKind::Computer
             | ConsumableKind::VoidSeed
+            | ConsumableKind::GoldenPearl
             | ConsumableKind::BlankWafer
             | ConsumableKind::Part(_)
             | ConsumableKind::Fabricator
@@ -520,7 +523,8 @@ impl ConsumableKind {
             | ConsumableKind::Necronomicon
             | ConsumableKind::DemonCore
             | ConsumableKind::Computer
-            | ConsumableKind::VoidSeed => 0,
+            | ConsumableKind::VoidSeed
+            | ConsumableKind::GoldenPearl => 0,
         }
     }
 
@@ -543,7 +547,8 @@ impl ConsumableKind {
             ConsumableKind::Necronomicon
             | ConsumableKind::DemonCore
             | ConsumableKind::Computer
-            | ConsumableKind::VoidSeed => 0,
+            | ConsumableKind::VoidSeed
+            | ConsumableKind::GoldenPearl => 0,
         }
     }
 
@@ -560,6 +565,7 @@ impl ConsumableKind {
             ConsumableKind::DemonCore => DEMON_CORE_DESCRIPTION,
             ConsumableKind::Computer => COMPUTER_DESCRIPTION,
             ConsumableKind::VoidSeed => VOID_SEED_DESCRIPTION,
+            ConsumableKind::GoldenPearl => GOLDEN_PEARL_DESCRIPTION,
             ConsumableKind::BlankWafer => BLANK_WAFER_DESCRIPTION,
             ConsumableKind::Part(part) => part.description(),
             ConsumableKind::Fabricator => FABRICATOR_DESCRIPTION,
@@ -572,7 +578,8 @@ impl ConsumableKind {
             ConsumableKind::Necronomicon
             | ConsumableKind::DemonCore
             | ConsumableKind::Computer
-            | ConsumableKind::VoidSeed => Rarity::Legendary,
+            | ConsumableKind::VoidSeed
+            | ConsumableKind::GoldenPearl => Rarity::Legendary,
             ConsumableKind::Part(part) => part.rarity(),
             ConsumableKind::Fabricator => Rarity::Rare,
             _ => Rarity::Common,
@@ -834,6 +841,33 @@ pub fn void_seed_sprite_rows() -> Vec<Vec<(char, Color)>> {
     void_seed_art().rows(WHITE)
 }
 
+const GOLDEN_PEARL_NAME: &str = "Golden Pearl";
+const GOLDEN_PEARL_DESCRIPTION: &str = "An irritant, forgiven in a thousand coats of nacre. It remembers every fish that ever let go. Opens a Gate to Heaven, The Heaventank. Only Holyfishes may enter";
+const GOLDEN_PEARL_SPRITE_LINES: &[&str] = &[
+    r#"   .-""-."#,
+    r"  / o    \",
+    r" |  '     |",
+    r"  \      /",
+    r"   `-..-'",
+];
+const GOLDEN_PEARL_HOOK_ROW: u16 = (GOLDEN_PEARL_SPRITE_LINES.len() / 2) as u16;
+
+fn golden_pearl_art() -> HookedArt {
+    HookedArt::new(GOLDEN_PEARL_SPRITE_LINES, GOLDEN_PEARL_HOOK_ROW)
+}
+
+pub fn golden_pearl_sprite_rows(glisten_phase: f32) -> Vec<Vec<(char, Color)>> {
+    let mut rows = golden_pearl_art().rows(GOLD);
+    apply_glisten(
+        &mut rows,
+        glisten_phase,
+        GlisteningMode::Wave,
+        GOLD,
+        GOLD_BRIGHT,
+    );
+    rows
+}
+
 const BLANK_BLUEPRINT_SPRITE_LINES: &[&str] = &[
     r"+--+--+--+-.",
     r"|  |  |  |  \",
@@ -945,7 +979,7 @@ const CASH_TABLE: &[(u32, CashValue)] = &[
 ];
 
 impl CashValue {
-    pub fn amount(self) -> u32 {
+    pub const fn amount(self) -> u32 {
         match self {
             CashValue::One => 1,
             CashValue::Two => 2,
@@ -1020,6 +1054,7 @@ impl StockItem {
     pub const DEMON_CORE: StockItem = StockItem::Consumable(ConsumableKind::DemonCore);
     pub const COMPUTER: StockItem = StockItem::Consumable(ConsumableKind::Computer);
     pub const VOID_SEED: StockItem = StockItem::Consumable(ConsumableKind::VoidSeed);
+    pub const GOLDEN_PEARL: StockItem = StockItem::Consumable(ConsumableKind::GoldenPearl);
 
     pub fn display_name(self) -> &'static str {
         match self {
@@ -1030,6 +1065,13 @@ impl StockItem {
 
     pub fn is_consumable(self) -> bool {
         matches!(self, StockItem::Consumable(kind) if kind.can_be_consumed())
+    }
+
+    pub fn consumable_at(self, qty: u32) -> bool {
+        match self {
+            StockItem::Consumable(_) => self.is_consumable() && qty > 0,
+            StockItem::Junk => qty >= JUNK_PER_JUNKFISH,
+        }
     }
 
     pub fn rarity(self) -> Rarity {
@@ -1070,6 +1112,19 @@ pub enum LootKind {
     Item(ItemKind),
 }
 
+impl LootKind {
+    pub fn rarity(&self) -> Rarity {
+        match self {
+            LootKind::Fish(species) => species.config().rarity,
+            LootKind::Cash(cash) => cash.rarity(),
+            LootKind::Food(_) => Rarity::Common,
+            LootKind::Item(item) => {
+                StockItem::from_item(item).map_or(Rarity::Common, StockItem::rarity)
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum PoolSlot {
     Species(FishSpecies),
@@ -1090,11 +1145,13 @@ impl LootPool {
             .iter()
             .map(|&s| (s.config().rarity.catch_weight(), PoolSlot::Species(s)))
             .collect();
-        slots.push((Rarity::Common.catch_weight(), PoolSlot::Cash));
-        slots.push((Rarity::Common.catch_weight(), PoolSlot::Food));
-        slots.push((JUNK_WEIGHT, PoolSlot::Junk));
-        slots.push((COFFEE_WEIGHT, PoolSlot::Consumable(ConsumableKind::Coffee)));
-        slots.push((BAIT_WEIGHT, PoolSlot::Consumable(ConsumableKind::Bait)));
+        let common = Rarity::Common.catch_weight();
+        let sundry = SUNDRY_SLOTS * common;
+        slots.push((CASH_SLOTS * common, PoolSlot::Cash));
+        slots.push((FOOD_SLOTS * common, PoolSlot::Food));
+        slots.push((sundry, PoolSlot::Junk));
+        slots.push((sundry, PoolSlot::Consumable(ConsumableKind::Coffee)));
+        slots.push((sundry, PoolSlot::Consumable(ConsumableKind::Bait)));
         let mut pool = Self {
             slots,
             devils_luck: 0,
@@ -1413,7 +1470,7 @@ mod tests {
     fn a_legendary_is_caught_only_on_its_banner_and_everything_else_everywhere() {
         for &species in ALL_SPECIES {
             let config = species.config();
-            if config.habitat == Habitat::Nowhere {
+            if !config.habitat.is_fished() {
                 continue;
             }
             let native = matches!(config.habitat, Habitat::Native(_));
@@ -1468,6 +1525,17 @@ mod tests {
             if species.config().buyable || species.config().habitat == Habitat::Nowhere {
                 continue;
             }
+            if species.config().habitat == Habitat::Junkpile {
+                assert!(
+                    LootPool::default_pool()
+                        .slots
+                        .iter()
+                        .any(|(_, slot)| matches!(slot, PoolSlot::Junk)),
+                    "{} is made of junk nobody can fish",
+                    species.display_name()
+                );
+                continue;
+            }
             let Habitat::Native(kind) = species.config().habitat else {
                 panic!(
                     "{} can be neither bought nor caught",
@@ -1486,14 +1554,89 @@ mod tests {
     }
 
     #[test]
-    fn junk_coffee_and_bait_share_one_common_slot_so_each_is_common() {
-        assert_eq!(
-            JUNK_WEIGHT + COFFEE_WEIGHT + BAIT_WEIGHT,
-            Rarity::Common.catch_weight(),
-            "the sundries split one Common catch between them"
+    fn a_junkfish_is_junk_from_head_to_tail_and_framed_in_its_outline() {
+        let species = FishSpecies::from_junk().expect("some fish is made of junk");
+        let mut rng = rand::rng();
+        for _ in 0..ROLLS / 100 {
+            let fish = crate::fishes::fish::Fish::new(species, String::new(), 0.0, 0.0, &mut rng);
+            let cells = fish.segments();
+            let fillers: Vec<&(char, Color)> = cells
+                .iter()
+                .filter(|(_, color)| *color != JUNK_OUTLINE)
+                .collect();
+            assert_eq!(fillers.len(), fish.body_size, "every body cell is junk");
+            for (glyph, color) in fillers {
+                let unmirrored = crate::sprite::mirror_char(*glyph);
+                assert!(
+                    JUNK_FILLER_CHARS.contains(glyph) || JUNK_FILLER_CHARS.contains(&unmirrored),
+                    "{glyph} is not junk"
+                );
+                assert!(
+                    JUNK_COLORS.contains(color),
+                    "{color:?} is not a junk colour"
+                );
+            }
+            assert_eq!(fish.segments(), cells, "a fish's junk never shuffles");
+        }
+    }
+
+    const STARDEW_NON_FISH_SHARE: f64 = 1.0 / 3.0;
+    const SHARE_TOLERANCE: f64 = 0.03;
+
+    #[test]
+    fn non_fish_loot_is_a_third_of_a_wild_cast() {
+        let pool = LootPool::default_pool();
+        let total: u32 = pool.slots.iter().map(|(weight, _)| weight).sum();
+        let fish: u32 = pool.species_weights().map(|(weight, _)| weight).sum();
+        let share = f64::from(total - fish) / f64::from(total);
+        assert!(
+            (share - STARDEW_NON_FISH_SHARE).abs() < SHARE_TOLERANCE,
+            "non-fish loot is {share:.3} of a wild cast"
         );
+    }
+
+    #[test]
+    fn cash_and_food_outweigh_each_sundry_and_each_sundry_is_a_common_catch() {
+        let pool = LootPool::default_pool();
+        let weight_of = |wanted: fn(&PoolSlot) -> bool| -> u32 {
+            pool.slots
+                .iter()
+                .filter(|(_, slot)| wanted(slot))
+                .map(|(weight, _)| weight)
+                .sum()
+        };
+        let common = Rarity::Common.catch_weight();
+        let sundries = [
+            weight_of(|slot| matches!(slot, PoolSlot::Junk)),
+            weight_of(|slot| matches!(slot, PoolSlot::Consumable(ConsumableKind::Coffee))),
+            weight_of(|slot| matches!(slot, PoolSlot::Consumable(ConsumableKind::Bait))),
+        ];
+        for weight in sundries {
+            assert_eq!(weight, common);
+            assert!(weight_of(|slot| matches!(slot, PoolSlot::Cash)) > weight);
+            assert!(weight_of(|slot| matches!(slot, PoolSlot::Food)) > weight);
+        }
         for sundry in [StockItem::Junk, StockItem::COFFEE, StockItem::BAIT] {
             assert_eq!(sundry.rarity(), Rarity::Common, "{}", sundry.display_name());
+        }
+    }
+
+    #[test]
+    fn a_seed_keeps_its_legendary_weight() {
+        let pool = LootPool::default_pool();
+        for seed in ConsumableKind::seeds() {
+            let weight: u32 = pool
+                .slots
+                .iter()
+                .filter(|(_, slot)| matches!(slot, PoolSlot::Consumable(kind) if *kind == seed))
+                .map(|(weight, _)| weight)
+                .sum();
+            assert_eq!(
+                weight,
+                Rarity::Legendary.catch_weight(),
+                "{}",
+                seed.display_name()
+            );
         }
     }
 

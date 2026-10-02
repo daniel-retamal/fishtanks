@@ -10,8 +10,8 @@ use super::fused::FusedComponent;
 use super::mutant::{Circadian, EXTRA_BODY_FOR_DOUBLE, MutantState, MutationRecord};
 use super::mutations::native_eyes;
 use super::species::{
-    BodyChars, BodySource, BodyTemplate, EYE_ROUND, FishSpecies, PatternKind, Sin, SizeCategory,
-    TailKind,
+    BodyChars, BodyFill, BodySource, BodyTemplate, EYE_ROUND, FishSpecies, PatternKind, Sin,
+    SizeCategory, TailKind,
 };
 use super::unfish::{
     BALL_WIDTH, BLINKER_BASE_COLOR, BLINKER_GLISTEN_MID, BLINKER_GLISTEN_PEAK, BLINKER_MID_COLOR,
@@ -25,6 +25,7 @@ use crate::entities::components::{Position, SwayState, Velocity, tick_sway};
 use crate::entities::food::FOOD_WEIGHT_GAIN_G;
 use crate::entities::glistening::{GlisteningMode, color_for_glisten, derive_glistening_palette};
 use crate::entities::speech::SpeechBubble;
+use crate::loot::junk_cell;
 use crate::settings::Settings;
 use crate::sprite::{
     BodyExtension, EAR_LEFT, EAR_RIGHT, ExtensionVariant, Feet, PosedExtension, ear_glyph,
@@ -606,7 +607,10 @@ impl Fish {
         if !self.is_sellable() || self.script().is_some_and(BotfishState::is_printed) {
             return 0;
         }
-        let base = Money::from(self.species.sell_value(weight_g, self.size_category));
+        let base = Money::from(self.species.sell_value(weight_g, self.size_category))
+            + self
+                .species
+                .appraisal(self.size_category, self.pattern_seed);
         base + base * Money::from(self.sell_price_bonus_pct) / PERCENT_WHOLE
     }
 
@@ -668,10 +672,56 @@ impl Fish {
         if self.unfish_state.is_some() {
             return self.segments_unfish();
         }
-        if self.mutant.is_some() {
-            return self.segments_mutant();
+        let (mut cells, span) = if self.mutant.is_some() {
+            self.segments_mutant()
+        } else {
+            (self.segments_plain(), None)
+        };
+        self.fill_body(&mut cells, self.facing_left());
+        (cells, span)
+    }
+
+    fn fill_body(&self, cells: &mut [(char, Color)], facing_left: bool) {
+        let config = self.species.config();
+        if config.body_fill != BodyFill::Junk {
+            return;
         }
-        (self.segments_plain(), None)
+        let (BodyTemplate::Standard(chars) | BodyTemplate::Alternating(chars, _)) = config.body
+        else {
+            return;
+        };
+        let body_glyphs = [
+            chars.body_left,
+            chars.wave_left,
+            chars.body_right,
+            chars.wave_right,
+        ];
+        let keeps_its_colours = self.blessing_glow > 0.0
+            || self
+                .mutant
+                .as_ref()
+                .is_some_and(|mutant| mutant.glistening_color.is_some());
+        let mut rng = SmallRng::seed_from_u64(self.pattern_seed);
+        let from_the_head: Vec<usize> = if facing_left {
+            (0..cells.len()).collect()
+        } else {
+            (0..cells.len()).rev().collect()
+        };
+        for index in from_the_head {
+            let cell = &mut cells[index];
+            if !body_glyphs.contains(&cell.0) {
+                continue;
+            }
+            let (glyph, color) = junk_cell(&mut rng);
+            cell.0 = if facing_left {
+                glyph
+            } else {
+                mirror_char(glyph)
+            };
+            if !keeps_its_colours {
+                cell.1 = color;
+            }
+        }
     }
 
     fn segments_plain(&self) -> Vec<(char, Color)> {
@@ -1845,6 +1895,12 @@ impl Fish {
         if self.unfish_state.is_some() {
             return self.static_left_segments_unfish();
         }
+        let mut cells = self.static_left_body();
+        self.fill_body(&mut cells, true);
+        cells
+    }
+
+    fn static_left_body(&self) -> Vec<(char, Color)> {
         if self.mutant.is_some() {
             return self.static_left_segments_mutant();
         }

@@ -2596,6 +2596,7 @@ fn a_key_tapped_between_two_ticks_is_high_for_exactly_the_next_tick() {
     let mut tui = Tui::new();
     keypad(&mut tui);
     tui.run("/console \"Neo\"");
+    hold_through_a_repeat(&mut tui, SPACE);
 
     tui.key(SPACE);
     tui.release(SPACE);
@@ -2606,6 +2607,37 @@ fn a_key_tapped_between_two_ticks_is_high_for_exactly_the_next_tick() {
         !fire_net(&tui),
         "and it lets go once the fabric has seen it"
     );
+}
+
+const FIRST_REPEAT_TICKS: usize = 15;
+const UNPROVEN_TAP_TICKS: usize = 30;
+
+fn hold_through_a_repeat(tui: &mut Tui, code: KeyCode) {
+    tui.key(code);
+    tui.tick_n(FIRST_REPEAT_TICKS);
+    tui.key(code);
+    tui.tick_n(1);
+    tui.release(code);
+    tui.tick_n(1);
+}
+
+#[test]
+fn a_tap_whose_key_up_comes_in_the_same_frame_waits_for_its_repeats_until_key_ups_are_proven() {
+    let mut tui = Tui::new();
+    keypad(&mut tui);
+    tui.run("/console \"Neo\"");
+
+    tui.key(SPACE);
+    tui.release(SPACE);
+    tui.tick_n(1);
+    assert!(fire_net(&tui), "a tap is never lost");
+    tui.tick_n(1);
+    assert!(
+        fire_net(&tui),
+        "a multiplexer's ConPTY sends that key-up with every key-down, so it proves nothing yet"
+    );
+    tui.tick_n(UNPROVEN_TAP_TICKS);
+    assert!(!fire_net(&tui), "the key lets go when no repeat follows");
 }
 
 #[test]

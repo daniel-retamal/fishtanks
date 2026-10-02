@@ -9,6 +9,7 @@ pub const HINT_ENTER_INSTALL: &str = "ENTER install";
 pub const HINT_ENTER_ETCH: &str = "ENTER etch";
 pub const HINT_ENTER_CAPTURE: &str = "ENTER capture";
 pub const HINT_ENTER_BUY: &str = "ENTER buy";
+pub const HINT_ENTER_ASSEMBLE: &str = "ENTER assemble";
 pub const HINT_ENTER_SELL: &str = "ENTER sell";
 pub const HINT_ENTER_SUMMON: &str = "ENTER summon";
 pub const HINT_ENTER_CONNECT: &str = "ENTER connect";

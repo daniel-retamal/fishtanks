@@ -1,15 +1,11 @@
 use crate::fishes::fish::Fish;
-use crate::names;
-use crate::tank::{Afterlife, Tank, TankKind, WorldSignal};
+use crate::tank::{Afterlife, Tank, WorldSignal};
 
 use super::App;
 
 impl App {
     pub(super) fn bury(&mut self, fish: Fish) {
-        let wall = match Afterlife::of(&fish) {
-            Afterlife::Blessed => Some(self.ensure_heaven()),
-            Afterlife::Damned => self.afterlife_tank(Afterlife::Damned),
-        };
+        let wall = self.afterlife_tank(Afterlife::of(&fish));
         if let Some(tank) = wall {
             self.tanks[tank].receive_soul(fish.clone());
         }
@@ -93,17 +89,6 @@ impl App {
         self.tanks[tank].signal(WorldSignal::Death);
         self.bury(fish);
         true
-    }
-
-    fn ensure_heaven(&mut self) -> usize {
-        if let Some(heaven) = self.afterlife_tank(Afterlife::Blessed) {
-            return heaven;
-        }
-        let name = names::unique_name_in(&self.used_tank_names, TankKind::Heaven.display_name());
-        self.used_tank_names.insert(name.clone());
-        let mut heaven = Tank::new(name, TankKind::Heaven, &[]);
-        heaven.resize(self.terminal_width, self.tank_height(), &[]);
-        self.found_tank(heaven)
     }
 
     pub(super) fn can_sell_tank(&self, index: usize) -> bool {

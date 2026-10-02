@@ -15,7 +15,7 @@ use crate::{
     economy::Purse,
     fishes::{fish::Fish, graveyard::Graveyard, species::FishSpecies},
     ledger::{Flow, Ledger},
-    loot::{ConsumableKind, CowCounts, LootKind, LootPool, StockItem},
+    loot::{ConsumableKind, CowCounts, JUNK_PER_JUNKFISH, LootKind, LootPool, StockItem},
     names,
     settings::Settings,
     tank::{Blueprint, DayClock, Tank, TankEvent, TankKind, UfoRole, WorldSignal},
@@ -30,13 +30,15 @@ use crate::{
         fishtanks_overlay::{FishtanksOverlay, FishtanksState},
         foundry_overlay::{FoundryOverlay, FoundryState, Quotes},
         index_overlay::{IndexOverlay, IndexState},
-        input_action::{HeldKeys, Releases},
+        input_action::HeldKeys,
         inventory_overlay::{InventoryOverlay, InventoryState},
         layout::Screen,
         ledger_overlay::{LedgerOverlay, LedgerState},
         line_editor::{CommandHistory, LineEditor},
         notice::{NoticePopup, NoticeState},
-        shop_overlay::{NamingPopupWidget, ShopOverlay, ShopState},
+        shop_overlay::{
+            JunkfishPopup, JunkfishPopupWidget, NamingPopupWidget, ShopOverlay, ShopState,
+        },
         show_overlay::{ShowOverlay, ShowState},
         tank_view::TankView,
         text_input::TextInput,
@@ -91,6 +93,7 @@ enum Overlay {
         input: TextInput,
         kind: ConsumableKind,
     },
+    Junkfish(JunkfishPopup),
     Cheat(TextInput),
     Notice(NoticeState),
     Ledger(LedgerState),
@@ -189,10 +192,6 @@ impl App {
             Some(Overlay::Inventory(s)) => Some(s),
             _ => None,
         }
-    }
-
-    pub fn expect_key_releases(&mut self, releases: Releases) {
-        self.held_keys.expect(releases);
     }
 
     pub fn fishing_state(&self) -> Option<&FishingState> {
@@ -447,7 +446,59 @@ impl App {
                     .is_some_and(|&qty| qty > 0)
             })
             .map(ConsumableKind::lowercase_name)
+            .chain(
+                StockItem::Junk
+                    .consumable_at(self.stock_of(StockItem::Junk))
+                    .then(|| StockItem::Junk.display_name().to_ascii_lowercase()),
+            )
             .collect()
+    }
+
+    pub fn stock_of(&self, stock: StockItem) -> u32 {
+        self.inventory.get(&stock).copied().unwrap_or(0)
+    }
+
+    pub fn try_consume_stock(
+        &mut self,
+        stock: StockItem,
+        source: crate::ui::consume_picker::ConsumePickerSource,
+    ) -> bool {
+        match stock {
+            StockItem::Consumable(kind) => self.try_consume_kind(kind, source),
+            StockItem::Junk => self.open_junkfish_popup(),
+        }
+    }
+
+    fn open_junkfish_popup(&mut self) -> bool {
+        let Some(species) = FishSpecies::from_junk() else {
+            return false;
+        };
+        if !StockItem::Junk.consumable_at(self.stock_of(StockItem::Junk)) {
+            return false;
+        }
+        let fish = Fish::new(species, String::new(), 0.0, 0.0, &mut rand::rng());
+        if self.landing_tank(self.current_tank, &fish).is_none() {
+            return false;
+        }
+        self.set_overlay(Overlay::Junkfish(JunkfishPopup {
+            fish,
+            name_input: TextInput::new(),
+        }));
+        true
+    }
+
+    fn assemble_junkfish(&mut self, fish: Fish, name: String) -> bool {
+        let junk = self.stock_of(StockItem::Junk);
+        if !StockItem::Junk.consumable_at(junk) {
+            return false;
+        }
+        if self.land_fish(self.current_tank, fish, name).is_err() {
+            return false;
+        }
+        self.inventory
+            .insert(StockItem::Junk, junk - JUNK_PER_JUNKFISH);
+        self.inventory.retain(|_, qty| *qty > 0);
+        true
     }
 
     pub fn shop_access(&self) -> crate::ui::shop_overlay::ShopAccess {
@@ -546,7 +597,8 @@ impl App {
             ConsumableKind::Necronomicon
             | ConsumableKind::DemonCore
             | ConsumableKind::Computer
-            | ConsumableKind::VoidSeed => unreachable!("a tank's item opens the naming popup"),
+            | ConsumableKind::VoidSeed
+            | ConsumableKind::GoldenPearl => unreachable!("a tank's item opens the naming popup"),
             ConsumableKind::BlankBlueprint => {
                 if !self.tank().fish.iter().any(|f| f.is_wired()) {
                     return false;
@@ -609,7 +661,8 @@ impl App {
             return;
         }
         let mut rng = rand::rng();
-        let loot = self.roll_catch(self.current_tank, &mut rng);
+        let hooked = self.fishing_state_mut().and_then(FishingState::take_catch);
+        let loot = hooked.unwrap_or_else(|| self.roll_catch(self.current_tank, &mut rng));
         self.spend_a_cast(Caster::Angler);
         let card = self.counted(CatchState::new(loot, &mut rng));
         self.set_overlay(Overlay::Catch(card));
@@ -670,6 +723,7 @@ impl App {
                 return;
             }
             Some(Overlay::Naming { .. })
+            | Some(Overlay::Junkfish(_))
             | Some(Overlay::Cheat(_))
             | Some(Overlay::Notice(_))
             | Some(Overlay::Ledger(_))
@@ -1008,6 +1062,14 @@ impl App {
                 NamingPopupWidget {
                     input,
                     kind: *kind,
+                    cursor_visible: self.editor.visible,
+                    screen,
+                },
+                full_area,
+            ),
+            Some(Overlay::Junkfish(popup)) => frame.render_widget(
+                JunkfishPopupWidget {
+                    popup,
                     cursor_visible: self.editor.visible,
                     screen,
                 },

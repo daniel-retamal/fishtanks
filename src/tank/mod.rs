@@ -362,7 +362,7 @@ impl TankKind {
             },
             TankKind::Heaven => TankConfig {
                 display_name: "Heaventank",
-                buy_price: 0,
+                buy_price: 8000,
                 capacity: 100,
                 bubble_color: LIGHT_YELLOW,
                 rarity: Rarity::Legendary,
@@ -371,7 +371,7 @@ impl TankKind {
                 buyable: false,
                 robotics_loot: false,
                 unique: true,
-                sellable: false,
+                sellable: true,
                 holy_only: true,
                 marks_for_devil: false,
                 devils_luck: false,
