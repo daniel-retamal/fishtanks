@@ -8,21 +8,21 @@ use std::collections::HashMap;
 
 use crate::colors::{DARK_GRAY, WHITE};
 use crate::{
-    economy::Money,
+    economy::{Money, grouped},
     entities::food::FOOD_BUY_PRICE,
     fishes::{fish::Fish, parts::PartTier, species::FishSpecies},
     ledger::Flow,
     loot::{
-        CIRCUIT_BLUEPRINT_NAME, CIRCUIT_BLUEPRINT_SELL_PRICE, ConsumableKind, MilkVariant,
-        StockItem,
+        CIRCUIT_BLUEPRINT_NAME, CIRCUIT_BLUEPRINT_SELL_PRICE, ConsumableKind, JUNK_PER_JUNKFISH,
+        MilkVariant, StockItem,
     },
     tank::TankKind,
     ui::{
         draw_fish_centred, fish_art_height,
         hint_bar::HintBar,
         hints::{
-            HINT_BACK, HINT_CANCEL, HINT_CLOSE, HINT_ENTER_BUY, HINT_ENTER_SELL, HINT_NAV,
-            HINT_SCROLL,
+            HINT_BACK, HINT_CANCEL, HINT_CLOSE, HINT_ENTER_ASSEMBLE, HINT_ENTER_BUY,
+            HINT_ENTER_SELL, HINT_NAV, HINT_SCROLL,
         },
         layout::{Screen, Scroll, Scrollbar},
         modal::{Frame, Modal, ModalSpec},
@@ -1347,20 +1347,42 @@ fn open_wrapped(
     (modal, lines)
 }
 
+struct FishNaming<'a> {
+    fish: &'a Fish,
+    header: String,
+    title: String,
+    confirm: &'static str,
+    input: &'a TextInput,
+}
+
 fn draw_fish_name_popup(buf: &mut Buffer, popup: &FishNamePopup, cursor_vis: bool, screen: Screen) {
-    let fish = &popup.fish;
     let species = FishSpecies::all_buyable()[popup.catalog_idx];
-    let header = format!(
-        "{} for sale! Only ${}",
-        species.display_name(),
-        species.buy_price()
-    );
-    let title = format!(" Buy {} ", species.display_name());
-    let hints = HintBar::new(HINT_ENTER_BUY).action(NAME_CANCEL);
-    let rows_for =
-        |body_w: u16| header_lines(&header, body_w).len() as u16 + NAME_ROWS_AFTER_HEADER;
+    let naming = FishNaming {
+        fish: &popup.fish,
+        header: format!(
+            "{} for sale! Only ${}",
+            species.display_name(),
+            species.buy_price()
+        ),
+        title: format!(" Buy {} ", species.display_name()),
+        confirm: HINT_ENTER_BUY,
+        input: &popup.name_input,
+    };
+    draw_fish_naming(buf, &naming, cursor_vis, screen);
+}
+
+fn draw_fish_naming(buf: &mut Buffer, naming: &FishNaming, cursor_vis: bool, screen: Screen) {
+    let FishNaming {
+        fish,
+        header,
+        title,
+        confirm,
+        input,
+    } = naming;
+    let hints = HintBar::new(confirm).action(NAME_CANCEL);
+    let rows_for = |body_w: u16| header_lines(header, body_w).len() as u16 + NAME_ROWS_AFTER_HEADER;
     let spec = PanelSpec {
-        title: &title,
+        title,
         title_style: Style::default()
             .fg(WHITE)
             .add_modifier(Modifier::BOLD)
@@ -1371,7 +1393,7 @@ fn draw_fish_name_popup(buf: &mut Buffer, popup: &FishNamePopup, cursor_vis: boo
             fish.display_width as u16 + FISH_POPUP_SIDE_PAD,
             fish_art_height(fish, FISH_POPUP_SIDE_H),
         ),
-        body_w: NAME_POPUP_BODY_W.max(table::visual_width(&header) as u16 + TEXT_PAD * 2),
+        body_w: NAME_POPUP_BODY_W.max(table::visual_width(header) as u16 + TEXT_PAD * 2),
         body_min_w: MIN_BODY_WIDTH,
         body_rows: &rows_for,
         hints: &hints,
@@ -1379,8 +1401,37 @@ fn draw_fish_name_popup(buf: &mut Buffer, popup: &FishNamePopup, cursor_vis: boo
     };
     let panels = Panels::open(buf, screen, &spec);
     draw_fish_centred(buf, fish, panels.side, BACKGROUND);
-    let lines = header_lines(&header, panels.body.width);
-    draw_name_rows(buf, panels.body, &lines, &popup.name_input, cursor_vis);
+    let lines = header_lines(header, panels.body.width);
+    draw_name_rows(buf, panels.body, &lines, input, cursor_vis);
+}
+
+pub struct JunkfishPopup {
+    pub fish: Fish,
+    pub name_input: TextInput,
+}
+
+pub struct JunkfishPopupWidget<'a> {
+    pub popup: &'a JunkfishPopup,
+    pub cursor_visible: bool,
+    pub screen: Screen,
+}
+
+impl Widget for JunkfishPopupWidget<'_> {
+    fn render(self, _area: Rect, buf: &mut Buffer) {
+        let fish = &self.popup.fish;
+        let species = fish.species.display_name();
+        let naming = FishNaming {
+            fish,
+            header: format!(
+                "Worth ${}: a {species} made of {JUNK_PER_JUNKFISH} Junk!",
+                grouped(u128::from(fish.sell_value()))
+            ),
+            title: format!(" Junk to the {species}! "),
+            confirm: HINT_ENTER_ASSEMBLE,
+            input: &self.popup.name_input,
+        };
+        draw_fish_naming(buf, &naming, self.cursor_visible, self.screen);
+    }
 }
 
 const CONFIRM_MIN_W: u16 = 38;

@@ -33,6 +33,8 @@ const JACKPOT_SHARE_OF_THE_TIER_BELOW: u64 = 2;
 const JACKPOT_WEIGHT_SCALE: u64 = 100_000;
 
 const JUNK_NAME: &str = "Junk";
+pub const JUNK_PER_JUNKFISH: u32 = 100;
+pub const JUNK_OUTLINE: Color = DARK_GRAY;
 const JUNK_WEIGHT: u32 = 21;
 const COFFEE_WEIGHT: u32 = 21;
 const BAIT_WEIGHT: u32 = 20;
@@ -45,16 +47,15 @@ pub struct JunkSprite {
     pub rows: Vec<Vec<(char, Color)>>,
 }
 
-fn junk_color(rng: &mut impl RngExt) -> Color {
-    JUNK_COLORS[rng.random_range(0..JUNK_COLORS.len())]
-}
-
-fn junk_char(rng: &mut impl RngExt) -> char {
-    JUNK_FILLER_CHARS[rng.random_range(0..JUNK_FILLER_CHARS.len())]
+pub fn junk_cell(rng: &mut impl RngExt) -> (char, Color) {
+    (
+        JUNK_FILLER_CHARS[rng.random_range(0..JUNK_FILLER_CHARS.len())],
+        JUNK_COLORS[rng.random_range(0..JUNK_COLORS.len())],
+    )
 }
 
 fn junk_row_top() -> Vec<(char, Color)> {
-    let dark = DARK_GRAY;
+    let dark = JUNK_OUTLINE;
     vec![
         (' ', dark),
         (' ', dark),
@@ -65,37 +66,30 @@ fn junk_row_top() -> Vec<(char, Color)> {
         ('_', dark),
         ('.', dark),
     ]
+}
+
+const JUNK_MID_FILL: usize = 4;
+const JUNK_BOT_FILL: usize = 7;
+
+fn junk_row(
+    rng: &mut impl RngExt,
+    left: &[char],
+    fill: usize,
+    right: &[char],
+) -> Vec<(char, Color)> {
+    let outline = |&glyph: &char| (glyph, JUNK_OUTLINE);
+    let mut row: Vec<(char, Color)> = left.iter().map(outline).collect();
+    row.extend((0..fill).map(|_| junk_cell(rng)));
+    row.extend(right.iter().map(outline));
+    row
 }
 
 fn junk_row_mid(rng: &mut impl RngExt) -> Vec<(char, Color)> {
-    let dark = DARK_GRAY;
-    vec![
-        (' ', dark),
-        (' ', dark),
-        ('(', dark),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (')', dark),
-        ('.', dark),
-    ]
+    junk_row(rng, &[' ', ' ', '('], JUNK_MID_FILL, &[')', '.'])
 }
 
 fn junk_row_bot(rng: &mut impl RngExt) -> Vec<(char, Color)> {
-    let dark = DARK_GRAY;
-    vec![
-        ('.', dark),
-        ('(', dark),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (junk_char(rng), junk_color(rng)),
-        (')', dark),
-    ]
+    junk_row(rng, &['.', '('], JUNK_BOT_FILL, &[')'])
 }
 
 impl JunkSprite {
@@ -985,7 +979,7 @@ const CASH_TABLE: &[(u32, CashValue)] = &[
 ];
 
 impl CashValue {
-    pub fn amount(self) -> u32 {
+    pub const fn amount(self) -> u32 {
         match self {
             CashValue::One => 1,
             CashValue::Two => 2,
@@ -1071,6 +1065,13 @@ impl StockItem {
 
     pub fn is_consumable(self) -> bool {
         matches!(self, StockItem::Consumable(kind) if kind.can_be_consumed())
+    }
+
+    pub fn consumable_at(self, qty: u32) -> bool {
+        match self {
+            StockItem::Consumable(_) => self.is_consumable() && qty > 0,
+            StockItem::Junk => qty >= JUNK_PER_JUNKFISH,
+        }
     }
 
     pub fn rarity(self) -> Rarity {
@@ -1467,7 +1468,7 @@ mod tests {
     fn a_legendary_is_caught_only_on_its_banner_and_everything_else_everywhere() {
         for &species in ALL_SPECIES {
             let config = species.config();
-            if config.habitat == Habitat::Nowhere {
+            if !config.habitat.is_fished() {
                 continue;
             }
             let native = matches!(config.habitat, Habitat::Native(_));
@@ -1522,6 +1523,17 @@ mod tests {
             if species.config().buyable || species.config().habitat == Habitat::Nowhere {
                 continue;
             }
+            if species.config().habitat == Habitat::Junkpile {
+                assert!(
+                    LootPool::default_pool()
+                        .slots
+                        .iter()
+                        .any(|(_, slot)| matches!(slot, PoolSlot::Junk)),
+                    "{} is made of junk nobody can fish",
+                    species.display_name()
+                );
+                continue;
+            }
             let Habitat::Native(kind) = species.config().habitat else {
                 panic!(
                     "{} can be neither bought nor caught",
@@ -1536,6 +1548,33 @@ mod tests {
                 "{} lives in a tank nobody can get",
                 species.display_name()
             );
+        }
+    }
+
+    #[test]
+    fn a_junkfish_is_junk_from_head_to_tail_and_framed_in_its_outline() {
+        let species = FishSpecies::from_junk().expect("some fish is made of junk");
+        let mut rng = rand::rng();
+        for _ in 0..ROLLS / 100 {
+            let fish = crate::fishes::fish::Fish::new(species, String::new(), 0.0, 0.0, &mut rng);
+            let cells = fish.segments();
+            let fillers: Vec<&(char, Color)> = cells
+                .iter()
+                .filter(|(_, color)| *color != JUNK_OUTLINE)
+                .collect();
+            assert_eq!(fillers.len(), fish.body_size, "every body cell is junk");
+            for (glyph, color) in fillers {
+                let unmirrored = crate::sprite::mirror_char(*glyph);
+                assert!(
+                    JUNK_FILLER_CHARS.contains(glyph) || JUNK_FILLER_CHARS.contains(&unmirrored),
+                    "{glyph} is not junk"
+                );
+                assert!(
+                    JUNK_COLORS.contains(color),
+                    "{color:?} is not a junk colour"
+                );
+            }
+            assert_eq!(fish.segments(), cells, "a fish's junk never shuffles");
         }
     }
 

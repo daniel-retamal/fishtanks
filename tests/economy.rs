@@ -343,8 +343,10 @@ fn feeding_a_fish_to_its_cap_always_pays_small_fish_in_percent_big_fish_in_dolla
         let mut last: Option<(f64, Money)> = None;
         for size in SizeCategory::ALL {
             let i = size as usize;
-            let base = fish_of(species, size, config.weight_base[i]).sell_value();
-            let cap = fish_of(species, size, config.weight_cap[i]).sell_value();
+            let mut fish = fish_of(species, size, config.weight_base[i]);
+            let base = fish.sell_value();
+            fish.weight_g = config.weight_cap[i];
+            let cap = fish.sell_value();
             let food = Money::from(pellets[i] * FOOD_BUY_PRICE);
             assert!(
                 cap - base > food,

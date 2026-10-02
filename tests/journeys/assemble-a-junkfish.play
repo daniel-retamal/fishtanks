@@ -1,0 +1,37 @@
+# JOURNEY · a hundred junk become a Junkfish: the inventory offers the junk once there is enough of
+# it, the popup shows the fish and its worth, and the junk left over stays in the bag.
+# By hand: cargo run --example fishplay -- tests/journeys/assemble-a-junkfish.play --size 40 14 --print --player
+
+clear
+include scenes/gather-junk.play 201
+run /inventory
+expect Junk
+expect Yes
+key enter
+expect Junk to the Junkfish!
+expect Worth $
+snap the junk shows the fish it became and what it is worth
+type Oscar
+key enter
+absent Junk to the Junkfish!
+snap Oscar swims in the tank
+
+run /inventory
+expect │ 101
+key enter
+type Trashy
+key enter
+absent Junk to the Junkfish!
+
+run /inventory
+expect │ 1
+expect No
+snap one piece of junk is left, and it is only junk
+key enter
+absent Junk to the Junkfish!
+key esc
+
+run /index
+expect Oscar
+expect Trashy
+snap two junkfish

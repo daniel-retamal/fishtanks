@@ -104,6 +104,8 @@ impl App {
             self.handle_catch_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Naming { .. })) {
             self.handle_naming_input(event);
+        } else if matches!(self.active_overlay, Some(Overlay::Junkfish(_))) {
+            self.handle_junkfish_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Cheat(_))) {
             self.handle_cheat_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Notice(_))) {
@@ -598,13 +600,11 @@ impl App {
                     .inventory_state()
                     .and_then(|s| s.items.get(s.selected))
                     .map(|item| item.name.clone());
-                if let Some(name) = selected_name
-                    && let Some(kind) = ConsumableKind::all()
-                        .into_iter()
-                        .find(|k| k.display_name() == name)
+                if let Some(stock) =
+                    selected_name.and_then(|name| StockItem::from_display_name(&name))
                 {
-                    self.try_consume_kind(
-                        kind,
+                    self.try_consume_stock(
+                        stock,
                         crate::ui::consume_picker::ConsumePickerSource::FromInventory,
                     );
                 }
@@ -838,6 +838,34 @@ impl App {
                     input.handle_action(&action);
                 }
             }
+        }
+    }
+
+    fn handle_junkfish_input(&mut self, event: Event) {
+        let Some(action) = classify(&event) else {
+            return;
+        };
+        let Some(Overlay::Junkfish(popup)) = &mut self.active_overlay else {
+            return;
+        };
+        match action {
+            InputAction::Quit => self.running = false,
+            InputAction::Cancel => {
+                self.close_overlay();
+                self.reopen_inventory_on(StockItem::Junk.display_name());
+            }
+            InputAction::Confirm => {
+                if popup.name_input.is_empty() {
+                    return;
+                }
+                let name = names::title_case(popup.name_input.as_str());
+                let Some(Overlay::Junkfish(popup)) = self.active_overlay.take() else {
+                    return;
+                };
+                self.close_overlay();
+                self.assemble_junkfish(popup.fish, name);
+            }
+            _ => popup.name_input.handle_action(&action),
         }
     }
 
@@ -2691,18 +2719,23 @@ impl App {
             }
             commands::Action::Consume { name } => {
                 let normalized: String = name.to_ascii_lowercase().split_whitespace().collect();
-                let Some(kind) = ConsumableKind::all().into_iter().find(|k| {
-                    let dn: String = k
-                        .display_name()
-                        .to_ascii_lowercase()
-                        .split_whitespace()
-                        .collect();
-                    dn == normalized
-                }) else {
+                let Some(stock) = ConsumableKind::all()
+                    .into_iter()
+                    .map(StockItem::Consumable)
+                    .chain([StockItem::Junk])
+                    .find(|stock| {
+                        let dn: String = stock
+                            .display_name()
+                            .to_ascii_lowercase()
+                            .split_whitespace()
+                            .collect();
+                        dn == normalized
+                    })
+                else {
                     return false;
                 };
-                self.try_consume_kind(
-                    kind,
+                self.try_consume_stock(
+                    stock,
                     crate::ui::consume_picker::ConsumePickerSource::FromCommand,
                 )
             }

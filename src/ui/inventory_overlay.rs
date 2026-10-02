@@ -87,7 +87,7 @@ fn listing(
             InventoryItem {
                 name,
                 qty: *qty,
-                is_consumable: stock.is_consumable(),
+                is_consumable: stock.consumable_at(*qty),
                 desc,
             }
         })

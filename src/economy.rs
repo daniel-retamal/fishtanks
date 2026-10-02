@@ -16,6 +16,20 @@ pub enum Rarity {
     Legendary,
 }
 
+const THOUSANDS: usize = 3;
+
+pub fn grouped(value: u128) -> String {
+    let digits = value.to_string();
+    let mut out = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(THOUSANDS) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
 const PART_PLATFORM_RARITY: Rarity = Rarity::Legendary;
 const GIFT_UNIT_RARITY: Rarity = Rarity::Legendary;
 const VALUE_REFERENCE_RARITY: Rarity = Rarity::Common;
