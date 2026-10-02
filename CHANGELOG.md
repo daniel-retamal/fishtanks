@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 - 2026-10-02
+
+- **Hold on to your junk.** Something happens once you have a hundred.
+- **More than fish on the line.** Cash, food, junk, coffee and bait come up about twice as often: a third of what you pull up is no longer a fish.
+- **Every fish fights at its own pace.** Most fish fight at a normal pace and legendary ones faster; now and then a common fish fights like a legend. The control turns green while it sits in the safe zone and red outside it, and holding ↓ alone never lands a fish.
+- **The Heaventank is found, not given.** It no longer appears on your first sale: fish up a Golden Pearl and grow it. The souls of fish sold before then wait for it.
+- **Held keys work in more terminals**, Herdr included: fishing and `/console` now believe only the key presses and releases a terminal really sends.
+
 ## 1.0.4 - 2026-09-25
 
 - **Fishing on macOS and Linux plays like Windows.** Hold ↓ to reel and ←→ to steer, everywhere; the ↑ key that stopped the reel is gone, and hooking a fish no longer starts reeling on its own. In a terminal that reports key releases (Ghostty, kitty, WezTerm, Alacritty, iTerm2 with the kitty keyboard protocol) it is exactly the Windows game, reeling while you steer included. macOS's built-in Terminal tells programs only about the last key held, so there reel between steers.
