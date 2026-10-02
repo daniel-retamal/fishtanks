@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::ops::{Range, RangeInclusive};
 
 use crossterm::event::KeyCode;
 use rand::RngExt;
@@ -37,7 +37,8 @@ const OPENING_GRACE_SECS: f32 = 2.0;
 const STRETCHED_BAND: f32 = COMPLETION_START;
 const BOTTOM_STRETCH: f32 = 2.0;
 const LOSS_FLOOR: f32 = STRETCHED_BAND * (1.0 - BOTTOM_STRETCH);
-const CONTROL_COLOR: Color = WHITE;
+const SAFE_CONTROL: Color = LIGHT_GREEN;
+const DANGER_CONTROL: Color = LIGHT_RED;
 const SAFE_WATER: Color = GREEN;
 const DANGER_WATER: Color = RED;
 const COMPLETION_WARN: f32 = 0.5;
@@ -135,12 +136,6 @@ pub enum Temper {
     Legendary,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Sides {
-    Alternate,
-    Random,
-}
-
 struct Rest {
     chance: f64,
     spots: Range<f32>,
@@ -150,17 +145,25 @@ struct Rest {
 struct Temperament {
     pull: f32,
     top_speed: f32,
-    rest: Option<Rest>,
-    sides: Sides,
+    rest: Rest,
     dart_reach: Range<f32>,
     dart_steps: Range<f32>,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
-struct Swim {
-    resting: bool,
-    left: bool,
-}
+const TEMPERAMENT: Temperament = Temperament {
+    pull: 0.022,
+    top_speed: 0.05,
+    rest: Rest {
+        chance: 0.3,
+        spots: 0.30..0.70,
+        steps: 20.0..50.0,
+    },
+    dart_reach: 0.05..0.20,
+    dart_steps: 20.0..50.0,
+};
+
+const NORMAL_PACE: RangeInclusive<f32> = 0.75..=0.99;
+const LEGENDARY_PACE: RangeInclusive<f32> = 1.00..=1.10;
 
 impl Temper {
     pub fn legendary_chance(rarity: Rarity) -> f64 {
@@ -174,61 +177,26 @@ impl Temper {
         Temper::Normal
     }
 
-    fn temperament(self) -> Temperament {
+    fn pace(self) -> RangeInclusive<f32> {
         match self {
-            Temper::Normal => Temperament {
-                pull: 0.018,
-                top_speed: 0.025,
-                rest: None,
-                sides: Sides::Alternate,
-                dart_reach: 0.05..0.20,
-                dart_steps: 45.0..90.0,
-            },
-            Temper::Legendary => Temperament {
-                pull: 0.022,
-                top_speed: 0.05,
-                rest: Some(Rest {
-                    chance: 0.3,
-                    spots: 0.30..0.70,
-                    steps: 20.0..50.0,
-                }),
-                sides: Sides::Random,
-                dart_reach: 0.05..0.20,
-                dart_steps: 20.0..50.0,
-            },
+            Temper::Normal => NORMAL_PACE,
+            Temper::Legendary => LEGENDARY_PACE,
         }
     }
+}
 
-    fn next_swim(self, swim: Swim, rng: &mut impl RngExt) -> (Swim, f32, f32) {
-        let temperament = self.temperament();
-        if let Some(rest) = temperament
-            .rest
-            .filter(|rest| !swim.resting && rng.random_bool(rest.chance))
-        {
-            let resting = Swim {
-                resting: true,
-                ..swim
-            };
+impl Temperament {
+    fn next_swim(&self, resting: bool, rng: &mut impl RngExt) -> (bool, f32, f32) {
+        if !resting && rng.random_bool(self.rest.chance) {
             return (
-                resting,
-                rng.random_range(rest.spots),
-                rng.random_range(rest.steps),
+                true,
+                rng.random_range(self.rest.spots.clone()),
+                rng.random_range(self.rest.steps.clone()),
             );
         }
-        let left = match temperament.sides {
-            Sides::Alternate => !swim.left,
-            Sides::Random => rng.random(),
-        };
-        let reach = rng.random_range(temperament.dart_reach);
-        let target = if left { reach } else { 1.0 - reach };
-        (
-            Swim {
-                resting: false,
-                left,
-            },
-            target,
-            rng.random_range(temperament.dart_steps),
-        )
+        let reach = rng.random_range(self.dart_reach.clone());
+        let target = if rng.random() { reach } else { 1.0 - reach };
+        (false, target, rng.random_range(self.dart_steps.clone()))
     }
 }
 
@@ -285,7 +253,8 @@ pub struct FishingState {
     pub reel_anim_tick: u32,
     pub forced_temper: Option<Temper>,
     temper: Temper,
-    swim: Swim,
+    pace: f32,
+    resting: bool,
     hooked: Option<LootKind>,
     reel_steps: u32,
 }
@@ -323,10 +292,8 @@ impl FishingState {
             reel_anim_tick: 0,
             forced_temper: None,
             temper: Temper::default(),
-            swim: Swim {
-                resting: false,
-                left: rng.random(),
-            },
+            pace: *NORMAL_PACE.end(),
+            resting: false,
             hooked: None,
             reel_steps: 0,
         }
@@ -348,6 +315,7 @@ impl FishingState {
         self.temper = self
             .forced_temper
             .unwrap_or_else(|| Temper::roll(catch.rarity(), &mut rand::rng()));
+        self.pace = rand::rng().random_range(self.temper.pace());
         self.hooked = Some(catch);
         self.start_reeling();
     }
@@ -358,6 +326,10 @@ impl FishingState {
 
     pub fn temper(&self) -> Temper {
         self.temper
+    }
+
+    fn top_speed(&self) -> f32 {
+        TEMPERAMENT.top_speed * self.pace
     }
 
     pub fn shown_completion(&self) -> f32 {
@@ -464,15 +436,13 @@ impl FishingState {
     fn tick_reel(&mut self, coffee_stacks: u32, milk: MilkBuffs) {
         let safe_zone = milk.safe_zone();
         let grace_secs = milk.grace_secs();
-        let temperament = self.temper.temperament();
-
         if !self.no_fight {
             self.target_timer -= 1.0;
             if self.target_timer <= 0.0 {
-                (self.swim, self.target_pos, self.target_timer) =
-                    self.temper.next_swim(self.swim, &mut rand::rng());
+                (self.resting, self.target_pos, self.target_timer) =
+                    TEMPERAMENT.next_swim(self.resting, &mut rand::rng());
             }
-            let pull = (self.target_pos - self.fish_pos).signum() * temperament.pull;
+            let pull = (self.target_pos - self.fish_pos).signum() * TEMPERAMENT.pull;
             self.fish_velocity += pull * milk.fish_force_mult();
         }
 
@@ -484,9 +454,8 @@ impl FishingState {
         }
 
         self.fish_velocity *= DAMPING;
-        self.fish_velocity = self
-            .fish_velocity
-            .clamp(-temperament.top_speed, temperament.top_speed);
+        let top_speed = self.top_speed();
+        self.fish_velocity = self.fish_velocity.clamp(-top_speed, top_speed);
         self.fish_pos = (self.fish_pos + self.fish_velocity).clamp(0.0, 1.0);
 
         if self.fish_pos <= 0.0 || self.fish_pos >= 1.0 {
@@ -1049,8 +1018,10 @@ fn draw_control_bar(buf: &mut Buffer, x: u16, y: u16, inner_w: u16, state: &Fish
     let indicator_col = (state.fish_pos * movable as f32) as u16;
     let control_color = if state.captured {
         LIGHT_YELLOW
+    } else if (state.fish_pos - 0.5).abs() * 2.0 > state.safe_zone {
+        DANGER_CONTROL
     } else {
-        CONTROL_COLOR
+        SAFE_CONTROL
     };
 
     let bracket_style = Style::default().fg(DARK_GRAY).bg(BACKGROUND);
@@ -1259,6 +1230,7 @@ mod temper_tests {
     const FIGHTS: usize = 200;
     const HOLD_ONLY_FIGHTS: usize = 2000;
     const REACTION_STEPS: usize = 8;
+    const SKILLED_REACTION_STEPS: usize = 5;
     const LOOKAHEAD_STEPS: f32 = 3.0;
     const STEER_DEADBAND: f32 = 0.06;
     const CAREFUL_REEL_ZONE: f32 = 0.32;
@@ -1274,7 +1246,7 @@ mod temper_tests {
         Steers,
     }
 
-    fn lands(temper: Temper, angler: Angler) -> bool {
+    fn lands(temper: Temper, angler: Angler, reaction: usize) -> bool {
         let mut state = FishingState {
             forced_temper: Some(temper),
             ..FishingState::default()
@@ -1283,11 +1255,11 @@ mod temper_tests {
         let mut seen: VecDeque<(f32, f32)> = VecDeque::new();
         for _ in 0..FIGHT_STEPS {
             seen.push_back((state.fish_pos, state.fish_velocity));
-            if seen.len() > REACTION_STEPS {
+            if seen.len() > reaction {
                 seen.pop_front();
             }
             let (pos, velocity) = seen[0];
-            let ahead = pos + velocity * (REACTION_STEPS as f32 + LOOKAHEAD_STEPS);
+            let ahead = pos + velocity * (reaction as f32 + LOOKAHEAD_STEPS);
             let steers = angler == Angler::Steers;
             state.is_pushing_left = steers && ahead > 0.5 + STEER_DEADBAND;
             state.is_pushing_right = steers && ahead < 0.5 - STEER_DEADBAND;
@@ -1302,7 +1274,13 @@ mod temper_tests {
     }
 
     fn landed(temper: Temper, angler: Angler, fights: usize) -> usize {
-        (0..fights).filter(|_| lands(temper, angler)).count()
+        landed_by(temper, angler, REACTION_STEPS, fights)
+    }
+
+    fn landed_by(temper: Temper, angler: Angler, reaction: usize, fights: usize) -> usize {
+        (0..fights)
+            .filter(|_| lands(temper, angler, reaction))
+            .count()
     }
 
     #[test]
@@ -1322,56 +1300,50 @@ mod temper_tests {
     }
 
     #[test]
-    fn an_angler_who_steers_against_the_pull_lands_a_normal_fish() {
-        assert!(landed(Temper::Normal, Angler::Steers, FIGHTS) * 10 >= FIGHTS * 9);
+    fn a_skilled_angler_who_steers_lands_most_normal_fish_and_few_legendary_ones() {
+        let landed = |temper| landed_by(temper, Angler::Steers, SKILLED_REACTION_STEPS, FIGHTS);
+        let normal = landed(Temper::Normal);
+        assert!(normal * 10 >= FIGHTS * 7, "{normal}");
+        assert!(
+            landed(Temper::Legendary) * 10 < FIGHTS,
+            "a legendary still scares"
+        );
     }
 
     #[test]
-    fn a_normal_fish_pulls_to_alternate_sides_and_never_rests() {
+    fn a_fish_never_rests_twice_in_a_row_and_darts_to_either_wall() {
         let mut rng = rand::rng();
-        let mut swim = Swim::default();
-        for _ in 0..SWIMS {
-            let (next, target, _) = Temper::Normal.next_swim(swim, &mut rng);
-            assert!(!next.resting);
-            assert_ne!(next.left, swim.left, "it pulls the other way each time");
-            assert_eq!(target < 0.5, next.left);
-            swim = next;
-        }
-    }
-
-    #[test]
-    fn a_legendary_fish_never_rests_twice_in_a_row() {
-        let mut rng = rand::rng();
-        let mut swim = Swim::default();
+        let mut resting = false;
         let mut rested = 0;
+        let mut lefts = 0;
         for _ in 0..SWIMS {
-            let (next, _, _) = Temper::Legendary.next_swim(swim, &mut rng);
-            assert!(!(swim.resting && next.resting));
-            rested += usize::from(next.resting);
-            swim = next;
+            let (rests, target, _) = TEMPERAMENT.next_swim(resting, &mut rng);
+            assert!(!(resting && rests));
+            rested += usize::from(rests);
+            lefts += usize::from(!rests && target < 0.5);
+            resting = rests;
         }
         assert!(rested > 0, "it still rests");
+        assert!(lefts > 0 && lefts < SWIMS - rested, "it darts both ways");
     }
 
     #[test]
-    fn a_normal_fish_swims_slower_than_a_legendary_one() {
+    fn a_normal_fish_is_slower_than_a_legendary_one_and_each_rolls_its_pace() {
         let top_speed = |temper: Temper| {
             let mut state = FishingState {
                 forced_temper: Some(temper),
-                no_escape: true,
                 ..FishingState::default()
             };
             state.hook(LootKind::Food(1));
-            (0..FIGHT_STEPS)
-                .map(|_| {
-                    state.tick(DEFAULT_FPS, 0, MilkBuffs::default(), None);
-                    state.fish_velocity.abs()
-                })
-                .fold(0.0, f32::max)
+            state.top_speed()
         };
-        let normal = Temper::Normal.temperament().top_speed;
-        assert!(top_speed(Temper::Normal) <= normal + f32::EPSILON);
-        assert!(top_speed(Temper::Legendary) > normal);
+        for _ in 0..SWIMS {
+            let normal = top_speed(Temper::Normal) / TEMPERAMENT.top_speed;
+            let legendary = top_speed(Temper::Legendary) / TEMPERAMENT.top_speed;
+            assert!(NORMAL_PACE.contains(&normal), "{normal}");
+            assert!(LEGENDARY_PACE.contains(&legendary), "{legendary}");
+            assert!(normal < legendary);
+        }
     }
 
     #[test]
@@ -1467,7 +1439,7 @@ mod water_tests {
     }
 
     #[test]
-    fn the_water_is_green_in_the_middle_red_at_the_sides_and_the_control_keeps_its_colour() {
+    fn the_water_is_green_in_the_middle_red_at_the_sides_and_the_control_matches_where_it_is() {
         let mut state = FishingState::default();
         for pos in [0.0, 0.5, 1.0] {
             state.fish_pos = pos;
@@ -1480,7 +1452,12 @@ mod water_tests {
                 .filter(|&x| buf[(x, 0)].symbol() == "█")
                 .map(|x| buf[(x, 0)].fg)
                 .collect();
-            assert!(!control.is_empty() && control.iter().all(|&c| c == CONTROL_COLOR));
+            let colour = if pos == 0.5 {
+                SAFE_CONTROL
+            } else {
+                DANGER_CONTROL
+            };
+            assert!(!control.is_empty() && control.iter().all(|&c| c == colour));
         }
         state.fish_pos = 0.0;
         let cells = water(&state);
