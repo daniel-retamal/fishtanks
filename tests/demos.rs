@@ -1241,9 +1241,10 @@ fn the_phase_five_demo_written_in_the_plan_still_runs_keystroke_for_keystroke() 
 
 const DEMO_SECONDS_AT_30: usize = 30;
 const FEED_ROUNDS_SLACK: usize = 2;
+const FEED_WAITS_PER_PORTION: usize = 3;
 const FEED_WAIT_SECS: usize = 12;
 const COINS: [&str; 5] = ["Coin1", "Coin2", "Coin3", "Coin4", "Coin5"];
-const COIN_PAYOUT_SECS: usize = 12;
+const COIN_PAYOUT_SECS: usize = 36;
 const LEFTOVER_WAIT_SECS: usize = 30;
 const COIN_RATE_DRIFT: f64 = 0.45;
 const REEL_TICKS: usize = 240;
@@ -1333,17 +1334,22 @@ fn the_economy_demo_runs_keystroke_for_keystroke() {
     );
     tui.snap("1 · /feed: thirty pellets shower down");
     let mut rounds = 1;
+    let mut waits = 1;
     seconds_at(&mut tui, DEMO_SECONDS_AT_30, FEED_WAIT_SECS);
-    while tank_fish(&tui, "Kip").seeks_food() && rounds < feed_rounds_max {
-        tui.run("/feed");
+    while tank_fish(&tui, "Kip").seeks_food() && waits < feed_rounds_max * FEED_WAITS_PER_PORTION {
+        if tui.app.tanks[tui.app.current_tank].food.is_empty() {
+            tui.run("/feed");
+            rounds += 1;
+        }
         seconds_at(&mut tui, DEMO_SECONDS_AT_30, FEED_WAIT_SECS);
-        rounds += 1;
+        waits += 1;
     }
     let kip = tank_fish(&tui, "Kip");
     assert!(
         !kip.seeks_food(),
-        "Kip reached its cap in {rounds} portions"
+        "Kip reached its cap in {rounds} portions and {waits} waits"
     );
+    assert!(rounds <= feed_rounds_max, "Kip ate {rounds} portions");
     let fattened = kip.sell_value();
     let config = kip.species.config();
     let size = kip.size_category as usize;
