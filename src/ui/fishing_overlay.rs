@@ -316,6 +316,7 @@ impl FishingState {
             .forced_temper
             .unwrap_or_else(|| Temper::roll(catch.rarity(), &mut rand::rng()));
         self.pace = rand::rng().random_range(self.temper.pace());
+        self.resting = true;
         self.hooked = Some(catch);
         self.start_reeling();
     }
@@ -1281,6 +1282,21 @@ mod temper_tests {
         (0..fights)
             .filter(|_| lands(temper, angler, reaction))
             .count()
+    }
+
+    #[test]
+    fn a_hooked_fish_opens_with_a_dart_never_a_rest() {
+        for _ in 0..SWIMS {
+            for temper in [Temper::Normal, Temper::Legendary] {
+                let mut state = FishingState {
+                    forced_temper: Some(temper),
+                    ..FishingState::default()
+                };
+                state.hook(LootKind::Food(1));
+                state.tick(DEFAULT_FPS, 0, MilkBuffs::default(), None);
+                assert!(!state.resting, "{temper:?} rested on the hook");
+            }
+        }
     }
 
     #[test]
