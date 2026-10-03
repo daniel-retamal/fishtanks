@@ -30,11 +30,12 @@ pub const TAIL_WAVE_LEFT: char = '彡';
 pub const TAIL_WAVE_RIGHT: char = 'ミ';
 pub const TAIL_EQUAL: char = '≡';
 use crate::colors::{
-    AMBER, AMBER_DARK, AMBER_LIGHT, BLUE, BROWN, BROWN_DARK, CREAM, CYAN, DARK_GRAY, FOREST, GOLD,
-    GRAY, GREEN_BRIGHT, GREEN_DARK, GREEN_LIGHT, KHAKI, LIGHT_BLUE, LIGHT_CYAN, LIGHT_MAGENTA,
-    LIGHT_RED, LIGHT_YELLOW, MAGENTA, NAVY, NAVY_DARK, NAVY_LIGHT, OLIVE, OLIVE_LIGHT, ORANGE,
-    ORANGE_DARK, ORANGE_LIGHT, PINK, PURPLE, PURPLE_LIGHT, RED, RED_DARK, SILVER, STEEL, TAN, TEAL,
-    TERRACOTTA, VIOLET, WHITE, YELLOW,
+    AMBER, AMBER_DARK, AMBER_LIGHT, BLUE, BROWN, BROWN_DARK, COBALT, COBALT_DARK, COBALT_LIGHT,
+    CREAM, CYAN, DARK_GRAY, FOREST, GOLD, GOLD_PALE, GRAY, GREEN, GREEN_BRIGHT, GREEN_DARK,
+    GREEN_LIGHT, INDIGO, KHAKI, LIGHT_BLUE, LIGHT_CYAN, LIGHT_GREEN, LIGHT_MAGENTA, LIGHT_RED,
+    LIGHT_YELLOW, MAGENTA, NAVY, NAVY_DARK, NAVY_LIGHT, OLIVE, OLIVE_LIGHT, ORANGE, ORANGE_DARK,
+    ORANGE_LIGHT, PINK, PURPLE, PURPLE_LIGHT, RED, RED_DARK, SILVER, STEEL, TAN, TEAL, TERRACOTTA,
+    VIOLET, WHITE, YELLOW,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -140,6 +141,34 @@ pub enum FishSpecies {
     Shoalfish,
     #[serde(alias = "Martillo")]
     Hammerfish,
+    Jurel,
+    Congrio,
+    Pejerrey,
+    Puye,
+    Pintacha,
+    Borrachilla,
+    Cojinoba,
+    Trucha,
+    Corvina,
+    Perca,
+    Bacalao,
+    Guppy,
+    Gramma,
+    Rasbora,
+    Gourami,
+    Zebrafish,
+    Bumblebeefish,
+    Mandarinfish,
+    Damselfish,
+    Platy,
+    Molly,
+    Tilapia,
+    Sunsetfish,
+    Leaffish,
+    Galaxyfish,
+    Opalfish,
+    Tartanfish,
+    Bitfish,
 }
 
 impl FishSpecies {
@@ -586,6 +615,34 @@ pub const ALL_SPECIES: &[FishSpecies] = &[
     FishSpecies::Glassfish,
     FishSpecies::Shoalfish,
     FishSpecies::Hammerfish,
+    FishSpecies::Jurel,
+    FishSpecies::Congrio,
+    FishSpecies::Pejerrey,
+    FishSpecies::Puye,
+    FishSpecies::Pintacha,
+    FishSpecies::Borrachilla,
+    FishSpecies::Cojinoba,
+    FishSpecies::Trucha,
+    FishSpecies::Corvina,
+    FishSpecies::Perca,
+    FishSpecies::Bacalao,
+    FishSpecies::Guppy,
+    FishSpecies::Gramma,
+    FishSpecies::Rasbora,
+    FishSpecies::Gourami,
+    FishSpecies::Zebrafish,
+    FishSpecies::Bumblebeefish,
+    FishSpecies::Mandarinfish,
+    FishSpecies::Damselfish,
+    FishSpecies::Platy,
+    FishSpecies::Molly,
+    FishSpecies::Tilapia,
+    FishSpecies::Sunsetfish,
+    FishSpecies::Leaffish,
+    FishSpecies::Galaxyfish,
+    FishSpecies::Opalfish,
+    FishSpecies::Tartanfish,
+    FishSpecies::Bitfish,
     FishSpecies::Candyfish,
     FishSpecies::Holyfish,
     FishSpecies::Botfish,
@@ -678,6 +735,11 @@ pub enum PatternKind {
     Patchy,
     PatchyAll,
     Glistening,
+    Banded,
+    Halves,
+    Gradient,
+    Speckled,
+    Zones,
 }
 
 const fn standard_with(eye: char, tail: TailKind, body: BodyPair) -> BodyChars {
@@ -771,6 +833,38 @@ static STARFISH_LR: [&str; 1] = ["✶"];
 const NO_EYES: usize = 0;
 const TWO_EYES: usize = 2;
 const EELFISH_SIZES: [usize; 4] = [8, 12, 16, 20];
+const CONGRIO_SIZES: [usize; 4] = [5, 8, 11, 14];
+const PUYE_SIZES: [usize; 4] = [1, 2, 2, 3];
+const SMALL_COMMON_SIZES: [usize; 4] = [2, 3, 4, 5];
+
+static JUREL_PALETTE: [Color; 3] = [TEAL, LIGHT_CYAN, SILVER];
+static CONGRIO_PALETTE: [Color; 3] = [TERRACOTTA, ORANGE_LIGHT, BROWN];
+static PEJERREY_PALETTE: [Color; 3] = [SILVER, NAVY_LIGHT, SILVER];
+static PUYE_PALETTE: [Color; 2] = [SILVER, LIGHT_CYAN];
+static PINTACHA_PALETTE: [Color; 2] = [CREAM, BROWN_DARK];
+static BORRACHILLA_PALETTE: [Color; 2] = [GREEN, LIGHT_GREEN];
+static COJINOBA_PALETTE: [Color; 3] = [COBALT_DARK, COBALT, COBALT_LIGHT];
+static TRUCHA_PALETTE: [Color; 3] = [OLIVE_LIGHT, DARK_GRAY, PINK];
+static CORVINA_PALETTE: [Color; 2] = [SILVER, AMBER_LIGHT];
+static PERCA_PALETTE: [Color; 2] = [OLIVE_LIGHT, OLIVE];
+static BACALAO_PALETTE: [Color; 3] = [OLIVE, TAN, BROWN];
+static GUPPY_PALETTE: [Color; 6] = [CREAM, CREAM, ORANGE, LIGHT_BLUE, PINK, YELLOW];
+static GRAMMA_PALETTE: [Color; 2] = [MAGENTA, YELLOW];
+static RASBORA_PALETTE: [Color; 2] = [ORANGE_LIGHT, INDIGO];
+static GOURAMI_PALETTE: [Color; 2] = [LIGHT_RED, NAVY_LIGHT];
+static ZEBRAFISH_PALETTE: [Color; 2] = [NAVY_LIGHT, CREAM];
+static BUMBLEBEEFISH_PALETTE: [Color; 2] = [YELLOW, DARK_GRAY];
+static MANDARINFISH_PALETTE: [Color; 4] = [INDIGO, ORANGE, TEAL, AMBER];
+static DAMSELFISH_PALETTE: [Color; 3] = [NAVY_DARK, NAVY_DARK, YELLOW];
+static PLATY_PALETTE: [Color; 3] = [ORANGE, ORANGE, DARK_GRAY];
+static MOLLY_PALETTE: [Color; 2] = [WHITE, DARK_GRAY];
+static TILAPIA_PALETTE: [Color; 1] = [TERRACOTTA];
+static SUNSETFISH_PALETTE: [Color; 4] = [YELLOW, ORANGE, PINK, VIOLET];
+static LEAFFISH_PALETTE: [Color; 3] = [OLIVE, AMBER, TERRACOTTA];
+static GALAXYFISH_PALETTE: [Color; 3] = [PURPLE, WHITE, GOLD_PALE];
+static OPALFISH_PALETTE: [Color; 3] = [PINK, LIGHT_CYAN, GOLD_PALE];
+static TARTANFISH_PALETTE: [Color; 3] = [RED, NAVY, GREEN_DARK];
+static BITFISH_PALETTE: [Color; 1] = [AMBER];
 
 pub const DEADFISH_BC_SEMI: BodyChars = BodyChars {
     mouth_left: '<',
@@ -1746,6 +1840,310 @@ impl FishSpecies {
                 config.eye_color = Some(WHITE);
                 config
             }
+            Jurel => standard_config(
+                "Jurel",
+                chars(MOUTH, EYE_ROUND, ('«', '»'), ('‹', '›'), TailKind::Wide),
+                &JUREL_PALETTE,
+                Gradient,
+                0.14,
+                (4.5, 6.5),
+                Common,
+            ),
+            Congrio => {
+                let mut config = standard_config(
+                    "Congrio",
+                    chars(
+                        MOUTH,
+                        EYE_ROUND,
+                        ('s', 's'),
+                        ('S', 'S'),
+                        TailKind::Custom {
+                            left: '~',
+                            right: '~',
+                        },
+                    ),
+                    &CONGRIO_PALETTE,
+                    PatchyAll,
+                    0.12,
+                    (1.5, 3.0),
+                    Common,
+                );
+                config.sizes = CONGRIO_SIZES;
+                config
+            }
+            Pejerrey => standard_config(
+                "Pejerrey",
+                chars(MOUTH, EYE_ROUND, ('═', '═'), ('=', '='), TailKind::Wide),
+                &PEJERREY_PALETTE,
+                Zones,
+                0.11,
+                (3.0, 5.0),
+                Common,
+            ),
+            Puye => {
+                let mut config = standard_config(
+                    "Puye",
+                    chars(MOUTH, '°', ('-', '-'), ('~', '~'), TailKind::Short),
+                    &PUYE_PALETTE,
+                    Striped,
+                    0.15,
+                    (3.5, 5.5),
+                    Common,
+                );
+                config.sizes = PUYE_SIZES;
+                config
+            }
+            Pintacha => standard_config(
+                "Pintacha",
+                chars(MOUTH, EYE_ROUND, ('|', '|'), ('¦', '¦'), TailKind::Wide),
+                &PINTACHA_PALETTE,
+                Banded,
+                0.09,
+                (2.0, 3.5),
+                Common,
+            ),
+            Borrachilla => standard_config(
+                "Borrachilla",
+                standard('ö', TailKind::Short),
+                &BORRACHILLA_PALETTE,
+                Striped,
+                0.22,
+                (1.0, 2.5),
+                Common,
+            ),
+            Cojinoba => standard_config(
+                "Cojinoba",
+                standard('ø', TailKind::WideCurly),
+                &COJINOBA_PALETTE,
+                Gradient,
+                0.09,
+                (2.0, 3.5),
+                Common,
+            ),
+            Trucha => standard_config(
+                "Trucha",
+                standard(EYE_ROUND, TailKind::Wide),
+                &TRUCHA_PALETTE,
+                Speckled,
+                0.10,
+                (3.0, 5.0),
+                Common,
+            ),
+            Corvina => standard_config(
+                "Corvina",
+                standard(EYE_ROUND, TailKind::Wide),
+                &CORVINA_PALETTE,
+                Striped,
+                0.10,
+                (2.5, 4.0),
+                Common,
+            ),
+            Perca => standard_config(
+                "Perca",
+                standard(EYE_ROUND, TailKind::Wide),
+                &PERCA_PALETTE,
+                Banded,
+                0.10,
+                (2.0, 3.5),
+                Common,
+            ),
+            Bacalao => standard_config(
+                "Bacalao",
+                standard(EYE_ROUND, TailKind::Short),
+                &BACALAO_PALETTE,
+                Patchy,
+                0.08,
+                (1.5, 3.0),
+                Common,
+            ),
+            Guppy => {
+                let mut config = standard_config(
+                    "Guppy",
+                    standard(EYE_ROUND, TailKind::WideCurly),
+                    &GUPPY_PALETTE,
+                    Zones,
+                    0.12,
+                    (2.5, 4.0),
+                    Common,
+                );
+                config.sizes = SMALL_COMMON_SIZES;
+                config
+            }
+            Gramma => standard_config(
+                "Gramma",
+                standard(EYE_ROUND, TailKind::Wide),
+                &GRAMMA_PALETTE,
+                Halves,
+                0.10,
+                (2.0, 3.5),
+                Common,
+            ),
+            Rasbora => standard_config(
+                "Rasbora",
+                standard(EYE_ROUND, TailKind::Short),
+                &RASBORA_PALETTE,
+                Halves,
+                0.12,
+                (2.5, 4.0),
+                Common,
+            ),
+            Gourami => {
+                let mut config = standard_config(
+                    "Gourami",
+                    standard(EYE_ROUND, TailKind::Wide),
+                    &GOURAMI_PALETTE,
+                    Striped,
+                    0.08,
+                    (1.5, 3.0),
+                    Common,
+                );
+                config.born_with = &[Mutation::VentralFin];
+                config
+            }
+            Zebrafish => standard_config(
+                "Zebrafish",
+                chars(MOUTH, EYE_ROUND, ('≡', '≡'), ('=', '='), TailKind::Wide),
+                &ZEBRAFISH_PALETTE,
+                Striped,
+                0.13,
+                (4.0, 6.0),
+                Common,
+            ),
+            Bumblebeefish => {
+                let mut config = standard_config(
+                    "Bumblebeefish",
+                    standard(
+                        EYE_ROUND,
+                        TailKind::Custom {
+                            left: '(',
+                            right: ')',
+                        },
+                    ),
+                    &BUMBLEBEEFISH_PALETTE,
+                    Banded,
+                    0.10,
+                    (1.5, 3.0),
+                    Common,
+                );
+                config.sizes = SMALL_COMMON_SIZES;
+                config
+            }
+            Mandarinfish => standard_config(
+                "Mandarinfish",
+                chars(MOUTH, EYE_ROUND, ('@', '@'), ('ɵ', 'ɵ'), TailKind::Short),
+                &MANDARINFISH_PALETTE,
+                PatchyAll,
+                0.09,
+                (1.0, 2.0),
+                Common,
+            ),
+            Damselfish => standard_config(
+                "Damselfish",
+                standard(EYE_ROUND, TailKind::Wide),
+                &DAMSELFISH_PALETTE,
+                Zones,
+                0.10,
+                (2.5, 4.0),
+                Common,
+            ),
+            Platy => {
+                let mut config = standard_config(
+                    "Platy",
+                    standard(EYE_ROUND, TailKind::Short),
+                    &PLATY_PALETTE,
+                    Zones,
+                    0.11,
+                    (2.0, 3.5),
+                    Common,
+                );
+                config.sizes = SMALL_COMMON_SIZES;
+                config
+            }
+            Molly => standard_config(
+                "Molly",
+                standard(EYE_ROUND, TailKind::WideCurly),
+                &MOLLY_PALETTE,
+                Speckled,
+                0.09,
+                (1.5, 3.0),
+                Common,
+            ),
+            Tilapia => standard_config(
+                "Tilapia",
+                standard(EYE_ROUND, TailKind::Wide),
+                &TILAPIA_PALETTE,
+                Solid,
+                0.10,
+                (2.0, 3.5),
+                Common,
+            ),
+            Sunsetfish => standard_config(
+                "Sunsetfish",
+                standard(EYE_ROUND, TailKind::WideCurly),
+                &SUNSETFISH_PALETTE,
+                Gradient,
+                0.09,
+                (2.0, 3.5),
+                Common,
+            ),
+            Leaffish => standard_config(
+                "Leaffish",
+                chars(
+                    MOUTH,
+                    EYE_ROUND,
+                    ('/', '\\'),
+                    ('|', '|'),
+                    TailKind::Custom {
+                        left: '\'',
+                        right: '\'',
+                    },
+                ),
+                &LEAFFISH_PALETTE,
+                Gradient,
+                0.05,
+                (0.5, 1.2),
+                Common,
+            ),
+            Galaxyfish => {
+                let mut config = standard_config(
+                    "Galaxyfish",
+                    standard(EYE_ROUND, TailKind::Wide),
+                    &GALAXYFISH_PALETTE,
+                    Speckled,
+                    0.08,
+                    (1.5, 3.0),
+                    Common,
+                );
+                config.eye_color = Some(WHITE);
+                config
+            }
+            Opalfish => standard_config(
+                "Opalfish",
+                standard(EYE_ROUND, TailKind::Short),
+                &OPALFISH_PALETTE,
+                Glistening,
+                0.10,
+                (2.0, 3.5),
+                Common,
+            ),
+            Tartanfish => standard_config(
+                "Tartanfish",
+                chars(MOUTH, EYE_ROUND, ('#', '#'), ('#', '#'), TailKind::Wide),
+                &TARTANFISH_PALETTE,
+                Banded,
+                0.10,
+                (2.0, 3.5),
+                Common,
+            ),
+            Bitfish => standard_config(
+                "Bitfish",
+                chars(MOUTH, EYE_ROUND, ('0', '0'), ('1', '1'), TailKind::Short),
+                &BITFISH_PALETTE,
+                Solid,
+                0.12,
+                (2.0, 3.5),
+                Common,
+            ),
             Unfish => SpeciesConfig {
                 name: "Unfish",
                 body: BodyTemplate::Standard(standard(EYE_ROUND, TailKind::Wide)),

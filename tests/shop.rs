@@ -5,13 +5,18 @@ use fishtank::{
     colors::{DARK_GRAY, WHITE},
     economy::Money,
     fishes::species::FishSpecies,
-    testing::Tui,
+    testing::{DEFAULT_COLS, Tui},
 };
 use ratatui::style::Color;
 
 const SELECTED: &str = "> ";
 const FISHES_ROW: &str = "Fishes";
 const ROBOTICS_ROW: &str = "Robotics";
+const SHELF_CHROME_ROWS: usize = 20;
+
+fn rows_for_every_fish() -> u16 {
+    (FishSpecies::all_buyable().len() + SHELF_CHROME_ROWS) as u16
+}
 
 fn ink(tui: &mut Tui, needle: &str) -> Color {
     let (x, y) = tui.screen().expect_find(needle);
@@ -33,7 +38,7 @@ fn cheapest() -> FishSpecies {
 }
 
 fn shop_with(cash: Money) -> Tui {
-    let mut tui = Tui::new();
+    let mut tui = Tui::with_size(DEFAULT_COLS, rows_for_every_fish());
     tui.film(Path::new(env!("CARGO_TARGET_TMPDIR")), "shop-availability");
     tui.clear_tank();
     tui.run("/spawn merluza \"Ann\"");

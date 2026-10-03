@@ -49,6 +49,12 @@ const CHAR_SPREAD: f32 = 1.0;
 const PERCENT_WHOLE: Money = 100;
 pub const EATING_DURATION: f32 = 0.15;
 const MOUTH_WIDTH: i32 = 1;
+const BAND_WIDTH: usize = 2;
+const PATTERN_HALVES: usize = 2;
+const SPECKLE_ODDS: u32 = 3;
+const ZONE_HEAD: usize = 0;
+const ZONE_BODY: usize = 1;
+const ZONE_TAIL: usize = 2;
 const ZOOMIE_COOLDOWN_MIN: f32 = 120.0;
 const ZOOMIE_COOLDOWN_MAX: f32 = 180.0;
 const ZOOMIE_SPEED_MULTIPLIER: f32 = 11.0;
@@ -1449,7 +1455,52 @@ impl Fish {
                 }
                 colors
             }
+            PatternKind::Banded => (0..len)
+                .map(|i| palette[(i / BAND_WIDTH) % palette.len()])
+                .collect(),
+            PatternKind::Halves => {
+                let front = len.div_ceil(PATTERN_HALVES);
+                (0..len)
+                    .map(|i| palette[usize::from(i >= front) % palette.len()])
+                    .collect()
+            }
+            PatternKind::Gradient => (0..len)
+                .map(|i| palette[(i * palette.len() / len).min(palette.len() - 1)])
+                .collect(),
+            PatternKind::Speckled => {
+                let mut rng = SmallRng::seed_from_u64(self.pattern_seed);
+                (0..len)
+                    .map(|_| {
+                        if rng.random_range(0..SPECKLE_ODDS) == 0 {
+                            palette[rng.random_range(1..palette.len())]
+                        } else {
+                            palette[0]
+                        }
+                    })
+                    .collect()
+            }
+            PatternKind::Zones => {
+                let mut rng = SmallRng::seed_from_u64(self.pattern_seed);
+                let tail = palette[rng.random_range(ZONE_TAIL..palette.len())];
+                let tail_from = len.saturating_sub(self.species_tail_width());
+                (0..len)
+                    .map(|i| match i {
+                        i if i < MOUTH_WIDTH as usize => palette[ZONE_HEAD],
+                        i if i >= tail_from => tail,
+                        _ => palette[ZONE_BODY],
+                    })
+                    .collect()
+            }
             PatternKind::Glistening => unreachable!(),
+        }
+    }
+
+    fn species_tail_width(&self) -> usize {
+        match self.species.config().body {
+            BodyTemplate::Standard(chars) | BodyTemplate::Alternating(chars, _) => {
+                tail_width(chars.tail)
+            }
+            BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => 0,
         }
     }
 
@@ -2891,31 +2942,25 @@ fn tail_chars(body_chars: BodyChars, facing: Direction, phase: f32) -> Vec<char>
     }
 }
 
+fn tail_width(tail: TailKind) -> usize {
+    match tail {
+        TailKind::Wide => 2,
+        TailKind::WideCurly => 3,
+        TailKind::Short => 1,
+        TailKind::None => 0,
+        TailKind::Custom { left, right } | TailKind::Swaying { left, right, .. } => {
+            let lw = UnicodeWidthChar::width(left).unwrap_or(1);
+            let rw = UnicodeWidthChar::width(right).unwrap_or(1);
+            lw.max(rw)
+        }
+    }
+}
+
 pub fn compute_display_width(species: FishSpecies, body_size: usize) -> usize {
     let config = species.config();
     match config.body {
         BodyTemplate::Standard(body_chars) | BodyTemplate::Alternating(body_chars, _) => {
-            let tail_w = match body_chars.tail {
-                TailKind::Wide => 2,
-                TailKind::WideCurly => 3,
-                TailKind::Short => 1,
-                TailKind::None => 0,
-                TailKind::Custom { left, right } => {
-                    let lw = UnicodeWidthChar::width(left).unwrap_or(1);
-                    let rw = UnicodeWidthChar::width(right).unwrap_or(1);
-                    lw.max(rw)
-                }
-                TailKind::Swaying {
-                    left,
-                    right,
-                    wave: _,
-                } => {
-                    let lw = UnicodeWidthChar::width(left).unwrap_or(1);
-                    let rw = UnicodeWidthChar::width(right).unwrap_or(1);
-                    lw.max(rw)
-                }
-            };
-            2 + body_size + tail_w
+            2 + body_size + tail_width(body_chars.tail)
         }
         BodyTemplate::Fixed { left, .. } => {
             let variant = left.first().copied().unwrap_or("");

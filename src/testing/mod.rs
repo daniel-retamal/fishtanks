@@ -21,7 +21,7 @@ pub const LAB_STAKE: Money = 40_000;
 
 const SELECTION_MARKER: char = '>';
 const COVERED_CELL: &str = " ";
-const SELECT_MAX_STEPS: usize = 64;
+const SELECT_MAX_STEPS: usize = 256;
 
 pub struct Tui {
     pub app: App,
