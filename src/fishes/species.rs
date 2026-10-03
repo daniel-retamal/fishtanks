@@ -141,6 +141,12 @@ pub enum FishSpecies {
     Shoalfish,
     #[serde(alias = "Martillo")]
     Hammerfish,
+    Rabbitfish,
+    Lionfish,
+    Pencilfish,
+    Kissfish,
+    Rustfish,
+    Sawfish,
     Jurel,
     Congrio,
     Pejerrey,
@@ -615,6 +621,12 @@ pub const ALL_SPECIES: &[FishSpecies] = &[
     FishSpecies::Glassfish,
     FishSpecies::Shoalfish,
     FishSpecies::Hammerfish,
+    FishSpecies::Rabbitfish,
+    FishSpecies::Lionfish,
+    FishSpecies::Pencilfish,
+    FishSpecies::Kissfish,
+    FishSpecies::Rustfish,
+    FishSpecies::Sawfish,
     FishSpecies::Jurel,
     FishSpecies::Congrio,
     FishSpecies::Pejerrey,
@@ -836,6 +848,14 @@ const EELFISH_SIZES: [usize; 4] = [8, 12, 16, 20];
 const CONGRIO_SIZES: [usize; 4] = [5, 8, 11, 14];
 const PUYE_SIZES: [usize; 4] = [1, 2, 2, 3];
 const SMALL_COMMON_SIZES: [usize; 4] = [2, 3, 4, 5];
+const SAWFISH_SIZES: [usize; 4] = [6, 9, 12, 15];
+
+static RABBITFISH_PALETTE: [Color; 1] = [GOLD];
+static LIONFISH_PALETTE: [Color; 2] = [RED, CREAM];
+static PENCILFISH_PALETTE: [Color; 3] = [DARK_GRAY, YELLOW, PINK];
+static KISSFISH_PALETTE: [Color; 3] = [PINK, GOLD_PALE, GOLD_PALE];
+static RUSTFISH_PALETTE: [Color; 3] = [BROWN, ORANGE_DARK, TERRACOTTA];
+static SAWFISH_PALETTE: [Color; 2] = [STEEL, LIGHT_CYAN];
 
 static JUREL_PALETTE: [Color; 3] = [TEAL, LIGHT_CYAN, SILVER];
 static CONGRIO_PALETTE: [Color; 3] = [TERRACOTTA, ORANGE_LIGHT, BROWN];
@@ -1838,6 +1858,94 @@ impl FishSpecies {
                     Rare,
                 );
                 config.eye_color = Some(WHITE);
+                config
+            }
+            Rabbitfish => {
+                let mut config = standard_config(
+                    "Rabbitfish",
+                    chars(('ω', 'ω'), EYE_ROUND, ROUND, CURLED, TailKind::Wide),
+                    &RABBITFISH_PALETTE,
+                    Solid,
+                    0.10,
+                    (2.0, 3.5),
+                    Rare,
+                );
+                config.born_with = &[Mutation::Ear];
+                config
+            }
+            Lionfish => {
+                let mut config = standard_config(
+                    "Lionfish",
+                    standard(EYE_ROUND, TailKind::Wide),
+                    &LIONFISH_PALETTE,
+                    Banded,
+                    0.07,
+                    (1.0, 2.0),
+                    Rare,
+                );
+                config.born_with = &[Mutation::Spikes];
+                config
+            }
+            Pencilfish => {
+                let mut config = standard_config(
+                    "Pencilfish",
+                    chars(
+                        MOUTH,
+                        EYE_ROUND,
+                        ('=', '='),
+                        ('=', '='),
+                        TailKind::Custom {
+                            left: ']',
+                            right: '[',
+                        },
+                    ),
+                    &PENCILFISH_PALETTE,
+                    Zones,
+                    0.06,
+                    (2.0, 3.5),
+                    Rare,
+                );
+                config.eye_color = Some(DARK_GRAY);
+                config.trail = Some(Tint::Fixed(DARK_GRAY));
+                config
+            }
+            Kissfish => {
+                let mut config = standard_config(
+                    "Kissfish",
+                    chars(('ε', 'з'), '^', ROUND, CURLED, TailKind::Wide),
+                    &KISSFISH_PALETTE,
+                    Zones,
+                    0.10,
+                    (2.0, 3.5),
+                    Rare,
+                );
+                config.habit = Some(Habit::Pair);
+                config
+            }
+            Rustfish => {
+                let mut config = standard_config(
+                    "Rustfish",
+                    chars(MOUTH, '¤', ('%', '%'), ('%', '%'), TailKind::Wide),
+                    &RUSTFISH_PALETTE,
+                    Speckled,
+                    0.05,
+                    (1.5, 3.0),
+                    Rare,
+                );
+                config.keepsake = Some(StockItem::Junk);
+                config
+            }
+            Sawfish => {
+                let mut config = standard_config(
+                    "Sawfish",
+                    chars(MOUTH, EYE_ROUND, ('^', '^'), ('v', 'v'), TailKind::Wide),
+                    &SAWFISH_PALETTE,
+                    Striped,
+                    0.16,
+                    (4.0, 6.0),
+                    Rare,
+                );
+                config.sizes = SAWFISH_SIZES;
                 config
             }
             Jurel => standard_config(

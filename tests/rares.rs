@@ -35,7 +35,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthChar;
 
-const NEW_RARES: [FishSpecies; 27] = [
+const NEW_RARES: [FishSpecies; 33] = [
     FishSpecies::Snailfish,
     FishSpecies::Slugfish,
     FishSpecies::Starfish,
@@ -63,6 +63,12 @@ const NEW_RARES: [FishSpecies; 27] = [
     FishSpecies::Glassfish,
     FishSpecies::Shoalfish,
     FishSpecies::Hammerfish,
+    FishSpecies::Rabbitfish,
+    FishSpecies::Lionfish,
+    FishSpecies::Pencilfish,
+    FishSpecies::Kissfish,
+    FishSpecies::Rustfish,
+    FishSpecies::Sawfish,
 ];
 
 const BUBBLE_ROW_SLACK: f32 = 0.9;
@@ -418,6 +424,8 @@ fn a_species_born_with_a_mutation_keeps_it_through_every_door() {
                     || (mutation == Mutation::NightOwl
                         && fish.circadian_state() == Circadian::NightOwl)
                     || (mutation == Mutation::Feet && fish.feet().is_some())
+                    || (mutation == Mutation::Ear
+                        && fish.mutant.as_ref().is_some_and(|m| m.ear_count > 0))
                     || mutation.extension().is_some_and(|variant| {
                         variant
                             .bands()
@@ -1085,6 +1093,67 @@ fn two_hermit_crabs_that_meet_swap_shells() {
     tick(&mut tank, DAY, 1);
     assert_eq!(tank.fish[a].pattern_seed, seed_b);
     assert_eq!(tank.fish[b].pattern_seed, seed_a);
+}
+
+#[test]
+fn selling_a_rustfish_leaves_a_scrap_of_junk() {
+    let mut tui = Tui::new();
+    tui.clear_tank();
+    tui.run("/spawn rustfish \"Ferro\"");
+    let junk = tui.app.stock_of(StockItem::Junk);
+    tui.run("/sell fish \"Ferro\"");
+    assert_eq!(tui.app.stock_of(StockItem::Junk), junk + 1);
+}
+
+#[test]
+fn kissfish_that_meet_kiss_and_send_up_a_heart() {
+    let mut tank = tank_of(TankKind::Base);
+    let a = add(&mut tank, FishSpecies::Kissfish, "Romeo");
+    let b = add(&mut tank, FishSpecies::Kissfish, "Julieta");
+    for (i, x) in [(a, 20.0), (b, 32.0)] {
+        tank.fish[i].position.x = x;
+        tank.fish[i].position.y = 6.0;
+        tank.fish[i].velocity.dx = 0.0;
+        tank.fish[i].velocity.dy = 0.0;
+    }
+    tick(&mut tank, DAY, 1);
+    assert!(tank.bubbles.iter().any(|b| b.bubble_char == 'ღ'));
+    assert!(
+        !tank.fish[a].facing_left() && tank.fish[b].facing_left(),
+        "they turn to face each other, lips first"
+    );
+}
+
+#[test]
+fn a_pencilfish_draws_a_graphite_line_where_it_swims() {
+    let mut tank = tank_of(TankKind::Base);
+    let pencil = add(&mut tank, FishSpecies::Pencilfish, "Lapiz");
+    tank.fish[pencil].position.x = 20.0;
+    tank.fish[pencil].position.y = 8.0;
+    tank.fish[pencil].velocity.dx = 4.0;
+    tank.fish[pencil].velocity.dy = 0.0;
+    tank.fish[pencil].facing = Direction::Right;
+    tick(&mut tank, DAY, 20);
+    assert!(!tank.trails.is_empty(), "it leaves a line behind it");
+    assert!(
+        tank.trails
+            .iter()
+            .all(|mark| mark.color == fishtank::colors::DARK_GRAY),
+        "in graphite"
+    );
+}
+
+#[test]
+fn a_lionfish_wears_its_mane_and_a_rabbitfish_its_ear_from_birth() {
+    let mut rng = rand::rng();
+    let lion = Fish::new(FishSpecies::Lionfish, "Leo".into(), 10.0, 10.0, &mut rng);
+    let rows = rows_of(&lion);
+    assert_eq!(rows.len(), 3, "spines above and below: {rows:?}");
+    let mut bunny = Fish::new(FishSpecies::Rabbitfish, "Coco".into(), 10.0, 10.0, &mut rng);
+    bunny.facing = Direction::Left;
+    let body = rows_of(&bunny)[bunny.line_sprite().body_row].clone();
+    assert!(body.starts_with("ωº"), "{body}");
+    assert!(body.contains('Ɛ'), "an ear behind its eye: {body}");
 }
 
 #[test]
