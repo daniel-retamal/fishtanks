@@ -571,11 +571,15 @@ impl Fish {
         self.unfish_state.is_some()
     }
 
-    pub fn bubble_color(&self) -> Option<Color> {
+    pub fn wake_color(&self) -> Option<Color> {
         if let Some(us) = self.unfish_state.as_ref() {
-            return us.bubble_color;
+            return us.wake_color;
         }
-        self.mutant.as_ref().and_then(|m| m.bubble_color)
+        self.mutant.as_ref().and_then(|m| m.wake_color)
+    }
+
+    pub fn leaves_a_wake(&self) -> bool {
+        self.zoomie().moves() || self.species.config().trail.is_some()
     }
 
     pub fn fused_components(&self) -> &[FusedComponent] {

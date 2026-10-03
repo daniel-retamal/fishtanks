@@ -25,6 +25,7 @@ const SWAY_SPEED_CLAMP_MAX: f32 = 2.5;
 const SWAY_SPEED_GLISTEN_FLOOR: f32 = 0.08;
 const SWAY_SPEED_CLAMP_MIN: f32 = 0.01;
 pub const STRAWBERRY_SELL_BONUS_PCT: u32 = 25;
+const LEGACY_WAKE_TOKEN: &str = "bubblecolor";
 const WORM_MAX_SEGMENTS: usize = 12;
 const WORM_MIN_SEGMENTS: usize = 1;
 const WORM_MAX_EXTRA_EYES: usize = 4;
@@ -58,7 +59,7 @@ pub enum Mutation {
     Engulfment,
     Alienation,
     Strawberry,
-    BubbleColor,
+    WakeColor,
     NightOwl,
     HelpedByGod,
     Heterochromia,
@@ -106,7 +107,7 @@ impl Mutation {
         Mutation::Engulfment,
         Mutation::Alienation,
         Mutation::Strawberry,
-        Mutation::BubbleColor,
+        Mutation::WakeColor,
         Mutation::NightOwl,
         Mutation::HelpedByGod,
         Mutation::Heterochromia,
@@ -163,7 +164,7 @@ impl Mutation {
             Mutation::Engulfment => "engulfment",
             Mutation::Alienation => "alienation",
             Mutation::Strawberry => "strawberry",
-            Mutation::BubbleColor => "bubblecolor",
+            Mutation::WakeColor => "wakecolor",
             Mutation::NightOwl => "nightowl",
             Mutation::HelpedByGod => "helpedbygod",
             Mutation::Heterochromia => "heterochromia",
@@ -189,6 +190,9 @@ impl Mutation {
 
     pub fn parse(s: &str) -> Option<Mutation> {
         let lower = s.to_ascii_lowercase();
+        if lower == LEGACY_WAKE_TOKEN {
+            return Some(Mutation::WakeColor);
+        }
         Mutation::ALL.iter().copied().find(|m| m.token() == lower)
     }
 
@@ -347,6 +351,10 @@ pub trait Mutatable {
         true
     }
 
+    fn leaves_a_wake(&self) -> bool {
+        true
+    }
+
     fn supports_now(&self, mutation: Mutation) -> bool {
         if !self.capabilities().contains(&mutation) {
             return false;
@@ -379,6 +387,7 @@ pub trait Mutatable {
             Mutation::NoFeet => self.has_feet(),
             Mutation::FeetColor => self.has_feet(),
             Mutation::DecreaseExtension => !self.extension().is_empty(),
+            Mutation::WakeColor => self.leaves_a_wake(),
             _ => true,
         }
     }
@@ -613,8 +622,8 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
             target.mutant_mut().color_patches.clear();
             target.add_sell_bonus(STRAWBERRY_SELL_BONUS_PCT);
         }
-        Mutation::BubbleColor => {
-            target.mutant_mut().bubble_color = Some(random_rgb(rng));
+        Mutation::WakeColor => {
+            target.mutant_mut().wake_color = Some(random_rgb(rng));
         }
         Mutation::NightOwl => {
             target.mutant_mut().circadian = Circadian::NightOwl;
@@ -689,7 +698,7 @@ const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::Endocytosis,
     Mutation::Alienation,
     Mutation::Strawberry,
-    Mutation::BubbleColor,
+    Mutation::WakeColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
@@ -720,7 +729,7 @@ const FIXED_JELLY_CAPS: &[Mutation] = &[
     Mutation::GlistenColor,
     Mutation::GlistenEnable,
     Mutation::GlistenDisable,
-    Mutation::BubbleColor,
+    Mutation::WakeColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::Feet,
@@ -748,7 +757,6 @@ const SLIME_CAPS: &[Mutation] = &[
     Mutation::GlistenEnable,
     Mutation::GlistenDisable,
     Mutation::BodyColor,
-    Mutation::BubbleColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
@@ -780,7 +788,7 @@ const FIGURE_CAPS: &[Mutation] = &[
     Mutation::BodyColor,
     Mutation::Alienation,
     Mutation::Strawberry,
-    Mutation::BubbleColor,
+    Mutation::WakeColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::DorsalFin,
@@ -813,7 +821,6 @@ const WORM_CAPS: &[Mutation] = &[
     Mutation::Cytokinesis,
     Mutation::Endocytosis,
     Mutation::Engulfment,
-    Mutation::BubbleColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
@@ -962,7 +969,7 @@ pub fn apply_unfish_mutation(
                 us.slime_glisten_mode = us.slime_glisten_mode.random_other(rng)
             }
             Mutation::GlistenColor => us.slime_glisten_color = Some(random_rgb(rng)),
-            Mutation::BubbleColor => us.bubble_color = Some(random_rgb(rng)),
+            Mutation::WakeColor => us.wake_color = Some(random_rgb(rng)),
             Mutation::NightOwl => us.circadian = Circadian::NightOwl,
             Mutation::HelpedByGod => us.circadian = Circadian::HelpedByGod,
             Mutation::Ear => us.ear_count += 1,
@@ -1137,6 +1144,10 @@ impl Mutatable for Fish {
 
     fn reserves(&self, band: Band) -> bool {
         Fish::reserves(self, band)
+    }
+
+    fn leaves_a_wake(&self) -> bool {
+        Fish::leaves_a_wake(self)
     }
 
     fn hydra_max(&self) -> usize {

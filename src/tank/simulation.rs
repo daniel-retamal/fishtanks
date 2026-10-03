@@ -130,7 +130,7 @@ impl Tank {
                         &mut rng,
                     )
                 };
-                if let Some(c) = fish.bubble_color() {
+                if let Some(c) = fish.wake_color() {
                     bubble.color = c;
                 }
                 self.bubbles.push(bubble);

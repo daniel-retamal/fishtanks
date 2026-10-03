@@ -610,36 +610,28 @@ fn alienation_command_recolors_fish_light_green() {
 }
 
 #[test]
-fn bubblecolor_sets_mutant_bubble_color_on_standard_fish() {
+fn wakecolor_sets_the_mutant_wake_colour_on_a_standard_fish() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Merluza, "Fizz".to_string(), &mut rng);
-    tank.apply_named_mutation("Fizz", "bubblecolor");
+    tank.apply_named_mutation("Fizz", "wakecolor");
     let m = tank.fish[0]
         .mutant
         .as_ref()
-        .expect("mutant should exist after bubblecolor");
+        .expect("mutant should exist after wakecolor");
     assert!(
-        m.bubble_color.is_some(),
-        "bubblecolor must set the mutant bubble_color"
+        m.wake_color.is_some(),
+        "wakecolor must set the mutant wake_color"
     );
 }
 
 #[test]
-fn bubblecolor_sets_unfish_bubble_color_on_ball() {
+fn an_unfish_never_zooms_so_it_has_no_wake_to_colour() {
     let mut tank = make_tank();
     let mut rng = rng();
     let fish = Fish::new_unfish(UnfishKind::Ball, "Orb".to_string(), 20.0, 10.0, &mut rng);
     tank.place_fish(fish, "Orb".to_string(), &mut rng);
-    tank.apply_named_mutation("Orb", "bubblecolor");
-    let us = tank.fish[0]
-        .unfish_state
-        .as_ref()
-        .expect("unfish_state must exist");
-    assert!(
-        us.bubble_color.is_some(),
-        "bubblecolor must set the unfish bubble_color"
-    );
+    assert!(!tank.apply_named_mutation("Orb", "wakecolor"));
 }
 
 #[test]

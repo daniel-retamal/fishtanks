@@ -30,7 +30,7 @@ use crate::{
         is_multi_row,
     },
     tank::speech_ink,
-    tank::{INK_COLOR, InkBlot, TRAIL_GLYPH, Tank, TankBackground, TrailMark},
+    tank::{InkBlot, TRAIL_GLYPH, Tank, TankBackground, TrailMark},
     tanks::alien::{AlienPyramid, AlienStar, pyramid_canvas_w, pyramid_lines},
     tanks::coral::{
         CORAL_A_LINES, CORAL_A_ROWS, CORAL_COLOR, CoralAlgaeInstance, CoralStructure,
@@ -701,7 +701,7 @@ fn render_ink(blot: &InkBlot, area: Rect, buf: &mut Buffer) {
         }
         overdraw(buf, sx as u16, sy as u16)
             .set_char(glyph)
-            .set_style(Style::new().fg(INK_COLOR).remove_modifier(Modifier::all()));
+            .set_style(Style::new().fg(blot.color).remove_modifier(Modifier::all()));
     }
 }
 
@@ -2090,7 +2090,7 @@ fn render_cow_speech(cow: &Cow, area: Rect, buf: &mut Buffer) {
 }
 
 fn draw_speech_bubble(cow: &Cow, text: &str, leftmost_eye_col: i32, area: Rect, buf: &mut Buffer) {
-    let fg = cow.bubble_color();
+    let fg = WHITE;
     let bubble = build_speech_bubble(text);
     let cow_x = area.x as i32 + cow.position.x as i32;
     let cow_y = area.y as i32 + cow.position.y as i32;

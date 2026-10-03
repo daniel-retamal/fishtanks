@@ -1285,3 +1285,53 @@ fn a_blind_fish_sparks_when_it_meets_the_glass() {
         "and sparked where it hit"
     );
 }
+
+fn wake_tinted(tank: &mut Tank, index: usize) -> Color {
+    let mut rng = rand::rng();
+    assert!(tank.fish[index].supports_now(Mutation::WakeColor));
+    apply_mutation_to_fish(&mut tank.fish[index], Mutation::WakeColor, &mut rng);
+    tank.fish[index].wake_color().expect("a wake colour")
+}
+
+#[test]
+fn a_snail_wake_is_its_slime_trail() {
+    let mut tank = tank_of(TankKind::Base);
+    let snail = add(&mut tank, FishSpecies::Caracol, "Shelly");
+    let wake = wake_tinted(&mut tank, snail);
+    tank.trails.clear();
+    for _ in 0..600 {
+        tick(&mut tank, DAY, 1);
+        if !tank.trails.is_empty() {
+            break;
+        }
+    }
+    assert!(!tank.trails.is_empty(), "it leaves a trail");
+    assert!(tank.trails.iter().all(|mark| mark.color == wake));
+}
+
+#[test]
+fn an_octopus_wake_is_its_ink() {
+    let mut tank = tank_of(TankKind::Base);
+    let octo = add(&mut tank, FishSpecies::Pulpo, "Inky");
+    let wake = wake_tinted(&mut tank, octo);
+    assert!(tank.fish[octo].hurry_zoomie());
+    tick(&mut tank, DAY, 2);
+    assert!(!tank.inks.is_empty(), "it inks");
+    assert!(tank.inks.iter().all(|blot| blot.color == wake));
+}
+
+#[test]
+fn only_a_being_that_leaves_a_wake_can_colour_it() {
+    let mut rng = rand::rng();
+    let stone = Fish::new(FishSpecies::Piedra, "Rock".into(), 0.0, 0.0, &mut rng);
+    assert!(
+        !stone.supports_now(Mutation::WakeColor),
+        "a stonefish never moves"
+    );
+    let cow = Cow::new("Vaquita".into(), CowVariant::Brown, 0.0, 0.0, &mut rng);
+    assert!(
+        !cow.supports_now(Mutation::WakeColor),
+        "a cow leaves no wake"
+    );
+    assert_eq!(Mutation::parse("bubblecolor"), Some(Mutation::WakeColor));
+}

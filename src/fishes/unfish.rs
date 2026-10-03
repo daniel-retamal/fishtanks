@@ -440,7 +440,8 @@ pub struct UnfishState {
     pub worm_eye_colors: Vec<Option<Color>>,
     pub slime_eye_color: Option<Color>,
     pub slime_color_patches: Vec<(usize, Color)>,
-    pub bubble_color: Option<Color>,
+    #[serde(alias = "bubble_color")]
+    pub wake_color: Option<Color>,
     pub circadian: Circadian,
     pub heterochromia: bool,
     pub ear_count: usize,
@@ -521,7 +522,7 @@ impl UnfishState {
             worm_eye_colors: Vec::new(),
             slime_eye_color: None,
             slime_color_patches: Vec::new(),
-            bubble_color: None,
+            wake_color: None,
             circadian: Circadian::Neutral,
             heterochromia: false,
             ear_count: 0,

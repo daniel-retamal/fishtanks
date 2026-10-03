@@ -81,6 +81,7 @@ impl TrailMark {
 pub struct InkBlot {
     pub cells: Vec<(i32, i32, char)>,
     pub ttl: f32,
+    pub color: Color,
 }
 
 #[derive(Clone, Copy)]
@@ -194,7 +195,9 @@ impl Tank {
             let Some(tint) = fish.species.config().trail else {
                 continue;
             };
-            let color = tint.resolve(TRAIL_DEFAULT, fish.color);
+            let color = fish
+                .wake_color()
+                .unwrap_or_else(|| tint.resolve(TRAIL_DEFAULT, fish.color));
             let cells = painted_cells(fish);
             let previous = std::mem::replace(&mut fish.habits.occupied, cells.clone());
             for (x, y) in previous {
@@ -235,6 +238,7 @@ impl Tank {
             self.inks.push(InkBlot {
                 cells,
                 ttl: INK_SECS,
+                color: fish.wake_color().unwrap_or(INK_COLOR),
             });
         }
     }

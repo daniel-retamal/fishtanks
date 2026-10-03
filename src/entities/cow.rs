@@ -219,10 +219,6 @@ impl Cow {
         COW_BASE_TORSO + self.body_length
     }
 
-    pub fn bubble_color(&self) -> Color {
-        self.mutant.bubble_color.unwrap_or(WHITE)
-    }
-
     pub fn eye_count(&self) -> usize {
         self.mutant.left_eyes.len()
     }
@@ -286,7 +282,6 @@ const COW_CAPS: &[Mutation] = &[
     Mutation::Engulfment,
     Mutation::Alienation,
     Mutation::Strawberry,
-    Mutation::BubbleColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
