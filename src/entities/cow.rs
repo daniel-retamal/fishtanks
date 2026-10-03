@@ -376,6 +376,9 @@ impl Mutatable for Cow {
     fn refresh_width(&mut self) {
         self.recompute_display_width();
     }
+    fn shows_eye_colour(&self) -> bool {
+        self.mutant.glistening_color.is_none()
+    }
     fn circadian(&self) -> Circadian {
         self.mutant.circadian
     }
@@ -437,8 +440,8 @@ impl MutantBacked for Cow {
     fn arm_engulf(&mut self) {
         self.engulf_timer = crate::fishes::fish::ENGULF_WINDOW_SECS;
     }
-    fn color_patch_range(&self) -> usize {
-        cow_paintable_cell_count(self)
+    fn color_patch_range(&self) -> std::ops::Range<usize> {
+        0..cow_paintable_cell_count(self).max(1)
     }
     fn hydra_capacity(&self) -> usize {
         cow_hydra_capacity(self)

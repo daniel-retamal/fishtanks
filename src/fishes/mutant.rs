@@ -349,8 +349,9 @@ impl MutantState {
     }
 
     pub fn randomize_all_eye_colors(&mut self, rng: &mut impl RngExt) {
+        let shared = self.eye_color;
         for e in self.all_eyes_mut() {
-            e.color = Some(random_rgb(rng));
+            e.color = Some(random_rgb_other(rng, &[e.color, shared]));
         }
     }
 
@@ -365,7 +366,7 @@ impl MutantState {
         let mut idx = rng.random_range(0..total);
         for e in self.all_eyes_mut() {
             if idx == 0 {
-                e.color = Some(random_rgb(rng));
+                e.color = Some(random_rgb_other(rng, &[e.color]));
                 return;
             }
             idx -= 1;
@@ -395,20 +396,30 @@ pub fn pick_eye_counts(body_size: usize, rng: &mut impl RngExt) -> (usize, usize
 }
 
 pub fn random_rgb(rng: &mut impl RngExt) -> Color {
-    const HUES: [(u8, u8, u8); 12] = [
-        (255, 0, 0),
-        (255, 100, 0),
-        (255, 220, 0),
-        (150, 255, 0),
-        (0, 255, 0),
-        (0, 255, 140),
-        (0, 220, 255),
-        (0, 100, 255),
-        (0, 0, 255),
-        (120, 0, 255),
-        (220, 0, 255),
-        (255, 0, 160),
-    ];
     let (r, g, b) = HUES[rng.random_range(0..HUES.len())];
     Color::Rgb(r, g, b)
 }
+
+pub fn random_rgb_other(rng: &mut impl RngExt, worn: &[Option<Color>]) -> Color {
+    let fresh: Vec<Color> = HUES
+        .iter()
+        .map(|&(r, g, b)| Color::Rgb(r, g, b))
+        .filter(|color| !worn.contains(&Some(*color)))
+        .collect();
+    fresh[rng.random_range(0..fresh.len())]
+}
+
+const HUES: [(u8, u8, u8); 12] = [
+    (255, 0, 0),
+    (255, 100, 0),
+    (255, 220, 0),
+    (150, 255, 0),
+    (0, 255, 0),
+    (0, 255, 140),
+    (0, 220, 255),
+    (0, 100, 255),
+    (0, 0, 255),
+    (120, 0, 255),
+    (220, 0, 255),
+    (255, 0, 160),
+];

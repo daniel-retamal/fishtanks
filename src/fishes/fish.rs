@@ -18,7 +18,7 @@ use super::species::{
 };
 use super::unfish::{
     BALL_WIDTH, BLINKER_BASE_COLOR, BLINKER_GLISTEN_MID, BLINKER_GLISTEN_PEAK, BLINKER_MID_COLOR,
-    BLINKER_PEAK_COLOR, SKULL_WIDTH, UNFISH_BODY_COLOR, UNFISH_EYE_COLOR, UnfishKind, UnfishState,
+    BLINKER_PEAK_COLOR, SKULL_WIDTH, UNFISH_BODY_COLOR, UnfishKind, UnfishState,
     WORM_DEFAULT_SEGMENTS, WormShape, build_worm, is_multi_row, worm_display_width, worm_eye_cols,
 };
 use crate::colors::{PINK, WHITE};
@@ -788,11 +788,7 @@ impl Fish {
             chars.body_right,
             chars.wave_right,
         ];
-        let keeps_its_colours = self.blessing_glow > 0.0
-            || self
-                .mutant
-                .as_ref()
-                .is_some_and(|mutant| mutant.glistening_color.is_some());
+        let keeps_its_colours = self.blessing_glow > 0.0 || self.paints_body();
         let mut rng = SmallRng::seed_from_u64(self.pattern_seed);
         let from_the_head: Vec<usize> = if facing_left {
             (0..cells.len()).collect()
@@ -964,21 +960,77 @@ impl Fish {
     }
 
     fn botfish_body_cells(&self, eye_color: Color) -> Vec<(char, Color)> {
+        let single = self.botfish_single_cells(eye_color);
+        if !self.is_double_now() {
+            return single;
+        }
+        let Some((lo, hi)) = botfish_span_in(&single, self.facing_left()) else {
+            return single;
+        };
+        let mirrored = |cells: &[(char, Color)]| -> Vec<(char, Color)> {
+            cells
+                .iter()
+                .rev()
+                .map(|&(glyph, color)| (mirror_char(glyph), color))
+                .collect()
+        };
+        if self.facing_left() {
+            let head = &single[..=hi];
+            let mut cells = head.to_vec();
+            cells.extend(mirrored(head));
+            return cells;
+        }
+        let head = &single[lo..];
+        let mut cells = mirrored(head);
+        cells.extend_from_slice(head);
+        cells
+    }
+
+    fn botfish_single_cells(&self, eye_color: Color) -> Vec<(char, Color)> {
         let BodyTemplate::Fixed { left, right } = self.species.config().body else {
             return Vec::new();
         };
         let variants = if self.facing_left() { left } else { right };
         let line = variants.first().copied().unwrap_or("");
+        let body = self.botfish_color();
         line.chars()
             .map(|c| {
-                let color = if c == EYE_ROUND {
-                    eye_color
-                } else {
-                    BODY_COLOR
-                };
+                let color = if c == EYE_ROUND { eye_color } else { body };
                 (c, color)
             })
             .collect()
+    }
+
+    fn botfish_color(&self) -> Color {
+        match self.mutant.as_ref() {
+            Some(mutant) if !mutant.patterned => self.color,
+            _ => BODY_COLOR,
+        }
+    }
+
+    pub fn skin(&self) -> Skin {
+        let skin = self.species.config().skin;
+        let borrowed = matches!(skin, Skin::Camouflage | Skin::SeeThrough);
+        if borrowed && self.wears_paint() {
+            return Skin::Palette;
+        }
+        skin
+    }
+
+    fn wears_paint(&self) -> bool {
+        self.paints_body()
+            || self.mutant.as_ref().is_some_and(|mutant| {
+                mutant.ear_color.is_some() || mutant.feet.is_some_and(|feet| feet.color.is_some())
+            })
+    }
+
+    fn paints_body(&self) -> bool {
+        self.mutant.as_ref().is_some_and(|mutant| {
+            !mutant.patterned
+                || mutant.glistening_color.is_some()
+                || !mutant.color_patches.is_empty()
+                || mutant.adornments.lunar
+        })
     }
 
     pub fn body_span(&self) -> Option<(usize, usize)> {
@@ -990,23 +1042,12 @@ impl Fish {
     }
 
     fn botfish_body_span(&self) -> Option<(usize, usize)> {
-        let cells = self.botfish_body_cells(BODY_COLOR);
-        let eye = cells.iter().position(|&(c, _)| c == EYE_ROUND)?;
-        let same_as =
-            |index: usize, glyph: char| cells.get(index).is_some_and(|&(c, _)| c == glyph);
-        if self.facing_left() {
-            let glyph = cells.get(eye + 1)?.0;
-            let hi = (eye + 1..cells.len())
-                .take_while(|&index| same_as(index, glyph))
-                .last()?;
-            return Some((eye + 1, hi));
+        let single = self.botfish_single_cells(BODY_COLOR);
+        let (lo, hi) = botfish_span_in(&single, self.facing_left())?;
+        if self.is_double_now() && !self.facing_left() {
+            let shift = single.len() - lo;
+            return Some((lo + shift, hi + shift));
         }
-        let hi = eye.checked_sub(1)?;
-        let glyph = cells[hi].0;
-        let lo = (0..=hi)
-            .rev()
-            .take_while(|&index| same_as(index, glyph))
-            .last()?;
         Some((lo, hi))
     }
 
@@ -1021,7 +1062,7 @@ impl Fish {
                 row[center] = if depth == ANTENNA_LENGTH - 1 {
                     (ANTENNA_TIP, tip_color)
                 } else {
-                    (ANTENNA_STALK, BODY_COLOR)
+                    (ANTENNA_STALK, self.botfish_color())
                 };
             }
             rows.push(row);
@@ -1029,6 +1070,12 @@ impl Fish {
         let body_row = rows.len();
         rows.push(body);
         LineSprite { rows, body_row }
+    }
+
+    pub fn botfish_width(&self) -> Option<usize> {
+        self.botfish_state
+            .as_ref()
+            .map(|_| self.botfish_body_cells(BODY_COLOR).len() + self.lead())
     }
 
     pub fn is_double_now(&self) -> bool {
@@ -1229,33 +1276,15 @@ impl Fish {
                 let sprite = build_worm(&shape);
                 let eye_cols = worm_eye_cols(&shape);
                 let ear_color = unfish_state.ear_color.unwrap_or(PINK);
-                let body_color = unfish_state.slime_body_color.unwrap_or(UNFISH_BODY_COLOR);
                 let n = sprite.chars().count();
-                let glisten_colors: Vec<Color> = if unfish_state.slime_glisten_enabled {
-                    let (base, mid, peak_default) = derive_glistening_palette(body_color);
-                    let peak = unfish_state.slime_glisten_color.unwrap_or(peak_default);
-                    (0..n)
-                        .map(|i| {
-                            color_for_glisten(
-                                unfish_state.slime_glisten_mode,
-                                unfish_state.slime_glisten_phase,
-                                i,
-                                n,
-                                base,
-                                mid,
-                                peak,
-                            )
-                        })
-                        .collect()
-                } else {
-                    let mut colors = vec![body_color; n];
+                let mut glisten_colors = unfish_state.line_colors(n, |_| UNFISH_BODY_COLOR);
+                if !unfish_state.slime_glisten_enabled {
                     for &(pos, color) in &unfish_state.slime_color_patches {
                         if pos < n && !eye_cols.contains(&pos) {
-                            colors[pos] = color;
+                            glisten_colors[pos] = color;
                         }
                     }
-                    colors
-                };
+                }
                 let cells: Vec<(char, Color)> = sprite
                     .chars()
                     .enumerate()
@@ -1278,7 +1307,7 @@ impl Fish {
                     Direction::Right => Direction::Left,
                 };
                 let chars = self.build_standard_chars_for(body_chars, opposite);
-                let colors = vec![UNFISH_BODY_COLOR; chars.len()];
+                let colors = unfish_state.line_colors(chars.len(), |_| UNFISH_BODY_COLOR);
                 let mut segs: Vec<(char, Color)> = chars.into_iter().zip(colors).collect();
                 if matches!(self.facing, Direction::Left) {
                     segs.reverse();
@@ -1296,14 +1325,14 @@ impl Fish {
                     } else {
                         1
                     };
-                    segs[eye_idx].1 = UNFISH_EYE_COLOR;
+                    segs[eye_idx].1 = unfish_state.eye_render_color();
                     span = insert_line_appendages(
                         &mut segs,
                         eye_idx,
                         unfish_state.ear_count,
                         unfish_state.ear_color.unwrap_or(PINK),
                         unfish_state.hydra_count,
-                        UNFISH_EYE_COLOR,
+                        unfish_state.eye_render_color(),
                     );
                 }
                 (segs, span)
@@ -1311,18 +1340,16 @@ impl Fish {
             UnfishKind::Blinker => {
                 let chars = self.build_standard_chars(body_chars);
                 let n = chars.len();
-                let colors: Vec<Color> = (0..n)
-                    .map(|i| {
-                        let s = (unfish_state.glistening_phase - i as f32 * CHAR_SPREAD).sin();
-                        if s > BLINKER_GLISTEN_PEAK {
-                            BLINKER_PEAK_COLOR
-                        } else if s > BLINKER_GLISTEN_MID {
-                            BLINKER_MID_COLOR
-                        } else {
-                            BLINKER_BASE_COLOR
-                        }
-                    })
-                    .collect();
+                let colors = unfish_state.line_colors(n, |i| {
+                    let s = (unfish_state.glistening_phase - i as f32 * CHAR_SPREAD).sin();
+                    if s > BLINKER_GLISTEN_PEAK {
+                        BLINKER_PEAK_COLOR
+                    } else if s > BLINKER_GLISTEN_MID {
+                        BLINKER_MID_COLOR
+                    } else {
+                        BLINKER_BASE_COLOR
+                    }
+                });
                 let mut segs: Vec<(char, Color)> = chars.into_iter().zip(colors).collect();
                 if matches!(self.facing, Direction::Right) {
                     segs.reverse();
@@ -1339,20 +1366,23 @@ impl Fish {
                     } else {
                         n - 2
                     };
+                    if let Some(eye) = unfish_state.slime_eye_color {
+                        segs[eye_idx].1 = eye;
+                    }
                     span = insert_line_appendages(
                         &mut segs,
                         eye_idx,
                         unfish_state.ear_count,
                         unfish_state.ear_color.unwrap_or(PINK),
                         unfish_state.hydra_count,
-                        UNFISH_EYE_COLOR,
+                        unfish_state.eye_render_color(),
                     );
                 }
                 (segs, span)
             }
             _ => {
                 let chars = self.build_standard_chars(body_chars);
-                let colors = vec![UNFISH_BODY_COLOR; chars.len()];
+                let colors = unfish_state.line_colors(chars.len(), |_| UNFISH_BODY_COLOR);
                 let mut segs: Vec<(char, Color)> = chars.into_iter().zip(colors).collect();
                 if matches!(self.facing, Direction::Right) {
                     segs.reverse();
@@ -1370,14 +1400,14 @@ impl Fish {
                     } else {
                         1
                     };
-                    segs[eye_idx].1 = UNFISH_EYE_COLOR;
+                    segs[eye_idx].1 = unfish_state.eye_render_color();
                     span = insert_line_appendages(
                         &mut segs,
                         eye_idx,
                         unfish_state.ear_count,
                         unfish_state.ear_color.unwrap_or(PINK),
                         unfish_state.hydra_count,
-                        UNFISH_EYE_COLOR,
+                        unfish_state.eye_render_color(),
                     );
                 }
                 (segs, span)
@@ -2199,8 +2229,8 @@ impl Fish {
             }
             UnfishKind::Reversed => {
                 let chars = self.build_standard_chars_for(body_chars, Direction::Right);
-                let mut segs: Vec<(char, Color)> =
-                    chars.into_iter().map(|c| (c, UNFISH_BODY_COLOR)).collect();
+                let colors = unfish_state.line_colors(chars.len(), |_| UNFISH_BODY_COLOR);
+                let mut segs: Vec<(char, Color)> = chars.into_iter().zip(colors).collect();
                 segs.reverse();
                 let n = segs.len();
                 for &(pos, color) in &unfish_state.slime_color_patches {
@@ -2209,22 +2239,22 @@ impl Fish {
                     }
                 }
                 if n >= 2 {
-                    segs[n - 2].1 = UNFISH_EYE_COLOR;
+                    segs[n - 2].1 = unfish_state.eye_render_color();
                     insert_line_appendages(
                         &mut segs,
                         n - 2,
                         unfish_state.ear_count,
                         unfish_state.ear_color.unwrap_or(PINK),
                         unfish_state.hydra_count,
-                        UNFISH_EYE_COLOR,
+                        unfish_state.eye_render_color(),
                     );
                 }
                 segs
             }
             UnfishKind::Blinker => {
                 let chars = self.build_standard_chars_for(body_chars, Direction::Left);
-                let mut segs: Vec<(char, Color)> =
-                    chars.into_iter().map(|c| (c, BLINKER_BASE_COLOR)).collect();
+                let colors = unfish_state.line_colors(chars.len(), |_| BLINKER_BASE_COLOR);
+                let mut segs: Vec<(char, Color)> = chars.into_iter().zip(colors).collect();
                 let n = segs.len();
                 for &(pos, color) in &unfish_state.slime_color_patches {
                     if pos < n {
@@ -2232,22 +2262,22 @@ impl Fish {
                     }
                 }
                 if n >= 2 {
-                    segs[1].1 = UNFISH_EYE_COLOR;
+                    segs[1].1 = unfish_state.eye_render_color();
                     insert_line_appendages(
                         &mut segs,
                         1,
                         unfish_state.ear_count,
                         unfish_state.ear_color.unwrap_or(PINK),
                         unfish_state.hydra_count,
-                        UNFISH_EYE_COLOR,
+                        unfish_state.eye_render_color(),
                     );
                 }
                 segs
             }
             _ => {
                 let chars = self.build_standard_chars_for(body_chars, Direction::Left);
-                let mut segs: Vec<(char, Color)> =
-                    chars.into_iter().map(|c| (c, UNFISH_BODY_COLOR)).collect();
+                let colors = unfish_state.line_colors(chars.len(), |_| UNFISH_BODY_COLOR);
+                let mut segs: Vec<(char, Color)> = chars.into_iter().zip(colors).collect();
                 let n = segs.len();
                 for &(pos, color) in &unfish_state.slime_color_patches {
                     if pos < n {
@@ -2255,14 +2285,14 @@ impl Fish {
                     }
                 }
                 if n >= 2 {
-                    segs[1].1 = UNFISH_EYE_COLOR;
+                    segs[1].1 = unfish_state.eye_render_color();
                     insert_line_appendages(
                         &mut segs,
                         1,
                         unfish_state.ear_count,
                         unfish_state.ear_color.unwrap_or(PINK),
                         unfish_state.hydra_count,
-                        UNFISH_EYE_COLOR,
+                        unfish_state.eye_render_color(),
                     );
                 }
                 segs
@@ -2592,6 +2622,25 @@ impl Fish {
         };
         self.velocity.dx = -self.velocity.dx;
     }
+}
+
+fn botfish_span_in(cells: &[(char, Color)], facing_left: bool) -> Option<(usize, usize)> {
+    let eye = cells.iter().position(|&(c, _)| c == EYE_ROUND)?;
+    let same_as = |index: usize, glyph: char| cells.get(index).is_some_and(|&(c, _)| c == glyph);
+    if facing_left {
+        let glyph = cells.get(eye + 1)?.0;
+        let hi = (eye + 1..cells.len())
+            .take_while(|&index| same_as(index, glyph))
+            .last()?;
+        return Some((eye + 1, hi));
+    }
+    let hi = eye.checked_sub(1)?;
+    let glyph = cells[hi].0;
+    let lo = (0..=hi)
+        .rev()
+        .take_while(|&index| same_as(index, glyph))
+        .last()?;
+    Some((lo, hi))
 }
 
 fn invert_mouth(ch: char) -> char {

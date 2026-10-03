@@ -948,7 +948,7 @@ fn is_eye_glyph(glyph: char) -> bool {
 
 fn render_line_sprite(fish: &Fish, water: Color, area: Rect, buf: &mut Buffer) {
     let sprite = fish.line_sprite();
-    let skin = fish.species.config().skin;
+    let skin = fish.skin();
     let body_screen_y = area.y as i32 + fish.position.y as i32;
     let base_y = body_screen_y - sprite.body_row as i32;
     let x_base = area.x as i32 + fish.position.x as i32;

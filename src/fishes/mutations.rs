@@ -5,7 +5,7 @@ use super::fish::{ENGULF_WINDOW_SECS, Fish, compute_display_width};
 use super::fused::FusedComponent;
 use super::mutant::{
     Adornments, Circadian, EyeState, MIN_BODY_CHARS, Mark, MutantState, MutantTail, MutationRecord,
-    random_rgb,
+    random_rgb, random_rgb_other,
 };
 use super::revert::{Look, can_revert, revert, settle_old_record};
 use super::species::{BodyTemplate, FishSpecies, SINGLE_EYE, TailKind};
@@ -30,6 +30,7 @@ const LEGACY_WAKE_TOKEN: &str = "bubblecolor";
 const WORM_MAX_SEGMENTS: usize = 12;
 const WORM_MAX_EXTRA_EYES: usize = 4;
 const DOUBLE_EYE_COUNT_MAX: usize = 3;
+const MOUTH_CELLS: usize = 1;
 const MAX_EARS: usize = 4;
 const HYDRA_EYES_PER_APPLICATION_MIN: usize = 1;
 const HYDRA_EYES_PER_APPLICATION_MAX: usize = 2;
@@ -365,6 +366,30 @@ pub trait Mutatable {
         true
     }
 
+    fn can_grow_body(&self) -> bool {
+        true
+    }
+
+    fn can_grow_eyes(&self) -> bool {
+        true
+    }
+
+    fn shows_eye_colour(&self) -> bool {
+        true
+    }
+
+    fn shifts_body(&self) -> bool {
+        false
+    }
+
+    fn turns_mouth(&self) -> bool {
+        true
+    }
+
+    fn head_differs_from_tail(&self) -> bool {
+        true
+    }
+
     fn supports_now(&self, mutation: Mutation) -> bool {
         if !self.capabilities().contains(&mutation) {
             return false;
@@ -380,8 +405,20 @@ pub trait Mutatable {
             Mutation::Lure | Mutation::Bill => !adornments.lure && !adornments.bill,
             Mutation::DorsalFin => self.band_free(Band::Top),
             Mutation::VentralFin => self.band_free(Band::Bottom),
-            Mutation::Telophase => !self.is_double() || self.backwards(),
-            Mutation::BackwardsTelophase => !self.is_double() || !self.backwards(),
+            Mutation::Telophase => {
+                !self.is_double() || (self.backwards() && self.head_differs_from_tail())
+            }
+            Mutation::BackwardsTelophase => {
+                !self.is_double() || (!self.backwards() && self.head_differs_from_tail())
+            }
+            Mutation::SizeIncrease => self.can_grow_body(),
+            Mutation::EyeIncrease => self.can_grow_eyes(),
+            Mutation::EyeColor | Mutation::Heterochromia => self.shows_eye_colour(),
+            Mutation::GlistenMode => self.has_glisten(),
+            Mutation::ColorPatch => !self.has_glisten() && !adornments.lunar,
+            Mutation::BodyVariant => self.shifts_body(),
+            Mutation::MouthVariant => self.turns_mouth(),
+            Mutation::TailVariant => !self.is_double() || self.backwards(),
             Mutation::Cytokinesis => self.is_double(),
             Mutation::Endocytosis => self.is_double(),
             Mutation::Engulfment => !self.is_double(),
@@ -444,12 +481,20 @@ pub trait MutantBacked {
     fn arm_engulf(&mut self) {}
     fn add_sell_bonus(&mut self, _pct: u32) {}
     fn gain_segment_mass(&mut self, _grown_from: usize) {}
-    fn color_patch_range(&self) -> usize {
-        self.mutant().display_width(self.body_size())
+    fn color_patch_range(&self) -> std::ops::Range<usize> {
+        let mutant = self.mutant();
+        body_cells(mutant, mutant.display_width(self.body_size()))
     }
     fn hydra_capacity(&self) -> usize {
         self.body_size().saturating_sub(1)
     }
+}
+
+fn body_cells(mutant: &MutantState, width: usize) -> std::ops::Range<usize> {
+    let eyes = mutant.left_eyes.len().max(mutant.right_eyes.len());
+    let end = width.saturating_sub(mutant.adornments.lead()).max(1);
+    let start = (MOUTH_CELLS + eyes).min(end - 1);
+    start..end
 }
 
 fn seed_double<T: MutantBacked>(target: &mut T, rng: &mut impl RngExt, backwards: bool) {
@@ -487,12 +532,15 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
             target.mutant_mut().hydra_eyes.truncate(hydra_cap);
         }
         Mutation::ColorPatch => {
-            let width = target.color_patch_range().max(1);
+            let cells = target.color_patch_range();
+            let skin = target.color();
             let count = rng.random_range(MUTATION_PATCH_COUNT_MIN..=MUTATION_PATCH_COUNT_MAX);
             let mutant = target.mutant_mut();
             for _ in 0..count {
-                let pos = rng.random_range(0..width);
-                mutant.color_patches.push((pos, random_rgb(rng)));
+                let pos = rng.random_range(cells.clone());
+                mutant
+                    .color_patches
+                    .push((pos, random_rgb_other(rng, &[Some(skin)])));
             }
             if mutant.color_patches.len() > MUTATION_PATCH_MAX {
                 let excess = mutant.color_patches.len() - MUTATION_PATCH_MAX;
@@ -515,7 +563,7 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
             if mutant.heterochromia {
                 mutant.randomize_one_eye_color(rng);
             } else {
-                mutant.eye_color = Some(random_rgb(rng));
+                mutant.eye_color = Some(random_rgb_other(rng, &[mutant.eye_color]));
             }
         }
         Mutation::Heterochromia => {
@@ -539,14 +587,11 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
         }
         Mutation::GlistenColor => {
             let mutant = target.mutant_mut();
-            mutant.glistening_color = if mutant.glistening_color.is_none() || rng.random::<bool>() {
-                Some(random_rgb(rng))
-            } else {
-                None
-            };
+            mutant.glistening_color = Some(random_rgb_other(rng, &[mutant.glistening_color]));
         }
         Mutation::BodyColor => {
-            target.set_color(random_rgb(rng));
+            let worn = target.color();
+            target.set_color(random_rgb_other(rng, &[Some(worn)]));
             let mutant = target.mutant_mut();
             mutant.color_patches.clear();
             if mutant.heterochromia {
@@ -601,7 +646,8 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
             target.add_sell_bonus(STRAWBERRY_SELL_BONUS_PCT);
         }
         Mutation::WakeColor => {
-            target.mutant_mut().wake_color = Some(random_rgb(rng));
+            let mutant = target.mutant_mut();
+            mutant.wake_color = Some(random_rgb_other(rng, &[mutant.wake_color]));
         }
         Mutation::NightOwl => {
             target.mutant_mut().circadian = Circadian::NightOwl;
@@ -613,7 +659,8 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
             target.mutant_mut().ear_count += 1;
         }
         Mutation::EarColor => {
-            target.mutant_mut().ear_color = Some(random_rgb(rng));
+            let mutant = target.mutant_mut();
+            mutant.ear_color = Some(random_rgb_other(rng, &[mutant.ear_color]));
         }
         Mutation::Hydra => {
             let cap = target.hydra_capacity();
@@ -631,7 +678,7 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
         }
         Mutation::FeetColor => {
             if let Some(feet) = target.mutant_mut().feet.as_mut() {
-                feet.color = Some(random_rgb(rng));
+                feet.color = Some(random_rgb_other(rng, &[feet.color]));
             }
         }
         Mutation::Spikes | Mutation::Wings | Mutation::Tentacles | Mutation::Revert => {}
@@ -677,6 +724,30 @@ const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::Lure,
     Mutation::Bill,
     Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Lunar,
+    Mutation::Puff,
+    Mutation::Revert,
+];
+
+const BOTFISH_CAPS: &[Mutation] = &[
+    Mutation::Telophase,
+    Mutation::Cytokinesis,
+    Mutation::Endocytosis,
+    Mutation::Engulfment,
+    Mutation::Alienation,
+    Mutation::Strawberry,
+    Mutation::BodyColor,
+    Mutation::WakeColor,
+    Mutation::NightOwl,
+    Mutation::HelpedByGod,
+    Mutation::Feet,
+    Mutation::FeetColor,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
+    Mutation::Lure,
+    Mutation::Bill,
     Mutation::VentralFin,
     Mutation::Lunar,
     Mutation::Puff,
@@ -827,6 +898,94 @@ pub(crate) fn ensure_fish_mutant(fish: &mut Fish, rng: &mut impl RngExt) {
     fish.mutant = Some(Box::new(mutant));
 }
 
+impl Fish {
+    fn eye_counts(&self) -> (usize, usize) {
+        if let Some(mutant) = self.mutant.as_ref() {
+            return (mutant.left_eyes.len(), mutant.right_eyes.len());
+        }
+        match self.species.config().body {
+            BodyTemplate::Standard(_) | BodyTemplate::Alternating(_, _) => (1, 1),
+            BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => (0, 0),
+        }
+    }
+
+    fn natural_body_size(&self) -> usize {
+        match self.species.config().body {
+            BodyTemplate::Fixed { left, .. } if self.mutant.is_none() => left
+                .first()
+                .map_or(1, |row| row.chars().count())
+                .saturating_sub(2),
+            _ => self.body_size,
+        }
+    }
+
+    fn can_grow_body(&self) -> bool {
+        if let Some(us) = self.unfish_state.as_ref() {
+            return us.worm_segments < WORM_MAX_SEGMENTS;
+        }
+        self.natural_body_size() < MUTATION_MAX_BODY_SIZE
+    }
+
+    fn can_grow_eyes(&self) -> bool {
+        if let Some(us) = self.unfish_state.as_ref() {
+            return match us.kind.mutation_style() {
+                UnfishMutationStyle::Worm => us.worm_extra_eyes < WORM_MAX_EXTRA_EYES,
+                UnfishMutationStyle::Slime => us.has_room_for_an_eye(),
+            };
+        }
+        let (left, right) = self.eye_counts();
+        let most = self
+            .natural_body_size()
+            .saturating_sub(MIN_BODY_CHARS)
+            .clamp(1, 4);
+        left < most || right < most
+    }
+
+    fn shows_eye_colour(&self) -> bool {
+        if let Some(us) = self.unfish_state.as_ref() {
+            return us.has_an_eye();
+        }
+        let (left, right) = self.eye_counts();
+        left + right > 0
+    }
+
+    fn turns_mouth(&self) -> bool {
+        let turns = |mouth: char| invert_mouth_glyph(mouth) != mouth;
+        if self.has_shifting_body() {
+            return true;
+        }
+        match self.species.config().body {
+            BodyTemplate::Standard(chars) | BodyTemplate::Alternating(chars, _) => {
+                turns(chars.mouth_left)
+            }
+            BodyTemplate::Fixed { left, .. } => left
+                .first()
+                .and_then(|row| row.chars().next())
+                .is_some_and(turns),
+            BodyTemplate::Figure(_) => false,
+        }
+    }
+
+    fn head_differs_from_tail(&self) -> bool {
+        let BodyTemplate::Fixed { left, .. } = self.species.config().body else {
+            return true;
+        };
+        let row: Vec<char> = left
+            .first()
+            .map_or_else(Vec::new, |row| row.chars().collect());
+        let (eyes, _) = self.eye_counts();
+        row.len() > 1 && (row.first() != row.last() || eyes > 0)
+    }
+}
+
+fn invert_mouth_glyph(glyph: char) -> char {
+    match glyph {
+        '<' => '>',
+        '>' => '<',
+        other => other,
+    }
+}
+
 pub(crate) fn grow_birthmarks(fish: &mut Fish, rng: &mut impl RngExt) {
     for &mutation in fish.species.config().born_with {
         fish.apply_one(mutation, rng);
@@ -901,7 +1060,9 @@ pub fn apply_unfish_mutation(
                 us.worm_is_double = false;
                 us.worm_backwards = false;
             }
-            Mutation::BodyColor => us.slime_body_color = Some(random_rgb(rng)),
+            Mutation::BodyColor => {
+                us.slime_body_color = Some(random_rgb_other(rng, &[us.slime_body_color]))
+            }
             Mutation::EyeColor => us.recolor_one_eye(rng),
             Mutation::Heterochromia => us.make_heterochromatic(rng),
             Mutation::GlistenEnable => us.slime_glisten_enabled = true,
@@ -910,16 +1071,19 @@ pub fn apply_unfish_mutation(
             Mutation::GlistenMode => {
                 us.slime_glisten_mode = us.slime_glisten_mode.random_other(rng)
             }
-            Mutation::GlistenColor => us.slime_glisten_color = Some(random_rgb(rng)),
-            Mutation::WakeColor => us.wake_color = Some(random_rgb(rng)),
+            Mutation::GlistenColor => {
+                us.slime_glisten_color = Some(random_rgb_other(rng, &[us.slime_glisten_color]));
+                us.slime_glisten_enabled = true;
+            }
+            Mutation::WakeColor => us.wake_color = Some(random_rgb_other(rng, &[us.wake_color])),
             Mutation::NightOwl => us.circadian = Circadian::NightOwl,
             Mutation::HelpedByGod => us.circadian = Circadian::HelpedByGod,
             Mutation::Ear => us.ear_count += 1,
-            Mutation::EarColor => us.ear_color = Some(random_rgb(rng)),
+            Mutation::EarColor => us.ear_color = Some(random_rgb_other(rng, &[us.ear_color])),
             Mutation::Feet => us.feet = Some(roll_feet(rng)),
             Mutation::FeetColor => {
                 if let Some(feet) = us.feet.as_mut() {
-                    feet.color = Some(random_rgb(rng));
+                    feet.color = Some(random_rgb_other(rng, &[feet.color]));
                 }
             }
             Mutation::Spikes | Mutation::Wings | Mutation::Tentacles => {
@@ -994,6 +1158,9 @@ impl Mutatable for Fish {
         if !self.species.config().mutatable {
             return &[];
         }
+        if self.botfish_state.is_some() {
+            return BOTFISH_CAPS;
+        }
         match self.species.config().body {
             BodyTemplate::Standard(_) | BodyTemplate::Alternating(_, _) => MUTANT_FULL_CAPS,
             BodyTemplate::Fixed { left, .. } => {
@@ -1036,9 +1203,35 @@ impl Mutatable for Fish {
         if let Some(us) = self.unfish_state.as_ref() {
             return us.slime_glisten_enabled;
         }
-        self.mutant
-            .as_ref()
-            .is_some_and(|m| m.glistening_color.is_some())
+        self.species.config().auto_glisten
+            || self
+                .mutant
+                .as_ref()
+                .is_some_and(|m| m.glistening_color.is_some())
+    }
+
+    fn can_grow_body(&self) -> bool {
+        Fish::can_grow_body(self)
+    }
+
+    fn can_grow_eyes(&self) -> bool {
+        Fish::can_grow_eyes(self)
+    }
+
+    fn shows_eye_colour(&self) -> bool {
+        Fish::shows_eye_colour(self)
+    }
+
+    fn shifts_body(&self) -> bool {
+        self.has_shifting_body()
+    }
+
+    fn turns_mouth(&self) -> bool {
+        Fish::turns_mouth(self)
+    }
+
+    fn head_differs_from_tail(&self) -> bool {
+        Fish::head_differs_from_tail(self)
     }
 
     fn apply_one(&mut self, mutation: Mutation, rng: &mut impl RngExt) -> MutationOutcome {
@@ -1209,12 +1402,19 @@ impl MutantBacked for Fish {
     fn self_component(&self) -> FusedComponent {
         FusedComponent::fish(self.species, self.name.clone(), self.weight_g)
     }
+    fn color_patch_range(&self) -> std::ops::Range<usize> {
+        body_cells(self.mutant(), self.display_width)
+    }
     fn arm_engulf(&mut self) {
         self.engulf_timer = ENGULF_WINDOW_SECS;
     }
     fn recompute_display_width(&mut self) {
         if self.fused_render_halves().is_some() {
             self.display_width = self.fused_render_width();
+            return;
+        }
+        if let Some(width) = self.botfish_width() {
+            self.display_width = width;
             return;
         }
         let Some(mutant) = self.mutant.as_ref() else {

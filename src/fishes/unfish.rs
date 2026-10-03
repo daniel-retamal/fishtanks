@@ -6,9 +6,9 @@ use std::f32::consts::TAU;
 use crate::colors::{DARK_GRAY, GRAY, WHITE};
 
 use crate::entities::components::BlinkTimer;
-use crate::entities::glistening::GlisteningMode;
+use crate::entities::glistening::{GlisteningMode, color_for_glisten, derive_glistening_palette};
 use crate::fishes::fused::FusedComponent;
-use crate::fishes::mutant::{Adornments, Circadian, random_rgb};
+use crate::fishes::mutant::{Adornments, Circadian, random_rgb_other};
 use crate::fishes::species::Sin;
 use crate::sprite::{BodyExtension, EAR_LEFT, EAR_RIGHT, Feet};
 use crate::util::{even_indices, sample_exponential};
@@ -387,6 +387,28 @@ fn try_place_eye(
             return;
         }
     }
+    if let Some((row, col)) = free_spot(eyes, interior, exclude) {
+        eyes.push(FloatingEye::new(row, col, rng));
+    }
+}
+
+type EyeInterior = (&'static [(usize, i32, i32)], Option<(usize, f32)>);
+
+fn free_spot(
+    eyes: &[FloatingEye],
+    interior: &[(usize, i32, i32)],
+    exclude: Option<(usize, f32)>,
+) -> Option<(usize, f32)> {
+    interior.iter().find_map(|&(row, min_col, max_col)| {
+        (min_col..=max_col).map(|col| col as f32).find_map(|col| {
+            let blocked_ex = exclude.is_some_and(|(er, ec)| row == er && (col - ec).abs() < 3.0);
+            let blocked = eyes
+                .iter()
+                .filter(|e| e.row == row)
+                .any(|e| (e.col - col).abs() < 3.0);
+            (!blocked_ex && !blocked).then_some((row, col))
+        })
+    })
 }
 
 fn fill_eyes(
@@ -534,6 +556,35 @@ impl UnfishState {
         }
     }
 
+    pub fn eye_render_color(&self) -> Color {
+        self.slime_eye_color.unwrap_or(UNFISH_EYE_COLOR)
+    }
+
+    pub fn line_colors(&self, n: usize, natural: impl Fn(usize) -> Color) -> Vec<Color> {
+        if self.slime_glisten_enabled {
+            let body = self.slime_body_color.unwrap_or(UNFISH_BODY_COLOR);
+            let (base, mid, peak_default) = derive_glistening_palette(body);
+            let peak = self.slime_glisten_color.unwrap_or(peak_default);
+            return (0..n)
+                .map(|i| {
+                    color_for_glisten(
+                        self.slime_glisten_mode,
+                        self.slime_glisten_phase,
+                        i,
+                        n,
+                        base,
+                        mid,
+                        peak,
+                    )
+                })
+                .collect();
+        }
+        match self.slime_body_color {
+            Some(color) => vec![color; n],
+            None => (0..n).map(natural).collect(),
+        }
+    }
+
     pub fn wear(&mut self, look: &UnfishState) {
         self.floating_eyes = look.floating_eyes.clone();
         self.ball_has_center_eye = look.ball_has_center_eye;
@@ -678,18 +729,36 @@ impl UnfishState {
         }
     }
 
-    pub fn add_floating_eye(&mut self, rng: &mut impl RngExt) {
+    fn eye_interior(&self) -> Option<EyeInterior> {
         let interior: &[(usize, i32, i32)] = match self.kind {
             UnfishKind::Ball => BALL_INTERIOR,
             UnfishKind::Skull => SKULL_INTERIOR,
-            _ => return,
+            _ => return None,
         };
-        let center = if self.kind == UnfishKind::Ball && self.ball_has_center_eye {
-            Some((BALL_EYE_ROW, BALL_EYE_COL as f32))
-        } else {
-            None
+        let center = (self.kind == UnfishKind::Ball && self.ball_has_center_eye)
+            .then_some((BALL_EYE_ROW, BALL_EYE_COL as f32));
+        Some((interior, center))
+    }
+
+    pub fn add_floating_eye(&mut self, rng: &mut impl RngExt) {
+        let Some((interior, center)) = self.eye_interior() else {
+            return;
         };
         try_place_eye(&mut self.floating_eyes, interior, center, rng);
+    }
+
+    pub fn has_room_for_an_eye(&self) -> bool {
+        self.eye_interior().is_some_and(|(interior, center)| {
+            free_spot(&self.floating_eyes, interior, center).is_some()
+        })
+    }
+
+    pub fn has_an_eye(&self) -> bool {
+        match self.kind {
+            UnfishKind::Ball => self.ball_has_center_eye || !self.floating_eyes.is_empty(),
+            UnfishKind::Skull => !self.floating_eyes.is_empty(),
+            _ => true,
+        }
     }
 
     pub fn worm_eye_count(&self) -> usize {
@@ -710,7 +779,8 @@ impl UnfishState {
         }
         let n = self.worm_eye_count();
         while self.worm_eye_colors.len() < n {
-            self.worm_eye_colors.push(Some(random_rgb(rng)));
+            self.worm_eye_colors
+                .push(Some(random_rgb_other(rng, &[self.slime_eye_color])));
         }
         self.worm_eye_colors.truncate(n);
     }
@@ -728,15 +798,18 @@ impl UnfishState {
         self.heterochromia = true;
         if self.kind == UnfishKind::Worm {
             let n = self.worm_eye_count();
-            self.worm_eye_colors = (0..n).map(|_| Some(random_rgb(rng))).collect();
+            let shared = self.slime_eye_color;
+            self.worm_eye_colors = (0..n)
+                .map(|_| Some(random_rgb_other(rng, &[shared])))
+                .collect();
             return;
         }
         if self.floating_eyes.is_empty() {
-            self.slime_eye_color = Some(random_rgb(rng));
+            self.slime_eye_color = Some(random_rgb_other(rng, &[self.slime_eye_color]));
             return;
         }
         for eye in &mut self.floating_eyes {
-            eye.color = Some(random_rgb(rng));
+            eye.color = Some(random_rgb_other(rng, &[eye.color]));
         }
     }
 
@@ -748,17 +821,19 @@ impl UnfishState {
                     return;
                 }
                 let idx = rng.random_range(0..self.worm_eye_colors.len());
-                self.worm_eye_colors[idx] = Some(random_rgb(rng));
+                self.worm_eye_colors[idx] =
+                    Some(random_rgb_other(rng, &[self.worm_eye_colors[idx]]));
             } else {
-                self.slime_eye_color = Some(random_rgb(rng));
+                self.slime_eye_color = Some(random_rgb_other(rng, &[self.slime_eye_color]));
             }
             return;
         }
         if self.heterochromia && !self.floating_eyes.is_empty() {
             let idx = rng.random_range(0..self.floating_eyes.len());
-            self.floating_eyes[idx].color = Some(random_rgb(rng));
+            self.floating_eyes[idx].color =
+                Some(random_rgb_other(rng, &[self.floating_eyes[idx].color]));
             return;
         }
-        self.slime_eye_color = Some(random_rgb(rng));
+        self.slime_eye_color = Some(random_rgb_other(rng, &[self.slime_eye_color]));
     }
 }
