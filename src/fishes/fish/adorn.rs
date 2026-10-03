@@ -291,11 +291,13 @@ impl Fish {
                 let lure = ahead_of_mouth(reach + 2);
                 sprite.rows[body_row][lure] = (LURE, self.lure_color());
                 let root = ahead_of_mouth(reach);
-                place(
-                    &mut sprite,
-                    &[(gap, (LURE_STALK, skin)), (root, (LURE_ROOT, skin))],
-                    true,
-                );
+                let over_the_body = span.is_some_and(|(lo, hi)| (lo..=hi).contains(&root));
+                let stalk: &[(usize, Cell)] = if over_the_body {
+                    &[(gap, (LURE_STALK, skin))]
+                } else {
+                    &[(gap, (LURE_STALK, skin)), (root, (LURE_ROOT, skin))]
+                };
+                place(&mut sprite, stalk, true);
             }
         }
         if let Some((lo, hi)) = span {

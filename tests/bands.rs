@@ -288,3 +288,19 @@ fn a_line_unfish_follows_the_same_bands() {
     assert_eq!(phantom.body_extension().top, Some(ExtensionVariant::Spike));
     assert_eq!(phantom.body_extension().bottom, None);
 }
+
+#[test]
+fn a_one_glyph_body_wears_a_lure_and_a_dorsal_fin_on_one_row() {
+    for species in [FishSpecies::Jellyfish, FishSpecies::Estrella] {
+        let mut body = fish(species);
+        grow(&mut body, Mutation::Lure);
+        grow(&mut body, Mutation::DorsalFin);
+        assert_eq!(
+            rows_above(&body),
+            1,
+            "{}: {:?}",
+            species.display_name(),
+            rows(&body)
+        );
+    }
+}
