@@ -8,8 +8,10 @@ use unicode_width::UnicodeWidthChar;
 use super::botfish::{ANTENNA_LENGTH, ANTENNA_STALK, ANTENNA_TIP, BODY_COLOR, BotfishState};
 use super::fused::FusedComponent;
 use super::habits::Habits;
-use super::mutant::{Adornments, Circadian, EXTRA_BODY_FOR_DOUBLE, MutantState, MutationRecord};
-use super::mutations::{grow_birthmarks, native_eyes};
+use super::mutant::{
+    Adornments, Circadian, EXTRA_BODY_FOR_DOUBLE, MutantState, MutantTail, MutationRecord,
+};
+use super::mutations::{grow_birthmarks, native_eyes, tail_kind_to_mutant_tail};
 use super::species::{
     BodyChars, BodyFill, BodySource, BodyTemplate, Cycle, EYE_CIRCLE, EYE_ROUND, FishSpecies,
     Habit, Locomotion, PatternKind, Sin, SizeCategory, Skin, TailKind, Zoomie,
@@ -1600,7 +1602,12 @@ impl Fish {
                     mo,
                     body_char,
                     wave_char,
-                    tail_chars(body_chars, self.facing, self.sway.phase),
+                    grown_tail(
+                        body_chars,
+                        mutant.tail_variant,
+                        self.facing,
+                        self.sway.phase,
+                    ),
                 )
             };
 
@@ -2064,15 +2071,7 @@ impl Fish {
                 };
                 let mut chars = vec![body_chars.mouth_left, body_chars.eye_left];
                 chars.extend(std::iter::repeat_n(body_chars.body_left, self.body_size));
-                let tail: Vec<char> = match body_chars.tail {
-                    TailKind::Wide => vec!['>', '<'],
-                    TailKind::WideCurly => vec!['>', '<', '{'],
-                    TailKind::Short => vec!['<'],
-                    TailKind::Custom { left, .. } => vec![left],
-                    TailKind::Swaying { left, .. } => vec![left],
-                    TailKind::None => vec![],
-                };
-                chars.extend(tail);
+                chars.extend(tail_chars(body_chars, Direction::Left, 0.0));
                 let len = chars.len();
                 let colors = if matches!(config.pattern, PatternKind::Glistening) {
                     self.build_glistening_colors(
@@ -2343,7 +2342,7 @@ impl Fish {
                 (
                     rm,
                     body_chars.body_left,
-                    tail_chars(body_chars, Direction::Left, 0.0),
+                    grown_tail(body_chars, mutant.tail_variant, Direction::Left, 0.0),
                 )
             };
         let max_eyes = mutant.left_eyes.len().max(mutant.right_eyes.len());
@@ -2742,6 +2741,18 @@ fn half_row(
     } else {
         vec![(crate::sprite::TRANSPARENT, Color::Reset); width]
     }
+}
+
+fn grown_tail(
+    body_chars: BodyChars,
+    grown: MutantTail,
+    facing: Direction,
+    phase: f32,
+) -> Vec<char> {
+    if tail_kind_to_mutant_tail(body_chars.tail) == grown {
+        return tail_chars(body_chars, facing, phase);
+    }
+    grown.chars(matches!(facing, Direction::Left), phase)
 }
 
 fn tail_chars(body_chars: BodyChars, facing: Direction, phase: f32) -> Vec<char> {

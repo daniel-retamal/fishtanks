@@ -123,6 +123,19 @@ fn rows_of(fish: &Fish) -> Vec<String> {
         .collect()
 }
 
+fn drawn_width(fish: &Fish) -> usize {
+    fish.line_sprite()
+        .rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|&(c, _)| UnicodeWidthChar::width(c).unwrap_or(1))
+                .sum::<usize>()
+        })
+        .max()
+        .unwrap_or(0)
+}
+
 fn render(tank: &Tank) -> Buffer {
     let area = Rect::new(0, 0, tank.width, tank.height);
     let mut buf = Buffer::empty(area);
@@ -192,17 +205,7 @@ fn every_species_fills_its_display_width_both_ways() {
             for phase in [0.0, std::f32::consts::FRAC_PI_2] {
                 fish.facing = facing;
                 fish.sway.phase = phase;
-                let widest = fish
-                    .line_sprite()
-                    .rows
-                    .iter()
-                    .map(|row| {
-                        row.iter()
-                            .map(|&(c, _)| UnicodeWidthChar::width(c).unwrap_or(1))
-                            .sum::<usize>()
-                    })
-                    .max()
-                    .unwrap_or(0);
+                let widest = drawn_width(&fish);
                 let figure = matches!(species.config().body, BodyTemplate::Figure(_));
                 assert!(
                     figure || widest == fish.display_width,
@@ -218,6 +221,45 @@ fn every_species_fills_its_display_width_both_ways() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn a_mutated_tail_is_drawn_and_fills_its_display_width_both_ways() {
+    const CYCLES: usize = 2;
+    const TAIL_VARIANTS: usize = 3;
+    let mut rng = rand::rng();
+    for &species in ALL_SPECIES {
+        let mut fish = Fish::new(species, "Probe".to_string(), 10.0, 10.0, &mut rng);
+        if !fish.supports_now(Mutation::TailVariant) {
+            continue;
+        }
+        let mut tails = HashSet::new();
+        for _ in 0..CYCLES * TAIL_VARIANTS {
+            apply_mutation_to_fish(&mut fish, Mutation::TailVariant, &mut rng);
+            for facing in [Direction::Left, Direction::Right] {
+                for phase in [0.0, std::f32::consts::FRAC_PI_2] {
+                    fish.facing = facing;
+                    fish.sway.phase = phase;
+                    assert_eq!(
+                        drawn_width(&fish),
+                        fish.display_width,
+                        "{} {facing:?} after tailvariant: {:?}",
+                        species.display_name(),
+                        rows_of(&fish)
+                    );
+                }
+            }
+            fish.facing = Direction::Left;
+            fish.sway.phase = 0.0;
+            tails.insert(rows_of(&fish)[fish.line_sprite().body_row].clone());
+        }
+        assert_eq!(
+            tails.len(),
+            TAIL_VARIANTS,
+            "{} wears every tail it grows: {tails:?}",
+            species.display_name()
+        );
     }
 }
 
