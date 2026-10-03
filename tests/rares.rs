@@ -1335,3 +1335,31 @@ fn only_a_being_that_leaves_a_wake_can_colour_it() {
     );
     assert_eq!(Mutation::parse("bubblecolor"), Some(Mutation::WakeColor));
 }
+
+#[test]
+fn a_fish_that_shuts_its_eyes_keeps_its_lure_lit() {
+    let mut rng = rand::rng();
+    let mut piedra = Fish::new(FishSpecies::Piedra, "Rock".into(), 10.0, 10.0, &mut rng);
+    apply_mutation_to_fish(&mut piedra, Mutation::Lure, &mut rng);
+    piedra.facing = Direction::Left;
+    piedra.habits.alert = 0.0;
+    let body = rows_of(&piedra)[piedra.line_sprite().body_row].clone();
+    assert!(
+        body.starts_with('º'),
+        "the lure glows while the eye is shut: {body}"
+    );
+    assert!(body.contains('¯'), "and the eye is shut: {body}");
+}
+
+#[test]
+fn a_doubled_stonefish_keeps_its_own_mouth_on_both_heads() {
+    let mut rng = rand::rng();
+    let mut piedra = Fish::new(FishSpecies::Piedra, "Rock".into(), 10.0, 10.0, &mut rng);
+    apply_mutation_to_fish(&mut piedra, Mutation::Telophase, &mut rng);
+    piedra.facing = Direction::Left;
+    let body = rows_of(&piedra)[piedra.line_sprite().body_row].clone();
+    assert!(
+        body.starts_with('.') && body.ends_with('.'),
+        "both heads end in the stonefish's mouth: {body}"
+    );
+}

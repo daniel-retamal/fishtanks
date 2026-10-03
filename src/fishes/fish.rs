@@ -871,18 +871,25 @@ impl Fish {
     }
 
     pub fn line_sprite(&self) -> LineSprite {
-        let mut sprite = self.open_eyed_line_sprite();
-        if self.keeps_eyes_shut() {
-            sprite.shut_eyes();
-        }
-        self.crawl_pose(sprite)
+        self.crawl_pose(self.sprite_with_eyes(self.keeps_eyes_shut()))
     }
 
     fn open_eyed_line_sprite(&self) -> LineSprite {
+        self.sprite_with_eyes(false)
+    }
+
+    fn sprite_with_eyes(&self, shut: bool) -> LineSprite {
         if let Some((left, right)) = self.fused_render_halves() {
-            return self.fused_line_sprite(&left, &right);
+            let mut sprite = self.fused_line_sprite(&left, &right);
+            if shut {
+                sprite.shut_eyes();
+            }
+            return sprite;
         }
-        let (sprite, span) = self.bare_line_sprite();
+        let (mut sprite, span) = self.bare_line_sprite();
+        if shut {
+            sprite.shut_eyes();
+        }
         let sprite = self.adorn(sprite, span);
         self.dress(sprite)
     }
@@ -1736,7 +1743,7 @@ impl Fish {
                         chars.push(e.glyph(if facing_left { right_eye } else { left_eye }));
                     }
                     let count = mutant.double_head_eyes.len();
-                    chars.push(if facing_left { '>' } else { '<' });
+                    chars.push(invert_mouth(mouth));
                     (start, count)
                 } else {
                     chars.extend(non_double_tail);
@@ -2469,7 +2476,7 @@ impl Fish {
                         chars.push(e.glyph(right_eye));
                     }
                     let count = mutant.double_head_eyes.len();
-                    chars.push('>');
+                    chars.push(invert_mouth(raw_mouth));
                     (start, count)
                 } else {
                     chars.extend(non_double_tail);
