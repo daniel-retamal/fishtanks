@@ -2,16 +2,16 @@
 # show card. The lure, the fins and the multi-row figures must keep every border whole.
 
 clear
-run /spawn caracol "Shelly"
-run /spawn linterna "Lamp"
+run /spawn snailfish "Shelly"
+run /spawn lanternfish "Lamp"
 run /spawn tollo "Fin"
-run /spawn luna "Mola"
-run /spawn caballito "Romeo"
-run /spawn martillo "Hammer"
-run /spawn neon "Shoal"
-run /spawn pulpo "Inky"
-run /spawn globo "Puff"
-run /spawn ermitano "Pagu"
+run /spawn moonfish "Mola"
+run /spawn seahorsefish "Romeo"
+run /spawn hammerfish "Hammer"
+run /spawn shoalfish "Shoal"
+run /spawn octopusfish "Inky"
+run /spawn pufferfish "Puff"
+run /spawn crabfish "Pagu"
 tick 30
 snap the rare shoal in the tank
 run /index

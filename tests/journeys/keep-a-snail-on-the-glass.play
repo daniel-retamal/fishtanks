@@ -3,7 +3,7 @@
 
 clear
 include scenes/start-with-a-stake.play
-include scenes/buy-a-fish.play Caracol Shelly
+include scenes/buy-a-fish.play Snailfish Shelly
 tick 60
 expect @
 snap the snail holds on to the glass

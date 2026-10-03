@@ -3,16 +3,16 @@
 
 clear
 include scenes/start-with-a-stake.play
-include scenes/buy-a-fish.play Ermitano Pagu
+include scenes/buy-a-fish.play Crabfish Pagu
 run /shop
 key down
 key enter
-expect Pagu (Ermitano)
-select Pagu (Ermitano)
+expect Pagu (Crabfish)
+select Pagu (Crabfish)
 key enter
 expect Sell Pagu for $
 key enter
-absent Pagu (Ermitano)
+absent Pagu (Crabfish)
 key esc
 key esc
 absent Sell

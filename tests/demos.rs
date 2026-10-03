@@ -1516,7 +1516,7 @@ fn the_rare_shoal_demo_runs_keystroke_for_keystroke() {
     tui.film(Path::new(REEL_DIR), "rare-shoal-demo");
     tui.clear_tank();
 
-    tui.run("/give caracol \"Shelly\"");
+    tui.run("/give snailfish \"Shelly\"");
     tui.tick_n(30 * 20);
     let shelly = rare(&tui, "Shelly");
     let crawl = shelly.habits.crawl.expect("the snail settled on the glass");
@@ -1526,7 +1526,7 @@ fn the_rare_shoal_demo_runs_keystroke_for_keystroke() {
         "it leaves a slime trail"
     );
 
-    tui.run("/give linterna \"Lamp\"");
+    tui.run("/give lanternfish \"Lamp\"");
     tui.tick_n(2);
     let lamp = rare(&tui, "Lamp").line_sprite();
     let body: String = lamp.rows[lamp.body_row]
@@ -1540,8 +1540,8 @@ fn the_rare_shoal_demo_runs_keystroke_for_keystroke() {
     );
     tui.snap("2 · Lamp's lure, gold at night");
 
-    tui.run("/give loro \"Polly\"");
-    tui.run("/give loro \"Pepe\"");
+    tui.run("/give parrotfish \"Polly\"");
+    tui.run("/give parrotfish \"Pepe\"");
     tui.type_text("hola");
     tui.key(KeyCode::Enter);
     let mut echoed = false;
@@ -1557,7 +1557,7 @@ fn the_rare_shoal_demo_runs_keystroke_for_keystroke() {
     assert!(echoed, "a parrot repeats what you typed");
     tui.snap("3 · the parrots echo hola back and forth");
 
-    tui.run("/give timido \"Tim\"");
+    tui.run("/give shyfish \"Tim\"");
     tui.tick_n(2);
     tui.key(KeyCode::Char('x'));
     assert!(
@@ -1576,7 +1576,7 @@ fn the_rare_shoal_demo_runs_keystroke_for_keystroke() {
     tui.snap("4 · in /zen Tim opens its eyes and blushes");
     tui.key(KeyCode::Esc);
 
-    tui.run("/give ermitano \"Pagu\"");
+    tui.run("/give crabfish \"Pagu\"");
     let junk = tui.app.stock_of(StockItem::Junk);
     tui.run("/sell fish \"Pagu\"");
     assert_eq!(
@@ -1589,7 +1589,7 @@ fn the_rare_shoal_demo_runs_keystroke_for_keystroke() {
     tui.snap("5 · the hermit crab's shell is in the bag");
     tui.key(KeyCode::Esc);
 
-    tui.run("/give cofre \"DVD\"");
+    tui.run("/give boxfish \"DVD\"");
     let hue = rare(&tui, "DVD").habits.hue;
     let mut bounced = false;
     for _ in 0..(30 * 60) {

@@ -1,6 +1,6 @@
 use super::figure::{Art, Figure};
 
-pub static CARACOL: Figure = Figure {
+pub static SNAILFISH: Figure = Figure {
     left: &[Art {
         lines: &["º._(@)"],
         paint: &["e00121"],
@@ -25,7 +25,7 @@ pub static CARACOL: Figure = Figure {
     )),
 };
 
-pub static ERMITANO: Figure = Figure {
+pub static CRABFISH: Figure = Figure {
     left: &[Art {
         lines: &["(\\/ºº(##)"],
         paint: &["000ee2jj2"],
@@ -39,7 +39,7 @@ pub static ERMITANO: Figure = Figure {
     zooming: None,
 };
 
-pub static COFRE: Figure = Figure {
+pub static BOXFISH: Figure = Figure {
     left: &[Art {
         lines: &["<º[ooo]<"],
         paint: &["0e000000"],
@@ -53,7 +53,7 @@ pub static COFRE: Figure = Figure {
     zooming: None,
 };
 
-pub static CABALLITO: Figure = Figure {
+pub static SEAHORSEFISH: Figure = Figure {
     left: &[Art {
         lines: &["<º}", " (", " ɔ"],
         paint: &["1e0", " 0", " 2"],
@@ -67,7 +67,7 @@ pub static CABALLITO: Figure = Figure {
     zooming: None,
 };
 
-pub static PULPO: Figure = Figure {
+pub static OCTOPUSFISH: Figure = Figure {
     left: &[Art {
         lines: &[" ,-.", "(ººo)"],
         paint: &[" 000", "0ee00"],
@@ -81,7 +81,7 @@ pub static PULPO: Figure = Figure {
     zooming: None,
 };
 
-pub static NEON: Figure = Figure {
+pub static SHOALFISH: Figure = Figure {
     left: &[
         Art {
             lines: &[" <=   <=", "<=  <=  <="],
@@ -120,7 +120,7 @@ pub static NEON: Figure = Figure {
     )),
 };
 
-pub static MARTILLO: Figure = Figure {
+pub static HAMMERFISH: Figure = Figure {
     left: &[Art {
         lines: &["º", "]((((><", "º"],
         paint: &["e", "0120120", "e"],

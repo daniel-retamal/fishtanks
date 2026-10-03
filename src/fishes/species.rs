@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use ratatui::style::Color;
 
-use super::art::{CABALLITO, CARACOL, COFRE, ERMITANO, MARTILLO, NEON, PULPO};
+use super::art::{BOXFISH, CRABFISH, HAMMERFISH, OCTOPUSFISH, SEAHORSEFISH, SHOALFISH, SNAILFISH};
 use super::figure::Figure;
 use super::mutations::Mutation;
 use crate::economy::{Money, Purchasable, Rarity, Sellable};
@@ -90,33 +90,56 @@ pub enum FishSpecies {
     Cheatfish,
     Unfish,
     Junkfish,
-    Caracol,
-    Babosa,
-    Estrella,
-    Ermitano,
+    #[serde(alias = "Caracol")]
+    Snailfish,
+    #[serde(alias = "Babosa")]
+    Slugfish,
+    #[serde(alias = "Estrella")]
+    Starfish,
+    #[serde(alias = "Ermitano")]
+    Crabfish,
     Lenguado,
-    Piedra,
+    #[serde(alias = "Piedra")]
+    Stonefish,
     Pejesapo,
-    Cofre,
-    Caballito,
-    Morena,
-    Volador,
-    Espada,
+    #[serde(alias = "Cofre")]
+    Boxfish,
+    #[serde(alias = "Caballito")]
+    Seahorsefish,
+    #[serde(alias = "Morena")]
+    Eelfish,
+    #[serde(alias = "Volador")]
+    Flyingfish,
+    #[serde(alias = "Espada")]
+    Swordfish,
     Tollo,
-    Mariposa,
-    Linterna,
-    Luciernaga,
+    #[serde(alias = "Mariposa")]
+    Butterflyfish,
+    #[serde(alias = "Linterna")]
+    Lanternfish,
+    #[serde(alias = "Luciernaga")]
+    Fireflyfish,
     Bagre,
-    Luna,
-    Loro,
-    Mimo,
-    Timido,
-    Ciego,
-    Globo,
-    Pulpo,
-    Draco,
-    Neon,
-    Martillo,
+    #[serde(alias = "Luna")]
+    Moonfish,
+    #[serde(alias = "Loro")]
+    Parrotfish,
+    #[serde(alias = "Mimo")]
+    Mimicfish,
+    #[serde(alias = "Timido")]
+    Shyfish,
+    #[serde(alias = "Ciego")]
+    Blindfish,
+    #[serde(alias = "Globo")]
+    Pufferfish,
+    #[serde(alias = "Pulpo")]
+    Octopusfish,
+    #[serde(alias = "Draco")]
+    Glassfish,
+    #[serde(alias = "Neon")]
+    Shoalfish,
+    #[serde(alias = "Martillo")]
+    Hammerfish,
 }
 
 impl FishSpecies {
@@ -536,33 +559,33 @@ pub const ALL_SPECIES: &[FishSpecies] = &[
     FishSpecies::Nishiki,
     FishSpecies::Aka,
     FishSpecies::Kuro,
-    FishSpecies::Caracol,
-    FishSpecies::Babosa,
-    FishSpecies::Estrella,
-    FishSpecies::Ermitano,
+    FishSpecies::Snailfish,
+    FishSpecies::Slugfish,
+    FishSpecies::Starfish,
+    FishSpecies::Crabfish,
     FishSpecies::Lenguado,
-    FishSpecies::Piedra,
+    FishSpecies::Stonefish,
     FishSpecies::Pejesapo,
-    FishSpecies::Cofre,
-    FishSpecies::Caballito,
-    FishSpecies::Morena,
-    FishSpecies::Volador,
-    FishSpecies::Espada,
+    FishSpecies::Boxfish,
+    FishSpecies::Seahorsefish,
+    FishSpecies::Eelfish,
+    FishSpecies::Flyingfish,
+    FishSpecies::Swordfish,
     FishSpecies::Tollo,
-    FishSpecies::Mariposa,
-    FishSpecies::Linterna,
-    FishSpecies::Luciernaga,
+    FishSpecies::Butterflyfish,
+    FishSpecies::Lanternfish,
+    FishSpecies::Fireflyfish,
     FishSpecies::Bagre,
-    FishSpecies::Luna,
-    FishSpecies::Loro,
-    FishSpecies::Mimo,
-    FishSpecies::Timido,
-    FishSpecies::Ciego,
-    FishSpecies::Globo,
-    FishSpecies::Pulpo,
-    FishSpecies::Draco,
-    FishSpecies::Neon,
-    FishSpecies::Martillo,
+    FishSpecies::Moonfish,
+    FishSpecies::Parrotfish,
+    FishSpecies::Mimicfish,
+    FishSpecies::Shyfish,
+    FishSpecies::Blindfish,
+    FishSpecies::Pufferfish,
+    FishSpecies::Octopusfish,
+    FishSpecies::Glassfish,
+    FishSpecies::Shoalfish,
+    FishSpecies::Hammerfish,
     FishSpecies::Candyfish,
     FishSpecies::Holyfish,
     FishSpecies::Botfish,
@@ -707,14 +730,14 @@ static DEADFISH_PALETTE: [Color; 2] = [WHITE, DARK_GRAY];
 static UNFISH_PALETTE: [Color; 1] = [WHITE];
 static CANDYFISH_PALETTE: [Color; 3] = [PINK, MAGENTA, LIGHT_MAGENTA];
 
-static CARACOL_PALETTE: [Color; 3] = [OLIVE_LIGHT, BROWN, TAN];
-static BABOSA_PALETTE: [Color; 3] = [PURPLE_LIGHT, VIOLET, PINK];
-static ESTRELLA_PALETTE: [Color; 4] = [TERRACOTTA, AMBER, PINK, VIOLET];
-static ERMITANO_PALETTE: [Color; 3] = [TERRACOTTA, ORANGE_LIGHT, JUNK_OUTLINE];
+static SNAILFISH_PALETTE: [Color; 3] = [OLIVE_LIGHT, BROWN, TAN];
+static SLUGFISH_PALETTE: [Color; 3] = [PURPLE_LIGHT, VIOLET, PINK];
+static STARFISH_PALETTE: [Color; 4] = [TERRACOTTA, AMBER, PINK, VIOLET];
+static CRABFISH_PALETTE: [Color; 3] = [TERRACOTTA, ORANGE_LIGHT, JUNK_OUTLINE];
 static LENGUADO_PALETTE: [Color; 1] = [TAN];
-static PIEDRA_PALETTE: [Color; 4] = [GRAY, BROWN_DARK, DARK_GRAY, OLIVE];
+static STONEFISH_PALETTE: [Color; 4] = [GRAY, BROWN_DARK, DARK_GRAY, OLIVE];
 static PEJESAPO_PALETTE: [Color; 2] = [OLIVE, KHAKI];
-static COFRE_PALETTE: [Color; 8] = [
+static BOXFISH_PALETTE: [Color; 8] = [
     RED,
     ORANGE,
     YELLOW,
@@ -724,30 +747,30 @@ static COFRE_PALETTE: [Color; 8] = [
     VIOLET,
     PINK,
 ];
-static CABALLITO_PALETTE: [Color; 3] = [AMBER, ORANGE_LIGHT, AMBER_DARK];
-static MORENA_PALETTE: [Color; 3] = [OLIVE, OLIVE_LIGHT, KHAKI];
-static VOLADOR_PALETTE: [Color; 3] = [NAVY_LIGHT, SILVER, LIGHT_BLUE];
-static ESPADA_PALETTE: [Color; 3] = [NAVY, SILVER, NAVY_LIGHT];
+static SEAHORSEFISH_PALETTE: [Color; 3] = [AMBER, ORANGE_LIGHT, AMBER_DARK];
+static EELFISH_PALETTE: [Color; 3] = [OLIVE, OLIVE_LIGHT, KHAKI];
+static FLYINGFISH_PALETTE: [Color; 3] = [NAVY_LIGHT, SILVER, LIGHT_BLUE];
+static SWORDFISH_PALETTE: [Color; 3] = [NAVY, SILVER, NAVY_LIGHT];
 static TOLLO_PALETTE: [Color; 3] = [GRAY, SILVER, STEEL];
-static MARIPOSA_PALETTE: [Color; 3] = [YELLOW, YELLOW, WHITE];
-static LINTERNA_PALETTE: [Color; 2] = [DARK_GRAY, BROWN_DARK];
-static LUCIERNAGA_PALETTE: [Color; 2] = [DARK_GRAY, GREEN_DARK];
+static BUTTERFLYFISH_PALETTE: [Color; 3] = [YELLOW, YELLOW, WHITE];
+static LANTERNFISH_PALETTE: [Color; 2] = [DARK_GRAY, BROWN_DARK];
+static FIREFLYFISH_PALETTE: [Color; 2] = [DARK_GRAY, GREEN_DARK];
 static BAGRE_PALETTE: [Color; 3] = [BROWN_DARK, BROWN, TAN];
-static LUNA_PALETTE: [Color; 1] = [SILVER];
-static LORO_PALETTE: [Color; 4] = [TEAL, GREEN_BRIGHT, PINK, NAVY_LIGHT];
-static MIMO_PALETTE: [Color; 2] = [WHITE, DARK_GRAY];
-static TIMIDO_PALETTE: [Color; 2] = [CREAM, PINK];
-static CIEGO_PALETTE: [Color; 1] = [CREAM];
-static GLOBO_PALETTE: [Color; 3] = [KHAKI, TAN, CREAM];
-static PULPO_PALETTE: [Color; 4] = [TERRACOTTA, VIOLET, OLIVE_LIGHT, PINK];
-static DRACO_PALETTE: [Color; 3] = [LIGHT_CYAN, SILVER, WHITE];
-static NEON_PALETTE: [Color; 2] = [CYAN, LIGHT_RED];
-static MARTILLO_PALETTE: [Color; 3] = [STEEL, SILVER, GRAY];
+static MOONFISH_PALETTE: [Color; 1] = [SILVER];
+static PARROTFISH_PALETTE: [Color; 4] = [TEAL, GREEN_BRIGHT, PINK, NAVY_LIGHT];
+static MIMICFISH_PALETTE: [Color; 2] = [WHITE, DARK_GRAY];
+static SHYFISH_PALETTE: [Color; 2] = [CREAM, PINK];
+static BLINDFISH_PALETTE: [Color; 1] = [CREAM];
+static PUFFERFISH_PALETTE: [Color; 3] = [KHAKI, TAN, CREAM];
+static OCTOPUSFISH_PALETTE: [Color; 4] = [TERRACOTTA, VIOLET, OLIVE_LIGHT, PINK];
+static GLASSFISH_PALETTE: [Color; 3] = [LIGHT_CYAN, SILVER, WHITE];
+static SHOALFISH_PALETTE: [Color; 2] = [CYAN, LIGHT_RED];
+static HAMMERFISH_PALETTE: [Color; 3] = [STEEL, SILVER, GRAY];
 
-static ESTRELLA_LR: [&str; 1] = ["✶"];
+static STARFISH_LR: [&str; 1] = ["✶"];
 const NO_EYES: usize = 0;
 const TWO_EYES: usize = 2;
-const MORENA_SIZES: [usize; 4] = [8, 12, 16, 20];
+const EELFISH_SIZES: [usize; 4] = [8, 12, 16, 20];
 
 pub const DEADFISH_BC_SEMI: BodyChars = BodyChars {
     mouth_left: '<',
@@ -1300,17 +1323,22 @@ impl FishSpecies {
                 config.flavour = CANDY_FLAVOUR;
                 config
             }
-            Caracol => {
-                let mut config =
-                    figure_config("Caracol", &CARACOL, &CARACOL_PALETTE, (0.3, 0.6), Rare);
+            Snailfish => {
+                let mut config = figure_config(
+                    "Snailfish",
+                    &SNAILFISH,
+                    &SNAILFISH_PALETTE,
+                    (0.3, 0.6),
+                    Rare,
+                );
                 config.locomotion = Locomotion::Glass;
                 config.zoomie = Zoomie::Still;
                 config.trail = Some(Tint::Fixed(GRAY));
                 config
             }
-            Babosa => {
+            Slugfish => {
                 let mut config = standard_config(
-                    "Babosa",
+                    "Slugfish",
                     chars(
                         ('"', '"'),
                         EYE_ROUND,
@@ -1321,7 +1349,7 @@ impl FishSpecies {
                             right: '*',
                         },
                     ),
-                    &BABOSA_PALETTE,
+                    &SLUGFISH_PALETTE,
                     Glistening,
                     0.12,
                     (0.4, 0.8),
@@ -1332,12 +1360,12 @@ impl FishSpecies {
                 config.trail = Some(Tint::Body);
                 config
             }
-            Estrella => {
+            Starfish => {
                 let mut config = fixed_config(
-                    "Estrella",
-                    &ESTRELLA_LR,
-                    &ESTRELLA_LR,
-                    &ESTRELLA_PALETTE,
+                    "Starfish",
+                    &STARFISH_LR,
+                    &STARFISH_LR,
+                    &STARFISH_PALETTE,
                     Solid,
                     (0.05, 0.15),
                     Rare,
@@ -1348,9 +1376,9 @@ impl FishSpecies {
                 config.flavour = SKY_FLAVOUR;
                 config
             }
-            Ermitano => {
+            Crabfish => {
                 let mut config =
-                    figure_config("Ermitano", &ERMITANO, &ERMITANO_PALETTE, (0.8, 1.6), Rare);
+                    figure_config("Crabfish", &CRABFISH, &CRABFISH_PALETTE, (0.8, 1.6), Rare);
                 config.locomotion = Locomotion::Sideways;
                 config.zoomie = Zoomie::None;
                 config.habit = Some(Habit::ShellSwap);
@@ -1375,9 +1403,9 @@ impl FishSpecies {
                 config.skin = Skin::Camouflage;
                 config
             }
-            Piedra => {
+            Stonefish => {
                 let mut config = standard_config(
-                    "Piedra",
+                    "Stonefish",
                     chars(
                         ('.', '.'),
                         EYE_ROUND,
@@ -1388,7 +1416,7 @@ impl FishSpecies {
                             right: '.',
                         },
                     ),
-                    &PIEDRA_PALETTE,
+                    &STONEFISH_PALETTE,
                     Patchy,
                     0.03,
                     (0.1, 0.2),
@@ -1427,18 +1455,19 @@ impl FishSpecies {
                 config.born_with = &[Mutation::Feet];
                 config
             }
-            Cofre => {
-                let mut config = figure_config("Cofre", &COFRE, &COFRE_PALETTE, (2.0, 3.0), Rare);
+            Boxfish => {
+                let mut config =
+                    figure_config("Boxfish", &BOXFISH, &BOXFISH_PALETTE, (2.0, 3.0), Rare);
                 config.locomotion = Locomotion::Bounce;
                 config.zoomie = Zoomie::None;
                 config.skin = Skin::Cycle(Cycle::OnBounce);
                 config
             }
-            Caballito => {
+            Seahorsefish => {
                 let mut config = figure_config(
-                    "Caballito",
-                    &CABALLITO,
-                    &CABALLITO_PALETTE,
+                    "Seahorsefish",
+                    &SEAHORSEFISH,
+                    &SEAHORSEFISH_PALETTE,
                     (0.5, 1.2),
                     Rare,
                 );
@@ -1446,9 +1475,9 @@ impl FishSpecies {
                 config.habit = Some(Habit::Pair);
                 config
             }
-            Morena => {
+            Eelfish => {
                 let mut config = standard_config(
-                    "Morena",
+                    "Eelfish",
                     chars(
                         MOUTH,
                         EYE_CIRCLE,
@@ -1459,22 +1488,22 @@ impl FishSpecies {
                             right: '-',
                         },
                     ),
-                    &MORENA_PALETTE,
+                    &EELFISH_PALETTE,
                     Patchy,
                     0.09,
                     (1.5, 3.0),
                     Rare,
                 );
-                config.sizes = MORENA_SIZES;
+                config.sizes = EELFISH_SIZES;
                 config.locomotion = Locomotion::Through;
                 config.habit = Some(Habit::Gape);
                 config
             }
-            Volador => {
+            Flyingfish => {
                 let mut config = standard_config(
-                    "Volador",
+                    "Flyingfish",
                     chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
-                    &VOLADOR_PALETTE,
+                    &FLYINGFISH_PALETTE,
                     Striped,
                     0.12,
                     (4.0, 6.5),
@@ -1484,11 +1513,11 @@ impl FishSpecies {
                 config.flavour = SKY_FLAVOUR;
                 config
             }
-            Espada => {
+            Swordfish => {
                 let mut config = standard_config(
-                    "Espada",
+                    "Swordfish",
                     chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
-                    &ESPADA_PALETTE,
+                    &SWORDFISH_PALETTE,
                     Striped,
                     0.14,
                     (5.0, 8.0),
@@ -1513,9 +1542,9 @@ impl FishSpecies {
                 config.born_with = &[Mutation::DorsalFin];
                 config
             }
-            Mariposa => {
+            Butterflyfish => {
                 let mut config = standard_config(
-                    "Mariposa",
+                    "Butterflyfish",
                     chars(
                         MOUTH,
                         EYE_ROUND,
@@ -1526,7 +1555,7 @@ impl FishSpecies {
                             right: EYE_ROUND,
                         },
                     ),
-                    &MARIPOSA_PALETTE,
+                    &BUTTERFLYFISH_PALETTE,
                     Striped,
                     0.13,
                     (2.0, 3.5),
@@ -1536,11 +1565,11 @@ impl FishSpecies {
                 config.habit = Some(Habit::Backwards);
                 config
             }
-            Linterna => {
+            Lanternfish => {
                 let mut config = standard_config(
-                    "Linterna",
+                    "Lanternfish",
                     chars(MOUTH, EYE_CIRCLE, ROUND, CURLED, TailKind::Wide),
-                    &LINTERNA_PALETTE,
+                    &LANTERNFISH_PALETTE,
                     Patchy,
                     0.08,
                     (1.0, 2.0),
@@ -1550,11 +1579,11 @@ impl FishSpecies {
                 config.born_with = &[Mutation::Lure];
                 config
             }
-            Luciernaga => {
+            Fireflyfish => {
                 let mut config = standard_config(
-                    "Luciernaga",
+                    "Fireflyfish",
                     chars(MOUTH, '·', ROUND, CURLED, TailKind::Short),
-                    &LUCIERNAGA_PALETTE,
+                    &FIREFLYFISH_PALETTE,
                     Striped,
                     0.10,
                     (1.5, 3.0),
@@ -1577,9 +1606,9 @@ impl FishSpecies {
                 config.flavour = CAT_FLAVOUR;
                 config
             }
-            Luna => {
+            Moonfish => {
                 let mut config = standard_config(
-                    "Luna",
+                    "Moonfish",
                     chars(
                         MOUTH,
                         EYE_ROUND,
@@ -1590,7 +1619,7 @@ impl FishSpecies {
                             right: '(',
                         },
                     ),
-                    &LUNA_PALETTE,
+                    &MOONFISH_PALETTE,
                     Solid,
                     0.05,
                     (0.5, 1.2),
@@ -1599,9 +1628,9 @@ impl FishSpecies {
                 config.born_with = &[Mutation::DorsalFin, Mutation::VentralFin, Mutation::Lunar];
                 config
             }
-            Loro => {
+            Parrotfish => {
                 let mut config = standard_config(
-                    "Loro",
+                    "Parrotfish",
                     chars(
                         MOUTH,
                         EYE_ROUND,
@@ -1609,7 +1638,7 @@ impl FishSpecies {
                         (')', '('),
                         TailKind::WideCurly,
                     ),
-                    &LORO_PALETTE,
+                    &PARROTFISH_PALETTE,
                     Patchy,
                     0.10,
                     (2.0, 3.5),
@@ -1618,11 +1647,11 @@ impl FishSpecies {
                 config.habit = Some(Habit::Echo);
                 config
             }
-            Mimo => {
+            Mimicfish => {
                 let mut config = standard_config(
-                    "Mimo",
+                    "Mimicfish",
                     chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
-                    &MIMO_PALETTE,
+                    &MIMICFISH_PALETTE,
                     Striped,
                     0.10,
                     (2.5, 4.0),
@@ -1631,11 +1660,11 @@ impl FishSpecies {
                 config.habit = Some(Habit::Shadow);
                 config
             }
-            Timido => {
+            Shyfish => {
                 let mut config = standard_config(
-                    "Timido",
+                    "Shyfish",
                     chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Short),
-                    &TIMIDO_PALETTE,
+                    &SHYFISH_PALETTE,
                     Striped,
                     0.10,
                     (2.0, 3.5),
@@ -1644,11 +1673,11 @@ impl FishSpecies {
                 config.habit = Some(Habit::Shy);
                 config
             }
-            Ciego => {
+            Blindfish => {
                 let mut config = standard_config(
-                    "Ciego",
+                    "Blindfish",
                     chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
-                    &CIEGO_PALETTE,
+                    &BLINDFISH_PALETTE,
                     Solid,
                     0.10,
                     (2.0, 3.5),
@@ -1658,11 +1687,11 @@ impl FishSpecies {
                 config.habit = Some(Habit::Blind);
                 config
             }
-            Globo => {
+            Pufferfish => {
                 let mut config = standard_config(
-                    "Globo",
+                    "Pufferfish",
                     chars(MOUTH, EYE_ROUND, ('o', 'o'), ('O', 'O'), TailKind::Short),
-                    &GLOBO_PALETTE,
+                    &PUFFERFISH_PALETTE,
                     Patchy,
                     0.09,
                     (1.5, 3.0),
@@ -1671,8 +1700,14 @@ impl FishSpecies {
                 config.born_with = &[Mutation::Puff];
                 config
             }
-            Pulpo => {
-                let mut config = figure_config("Pulpo", &PULPO, &PULPO_PALETTE, (1.0, 2.5), Rare);
+            Octopusfish => {
+                let mut config = figure_config(
+                    "Octopusfish",
+                    &OCTOPUSFISH,
+                    &OCTOPUSFISH_PALETTE,
+                    (1.0, 2.5),
+                    Rare,
+                );
                 config.eye_color = Some(WHITE);
                 config.zoomie = Zoomie::Ink;
                 config.skin = Skin::Cycle(Cycle::OnClock);
@@ -1680,11 +1715,11 @@ impl FishSpecies {
                 config.born_with = &[Mutation::Tentacles];
                 config
             }
-            Draco => {
+            Glassfish => {
                 let mut config = standard_config(
-                    "Draco",
+                    "Glassfish",
                     chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
-                    &DRACO_PALETTE,
+                    &GLASSFISH_PALETTE,
                     Glistening,
                     0.10,
                     (2.0, 3.5),
@@ -1693,10 +1728,21 @@ impl FishSpecies {
                 config.skin = Skin::SeeThrough;
                 config
             }
-            Neon => figure_config("Neon", &NEON, &NEON_PALETTE, (3.0, 5.0), Rare),
-            Martillo => {
-                let mut config =
-                    figure_config("Martillo", &MARTILLO, &MARTILLO_PALETTE, (2.5, 4.0), Rare);
+            Shoalfish => figure_config(
+                "Shoalfish",
+                &SHOALFISH,
+                &SHOALFISH_PALETTE,
+                (3.0, 5.0),
+                Rare,
+            ),
+            Hammerfish => {
+                let mut config = figure_config(
+                    "Hammerfish",
+                    &HAMMERFISH,
+                    &HAMMERFISH_PALETTE,
+                    (2.5, 4.0),
+                    Rare,
+                );
                 config.eye_color = Some(WHITE);
                 config
             }

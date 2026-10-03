@@ -36,33 +36,33 @@ use ratatui::{
 use unicode_width::UnicodeWidthChar;
 
 const NEW_RARES: [FishSpecies; 27] = [
-    FishSpecies::Caracol,
-    FishSpecies::Babosa,
-    FishSpecies::Estrella,
-    FishSpecies::Ermitano,
+    FishSpecies::Snailfish,
+    FishSpecies::Slugfish,
+    FishSpecies::Starfish,
+    FishSpecies::Crabfish,
     FishSpecies::Lenguado,
-    FishSpecies::Piedra,
+    FishSpecies::Stonefish,
     FishSpecies::Pejesapo,
-    FishSpecies::Cofre,
-    FishSpecies::Caballito,
-    FishSpecies::Morena,
-    FishSpecies::Volador,
-    FishSpecies::Espada,
+    FishSpecies::Boxfish,
+    FishSpecies::Seahorsefish,
+    FishSpecies::Eelfish,
+    FishSpecies::Flyingfish,
+    FishSpecies::Swordfish,
     FishSpecies::Tollo,
-    FishSpecies::Mariposa,
-    FishSpecies::Linterna,
-    FishSpecies::Luciernaga,
+    FishSpecies::Butterflyfish,
+    FishSpecies::Lanternfish,
+    FishSpecies::Fireflyfish,
     FishSpecies::Bagre,
-    FishSpecies::Luna,
-    FishSpecies::Loro,
-    FishSpecies::Mimo,
-    FishSpecies::Timido,
-    FishSpecies::Ciego,
-    FishSpecies::Globo,
-    FishSpecies::Pulpo,
-    FishSpecies::Draco,
-    FishSpecies::Neon,
-    FishSpecies::Martillo,
+    FishSpecies::Moonfish,
+    FishSpecies::Parrotfish,
+    FishSpecies::Mimicfish,
+    FishSpecies::Shyfish,
+    FishSpecies::Blindfish,
+    FishSpecies::Pufferfish,
+    FishSpecies::Octopusfish,
+    FishSpecies::Glassfish,
+    FishSpecies::Shoalfish,
+    FishSpecies::Hammerfish,
 ];
 
 const BUBBLE_ROW_SLACK: f32 = 0.9;
@@ -179,6 +179,44 @@ fn a_rare_bites_an_eighth_of_the_time_however_many_rares_there_are() {
     );
 }
 
+const OLD_NAMES: [(&str, FishSpecies); 23] = [
+    ("Caracol", FishSpecies::Snailfish),
+    ("Babosa", FishSpecies::Slugfish),
+    ("Estrella", FishSpecies::Starfish),
+    ("Ermitano", FishSpecies::Crabfish),
+    ("Piedra", FishSpecies::Stonefish),
+    ("Cofre", FishSpecies::Boxfish),
+    ("Caballito", FishSpecies::Seahorsefish),
+    ("Morena", FishSpecies::Eelfish),
+    ("Volador", FishSpecies::Flyingfish),
+    ("Espada", FishSpecies::Swordfish),
+    ("Mariposa", FishSpecies::Butterflyfish),
+    ("Linterna", FishSpecies::Lanternfish),
+    ("Luciernaga", FishSpecies::Fireflyfish),
+    ("Luna", FishSpecies::Moonfish),
+    ("Loro", FishSpecies::Parrotfish),
+    ("Mimo", FishSpecies::Mimicfish),
+    ("Timido", FishSpecies::Shyfish),
+    ("Ciego", FishSpecies::Blindfish),
+    ("Globo", FishSpecies::Pufferfish),
+    ("Pulpo", FishSpecies::Octopusfish),
+    ("Draco", FishSpecies::Glassfish),
+    ("Neon", FishSpecies::Shoalfish),
+    ("Martillo", FishSpecies::Hammerfish),
+];
+
+#[test]
+fn a_save_that_names_a_rare_by_its_old_name_still_finds_it() {
+    for (old, species) in OLD_NAMES {
+        assert_eq!(
+            ron::from_str::<FishSpecies>(old).ok(),
+            Some(species),
+            "{old}"
+        );
+        assert_eq!(FishSpecies::parse(old), None, "{old} is no longer typed");
+    }
+}
+
 #[test]
 fn every_new_rare_is_sold_in_the_shop_and_caught_everywhere() {
     for species in NEW_RARES {
@@ -263,7 +301,7 @@ fn a_mutated_fish_shows_its_own_eye_from_both_sides() {
     }
 }
 
-fn piedra_body(fish: &Fish, facing: Direction) -> String {
+fn stonefish_body(fish: &Fish, facing: Direction) -> String {
     let mut seen = fish.clone();
     seen.facing = facing;
     seen.habits.alert = f32::MAX;
@@ -273,26 +311,26 @@ fn piedra_body(fish: &Fish, facing: Direction) -> String {
 #[test]
 fn a_stonefish_looks_out_from_the_middle_of_its_stones() {
     let mut rng = rand::rng();
-    let piedra = Fish::new(
-        FishSpecies::Piedra,
+    let stonefish = Fish::new(
+        FishSpecies::Stonefish,
         "Rock".to_string(),
         10.0,
         10.0,
         &mut rng,
     );
     let mutated = {
-        let mut fish = piedra.clone();
+        let mut fish = stonefish.clone();
         apply_mutation_to_fish(&mut fish, Mutation::BodyColor, &mut rng);
         fish
     };
-    for fish in [&mut piedra.clone(), &mut mutated.clone()] {
+    for fish in [&mut stonefish.clone(), &mut mutated.clone()] {
         if let Some(mutant) = fish.mutant.as_mut() {
             for eye in mutant.all_eyes_mut() {
                 eye.set_open(true);
             }
         }
-        let left = piedra_body(fish, Direction::Left);
-        let right = piedra_body(fish, Direction::Right);
+        let left = stonefish_body(fish, Direction::Left);
+        let right = stonefish_body(fish, Direction::Right);
         let cells: Vec<char> = left.chars().collect();
         let eye = cells
             .iter()
@@ -462,7 +500,7 @@ fn the_lure_grows_on_every_being_with_a_head_at_the_end_of_its_line() {
 #[test]
 fn a_lure_glows_gold_at_night_and_dims_by_day() {
     let mut rng = rand::rng();
-    let mut angler = Fish::new(FishSpecies::Linterna, "Lamp".into(), 0.0, 0.0, &mut rng);
+    let mut angler = Fish::new(FishSpecies::Lanternfish, "Lamp".into(), 0.0, 0.0, &mut rng);
     angler.facing = Direction::Left;
     let lure_color = |fish: &Fish| {
         let sprite = fish.line_sprite();
@@ -519,7 +557,7 @@ fn a_sleeper_snores_and_leaves_the_food_to_the_fish_that_are_awake() {
 #[test]
 fn a_snail_crawls_round_the_glass_and_never_lets_go() {
     let mut tank = tank_of(TankKind::Base);
-    let snail = add(&mut tank, FishSpecies::Caracol, "Shelly");
+    let snail = add(&mut tank, FishSpecies::Snailfish, "Shelly");
     tank.fish[snail].speed = 6.0;
     let mut sides = HashSet::new();
     for _ in 0..3000 {
@@ -576,8 +614,8 @@ fn walkers_keep_to_the_floor_and_the_crab_never_turns_round() {
     let mut tank = tank_of(TankKind::Base);
     let walkers: Vec<usize> = [
         FishSpecies::Lenguado,
-        FishSpecies::Piedra,
-        FishSpecies::Ermitano,
+        FishSpecies::Stonefish,
+        FishSpecies::Crabfish,
     ]
     .iter()
     .enumerate()
@@ -622,7 +660,7 @@ fn a_frogfish_hops_off_the_floor_and_lands_again() {
 #[test]
 fn the_box_changes_colour_at_every_wall_and_celebrates_a_corner() {
     let mut tank = tank_of(TankKind::Base);
-    let boxfish = add(&mut tank, FishSpecies::Cofre, "DVD");
+    let boxfish = add(&mut tank, FishSpecies::Boxfish, "DVD");
     let hue = tank.fish[boxfish].habits.hue;
     tank.fish[boxfish].position.x = 0.2;
     tank.fish[boxfish].position.y = 0.2;
@@ -643,7 +681,7 @@ fn the_box_changes_colour_at_every_wall_and_celebrates_a_corner() {
 #[test]
 fn the_moray_slips_out_through_the_wall_and_peeks_back() {
     let mut tank = tank_of(TankKind::Base);
-    let eel = add(&mut tank, FishSpecies::Morena, "Mora");
+    let eel = add(&mut tank, FishSpecies::Eelfish, "Mora");
     tank.fish[eel].position.x = 1.0;
     tank.fish[eel].velocity.dx = -tank.fish[eel].speed.max(1.0) * 4.0;
     tank.fish[eel].velocity.dy = 0.0;
@@ -668,7 +706,7 @@ fn the_moray_slips_out_through_the_wall_and_peeks_back() {
 #[test]
 fn the_flying_fish_glides_up_to_the_top_with_its_wings_out() {
     let mut tank = tank_of(TankKind::Base);
-    let flyer = add(&mut tank, FishSpecies::Volador, "Icaro");
+    let flyer = add(&mut tank, FishSpecies::Flyingfish, "Icaro");
     tank.fish[flyer].position.y = TANK_H as f32 - 3.0;
     assert!(tank.fish[flyer].hurry_zoomie());
     let mut spread = false;
@@ -686,7 +724,7 @@ fn the_flying_fish_glides_up_to_the_top_with_its_wings_out() {
 #[test]
 fn a_lunge_pops_plain_bubbles_but_never_a_cash_bubble() {
     let mut tank = tank_of(TankKind::Base);
-    let sword = add(&mut tank, FishSpecies::Espada, "Zorro");
+    let sword = add(&mut tank, FishSpecies::Swordfish, "Zorro");
     let mut rng = rand::rng();
     tank.fish[sword].facing = Direction::Right;
     tank.fish[sword].position.x = 5.0;
@@ -754,7 +792,7 @@ fn a_chased_cashfish_flees_in_a_zoomie_and_pays_for_it() {
 #[test]
 fn a_butterflyfish_swims_backwards_now_and_then() {
     let mut tank = tank_of(TankKind::Base);
-    let fly = add(&mut tank, FishSpecies::Mariposa, "Mari");
+    let fly = add(&mut tank, FishSpecies::Butterflyfish, "Mari");
     tank.fish[fly].position.x = 30.0;
     tank.fish[fly].velocity.dx = 2.0;
     tank.fish[fly].facing = Direction::Right;
@@ -772,7 +810,7 @@ fn a_butterflyfish_swims_backwards_now_and_then() {
 fn fireflies_fall_into_step() {
     let mut tank = tank_of(TankKind::Base);
     let flies: Vec<usize> = (0..3)
-        .map(|i| add(&mut tank, FishSpecies::Luciernaga, &format!("Luz{i}")))
+        .map(|i| add(&mut tank, FishSpecies::Fireflyfish, &format!("Luz{i}")))
         .collect();
     for (k, &i) in flies.iter().enumerate() {
         tank.fish[i].habits.flash = Some(k as f32 * 0.3);
@@ -796,7 +834,8 @@ fn fireflies_fall_into_step() {
 fn a_parrot_echoes_and_parrots_echo_each_other_until_they_stop() {
     let mut tui = Tui::new();
     tui.clear_tank();
-    tui.run("/spawn loro \"Polly\"").run("/spawn loro \"Pepe\"");
+    tui.run("/spawn parrotfish \"Polly\"")
+        .run("/spawn parrotfish \"Pepe\"");
     tui.type_text("hello").key(crossterm::event::KeyCode::Enter);
     let mut echoes = 0;
     let mut quiet_ticks = 0;
@@ -825,7 +864,7 @@ fn a_parrot_echoes_and_parrots_echo_each_other_until_they_stop() {
 #[test]
 fn a_mime_shadows_its_muse_and_mimes_its_speech() {
     let mut tank = tank_of(TankKind::Base);
-    let mime = add(&mut tank, FishSpecies::Mimo, "Marcel");
+    let mime = add(&mut tank, FishSpecies::Mimicfish, "Marcel");
     let muse = add(&mut tank, FishSpecies::Salmon, "Sal");
     let mut trail = Vec::new();
     for _ in 0..60 {
@@ -852,7 +891,7 @@ fn a_mime_shadows_its_muse_and_mimes_its_speech() {
 fn a_shy_fish_hides_when_a_key_is_pressed_and_comes_out_in_zen() {
     let mut tui = Tui::new();
     tui.clear_tank();
-    tui.run("/spawn timido \"Tim\"");
+    tui.run("/spawn shyfish \"Tim\"");
     tui.tick_n(2);
     tui.key(crossterm::event::KeyCode::Char('a'));
     let tank = &tui.app.tanks[tui.app.current_tank];
@@ -874,11 +913,11 @@ fn a_shy_fish_hides_when_a_key_is_pressed_and_comes_out_in_zen() {
 #[test]
 fn a_blind_fish_has_no_eyes_and_turns_when_it_bumps_into_a_fish() {
     let mut rng = rand::rng();
-    let blind = Fish::new(FishSpecies::Ciego, "Ray".into(), 0.0, 0.0, &mut rng);
+    let blind = Fish::new(FishSpecies::Blindfish, "Ray".into(), 0.0, 0.0, &mut rng);
     let drawn = rows_of(&blind).concat();
     assert!(!drawn.contains('º') && !drawn.contains('ʘ'), "{drawn}");
     let mut tank = tank_of(TankKind::Base);
-    let ray = add(&mut tank, FishSpecies::Ciego, "Ray");
+    let ray = add(&mut tank, FishSpecies::Blindfish, "Ray");
     let wall = add(&mut tank, FishSpecies::Merluza, "Wall");
     tank.fish[wall].frozen = true;
     tank.fish[wall].position.x = 20.0;
@@ -899,7 +938,7 @@ fn a_blind_fish_has_no_eyes_and_turns_when_it_bumps_into_a_fish() {
 #[test]
 fn a_pufferfish_puffs_instead_of_zooming_and_when_a_beam_takes_it() {
     let mut tank = tank_of(TankKind::Base);
-    let puffer = add(&mut tank, FishSpecies::Globo, "Globo");
+    let puffer = add(&mut tank, FishSpecies::Pufferfish, "Pufferfish");
     assert!(tank.fish[puffer].hurry_zoomie());
     tick(&mut tank, DAY, 2);
     assert!(tank.fish[puffer].is_puffed());
@@ -914,7 +953,7 @@ fn a_pufferfish_puffs_instead_of_zooming_and_when_a_beam_takes_it() {
 #[test]
 fn an_octopus_changes_colour_inks_and_wanders_off() {
     let mut tank = tank_of(TankKind::Base);
-    let octo = add(&mut tank, FishSpecies::Pulpo, "Inky");
+    let octo = add(&mut tank, FishSpecies::Octopusfish, "Inky");
     let hue = tank.fish[octo].habits.hue;
     tick(&mut tank, DAY, (4.0 * FPS) as usize);
     assert_ne!(
@@ -938,7 +977,7 @@ fn an_octopus_changes_colour_inks_and_wanders_off() {
 fn an_octopus_escapes_to_another_tank_with_room() {
     let mut tui = Tui::new();
     tui.clear_tank();
-    tui.run("/spawn pulpo \"Inky\"");
+    tui.run("/spawn octopusfish \"Inky\"");
     let base = tui.app.current_tank;
     tui.app.tanks.push(tank_of(TankKind::CoralReef));
     let reef = tui.app.tanks.len() - 1;
@@ -956,7 +995,7 @@ fn an_octopus_escapes_to_another_tank_with_room() {
 #[test]
 fn an_icefish_lets_the_tank_show_through() {
     let mut tank = tank_of(TankKind::Base);
-    let ice = add(&mut tank, FishSpecies::Draco, "Hielo");
+    let ice = add(&mut tank, FishSpecies::Glassfish, "Hielo");
     tank.fish[ice].frozen = true;
     tank.fish[ice].facing = Direction::Left;
     tank.fish[ice].position.x = 20.0;
@@ -1026,7 +1065,7 @@ fn a_flounder_wears_the_colour_of_its_water_and_of_whatever_lies_under_it() {
 fn selling_a_hermit_crab_leaves_its_shell_in_the_bag() {
     let mut tui = Tui::new();
     tui.clear_tank();
-    tui.run("/spawn ermitano \"Pagu\"");
+    tui.run("/spawn crabfish \"Pagu\"");
     let junk = tui.app.stock_of(StockItem::Junk);
     tui.run("/sell fish \"Pagu\"");
     assert_eq!(tui.app.stock_of(StockItem::Junk), junk + 1);
@@ -1035,8 +1074,8 @@ fn selling_a_hermit_crab_leaves_its_shell_in_the_bag() {
 #[test]
 fn two_hermit_crabs_that_meet_swap_shells() {
     let mut tank = tank_of(TankKind::Base);
-    let a = add(&mut tank, FishSpecies::Ermitano, "A");
-    let b = add(&mut tank, FishSpecies::Ermitano, "B");
+    let a = add(&mut tank, FishSpecies::Crabfish, "A");
+    let b = add(&mut tank, FishSpecies::Crabfish, "B");
     let (seed_a, seed_b) = (tank.fish[a].pattern_seed, tank.fish[b].pattern_seed);
     tank.fish[a].position.x = 20.0;
     tank.fish[b].position.x = 24.0;
@@ -1051,8 +1090,8 @@ fn two_hermit_crabs_that_meet_swap_shells() {
 #[test]
 fn seahorses_that_meet_send_up_a_heart() {
     let mut tank = tank_of(TankKind::Base);
-    let a = add(&mut tank, FishSpecies::Caballito, "Romeo");
-    let b = add(&mut tank, FishSpecies::Caballito, "Julieta");
+    let a = add(&mut tank, FishSpecies::Seahorsefish, "Romeo");
+    let b = add(&mut tank, FishSpecies::Seahorsefish, "Julieta");
     for (i, x) in [(a, 20.0), (b, 24.0)] {
         tank.fish[i].position.x = x;
         tank.fish[i].position.y = 6.0;
@@ -1070,7 +1109,7 @@ fn seahorses_that_meet_send_up_a_heart() {
 #[test]
 fn a_stonefish_snaps_up_food_that_settles_by_it() {
     let mut tank = tank_of(TankKind::Base);
-    let stone = add(&mut tank, FishSpecies::Piedra, "Roca");
+    let stone = add(&mut tank, FishSpecies::Stonefish, "Roca");
     tick(&mut tank, DAY, 1);
     let weight = tank.fish[stone].weight_g;
     let x = tank.fish[stone].position.x + tank.fish[stone].display_width as f32 + 1.0;
@@ -1094,7 +1133,7 @@ fn a_catfish_says_miau() {
 #[test]
 fn a_star_twinkles_at_night() {
     let mut rng = rand::rng();
-    let mut star = Fish::new(FishSpecies::Estrella, "Patricio".into(), 0.0, 0.0, &mut rng);
+    let mut star = Fish::new(FishSpecies::Starfish, "Patricio".into(), 0.0, 0.0, &mut rng);
     star.sky = DAY;
     let day = star.line_sprite().rows[0][0].1;
     star.sky = NIGHT;
@@ -1105,7 +1144,7 @@ fn a_star_twinkles_at_night() {
 #[test]
 fn the_sunfish_wears_the_moon() {
     let mut rng = rand::rng();
-    let mut mola = Fish::new(FishSpecies::Luna, "Mola".into(), 0.0, 0.0, &mut rng);
+    let mut mola = Fish::new(FishSpecies::Moonfish, "Mola".into(), 0.0, 0.0, &mut rng);
     let body_colors = |fish: &Fish| -> Vec<Color> {
         let sprite = fish.line_sprite();
         let (lo, hi) = fish.body_span().unwrap();
@@ -1203,8 +1242,8 @@ fn a_figure_cannot_take_a_mutation_it_cannot_draw() {
 #[test]
 fn glass_and_floor_dwellers_never_swim_after_food() {
     let mut tank = tank_of(TankKind::Base);
-    let snail = add(&mut tank, FishSpecies::Caracol, "Shelly");
-    let crab = add(&mut tank, FishSpecies::Ermitano, "Pagu");
+    let snail = add(&mut tank, FishSpecies::Snailfish, "Shelly");
+    let crab = add(&mut tank, FishSpecies::Crabfish, "Pagu");
     tank.food.push(Food::new(30.0));
     for _ in 0..50 {
         tick(&mut tank, DAY, 1);
@@ -1218,7 +1257,7 @@ fn glass_and_floor_dwellers_never_swim_after_food() {
 #[test]
 fn a_crawler_on_the_wall_is_drawn_upright() {
     let mut rng = rand::rng();
-    let mut snail = Fish::new(FishSpecies::Caracol, "S".into(), 0.0, 0.0, &mut rng);
+    let mut snail = Fish::new(FishSpecies::Snailfish, "S".into(), 0.0, 0.0, &mut rng);
     snail.habits.crawl = Some(fishtank::fishes::habits::Crawl {
         side: Side::Right,
         clockwise: false,
@@ -1271,7 +1310,7 @@ fn every_new_rare_draws_whole_on_its_catch_card_at_every_size() {
 #[test]
 fn a_blind_fish_sparks_when_it_meets_the_glass() {
     let mut tank = tank_of(TankKind::Base);
-    let ray = add(&mut tank, FishSpecies::Ciego, "Ray");
+    let ray = add(&mut tank, FishSpecies::Blindfish, "Ray");
     let fish = &mut tank.fish[ray];
     fish.position.x = TANK_W as f32 - fish.display_width as f32 - 0.5;
     fish.position.y = 8.0;
@@ -1296,7 +1335,7 @@ fn wake_tinted(tank: &mut Tank, index: usize) -> Color {
 #[test]
 fn a_snail_wake_is_its_slime_trail() {
     let mut tank = tank_of(TankKind::Base);
-    let snail = add(&mut tank, FishSpecies::Caracol, "Shelly");
+    let snail = add(&mut tank, FishSpecies::Snailfish, "Shelly");
     let wake = wake_tinted(&mut tank, snail);
     tank.trails.clear();
     for _ in 0..600 {
@@ -1312,7 +1351,7 @@ fn a_snail_wake_is_its_slime_trail() {
 #[test]
 fn an_octopus_wake_is_its_ink() {
     let mut tank = tank_of(TankKind::Base);
-    let octo = add(&mut tank, FishSpecies::Pulpo, "Inky");
+    let octo = add(&mut tank, FishSpecies::Octopusfish, "Inky");
     let wake = wake_tinted(&mut tank, octo);
     assert!(tank.fish[octo].hurry_zoomie());
     tick(&mut tank, DAY, 2);
@@ -1323,7 +1362,7 @@ fn an_octopus_wake_is_its_ink() {
 #[test]
 fn only_a_being_that_leaves_a_wake_can_colour_it() {
     let mut rng = rand::rng();
-    let stone = Fish::new(FishSpecies::Piedra, "Rock".into(), 0.0, 0.0, &mut rng);
+    let stone = Fish::new(FishSpecies::Stonefish, "Rock".into(), 0.0, 0.0, &mut rng);
     assert!(
         !stone.supports_now(Mutation::WakeColor),
         "a stonefish never moves"
@@ -1339,11 +1378,11 @@ fn only_a_being_that_leaves_a_wake_can_colour_it() {
 #[test]
 fn a_fish_that_shuts_its_eyes_keeps_its_lure_lit() {
     let mut rng = rand::rng();
-    let mut piedra = Fish::new(FishSpecies::Piedra, "Rock".into(), 10.0, 10.0, &mut rng);
-    apply_mutation_to_fish(&mut piedra, Mutation::Lure, &mut rng);
-    piedra.facing = Direction::Left;
-    piedra.habits.alert = 0.0;
-    let body = rows_of(&piedra)[piedra.line_sprite().body_row].clone();
+    let mut stonefish = Fish::new(FishSpecies::Stonefish, "Rock".into(), 10.0, 10.0, &mut rng);
+    apply_mutation_to_fish(&mut stonefish, Mutation::Lure, &mut rng);
+    stonefish.facing = Direction::Left;
+    stonefish.habits.alert = 0.0;
+    let body = rows_of(&stonefish)[stonefish.line_sprite().body_row].clone();
     assert!(
         body.starts_with('º'),
         "the lure glows while the eye is shut: {body}"
@@ -1354,10 +1393,10 @@ fn a_fish_that_shuts_its_eyes_keeps_its_lure_lit() {
 #[test]
 fn a_doubled_stonefish_keeps_its_own_mouth_on_both_heads() {
     let mut rng = rand::rng();
-    let mut piedra = Fish::new(FishSpecies::Piedra, "Rock".into(), 10.0, 10.0, &mut rng);
-    apply_mutation_to_fish(&mut piedra, Mutation::Telophase, &mut rng);
-    piedra.facing = Direction::Left;
-    let body = rows_of(&piedra)[piedra.line_sprite().body_row].clone();
+    let mut stonefish = Fish::new(FishSpecies::Stonefish, "Rock".into(), 10.0, 10.0, &mut rng);
+    apply_mutation_to_fish(&mut stonefish, Mutation::Telophase, &mut rng);
+    stonefish.facing = Direction::Left;
+    let body = rows_of(&stonefish)[stonefish.line_sprite().body_row].clone();
     assert!(
         body.starts_with('.') && body.ends_with('.'),
         "both heads end in the stonefish's mouth: {body}"

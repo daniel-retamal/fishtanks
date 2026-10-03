@@ -160,7 +160,7 @@ fn nothing_grows_on_a_botfish_antenna() {
 
 #[test]
 fn a_gliding_fish_keeps_both_bands_for_its_wings() {
-    let volador = fish(FishSpecies::Volador);
+    let flyingfish = fish(FishSpecies::Flyingfish);
     for mutation in [
         Mutation::DorsalFin,
         Mutation::VentralFin,
@@ -169,22 +169,22 @@ fn a_gliding_fish_keeps_both_bands_for_its_wings() {
         Mutation::Wings,
         Mutation::Tentacles,
     ] {
-        assert!(!volador.supports_now(mutation), "{}", mutation.token());
+        assert!(!flyingfish.supports_now(mutation), "{}", mutation.token());
     }
 }
 
 #[test]
 fn a_puff_spikes_only_the_free_bands() {
-    let mut globo = fish(FishSpecies::Globo);
-    grow(&mut globo, Mutation::Feet);
-    globo.habits.puffed = PUFF_SECS;
-    let below = rows(&globo)[rows_above(&globo) + 1..].to_vec();
+    let mut pufferfish = fish(FishSpecies::Pufferfish);
+    grow(&mut pufferfish, Mutation::Feet);
+    pufferfish.habits.puffed = PUFF_SECS;
+    let below = rows(&pufferfish)[rows_above(&pufferfish) + 1..].to_vec();
     assert_eq!(below.len(), 1, "only the feet hang below: {below:?}");
     assert!(
-        rows_above(&globo) >= 1,
+        rows_above(&pufferfish) >= 1,
         "the top band is free, so it spikes"
     );
-    let mut finned = fish(FishSpecies::Globo);
+    let mut finned = fish(FishSpecies::Pufferfish);
     grow(&mut finned, Mutation::DorsalFin);
     grow(&mut finned, Mutation::VentralFin);
     finned.habits.puffed = PUFF_SECS;
@@ -204,23 +204,29 @@ fn a_puff_spikes_only_the_free_bands() {
 
 #[test]
 fn an_octopus_is_born_with_tentacles_that_spikes_can_replace() {
-    let mut pulpo = fish(FishSpecies::Pulpo);
+    let mut octopusfish = fish(FishSpecies::Octopusfish);
     assert_eq!(
-        pulpo.body_extension().bottom,
+        octopusfish.body_extension().bottom,
         Some(ExtensionVariant::Tentacle),
         "its tentacles are a birthmark"
     );
-    assert_eq!(pulpo.mutation_count(), 0);
-    assert!(!pulpo.supports_now(Mutation::Tentacles));
-    assert!(pulpo.reserves(Band::Top), "its mantle fills the top band");
-    grow(&mut pulpo, Mutation::Spikes);
-    assert_eq!(pulpo.body_extension().bottom, Some(ExtensionVariant::Spike));
-    assert_eq!(pulpo.body_extension().top, None);
+    assert_eq!(octopusfish.mutation_count(), 0);
+    assert!(!octopusfish.supports_now(Mutation::Tentacles));
+    assert!(
+        octopusfish.reserves(Band::Top),
+        "its mantle fills the top band"
+    );
+    grow(&mut octopusfish, Mutation::Spikes);
+    assert_eq!(
+        octopusfish.body_extension().bottom,
+        Some(ExtensionVariant::Spike)
+    );
+    assert_eq!(octopusfish.body_extension().top, None);
 }
 
 #[test]
 fn a_school_or_a_hammerhead_has_no_free_band() {
-    for species in [FishSpecies::Neon, FishSpecies::Martillo] {
+    for species in [FishSpecies::Shoalfish, FishSpecies::Hammerfish] {
         let figure = fish(species);
         assert!(figure.reserves(Band::Top), "{}", species.display_name());
         assert!(figure.reserves(Band::Bottom), "{}", species.display_name());
@@ -229,7 +235,7 @@ fn a_school_or_a_hammerhead_has_no_free_band() {
 
 #[test]
 fn a_one_glyph_body_draws_every_growth_it_takes() {
-    for species in [FishSpecies::Jellyfish, FishSpecies::Estrella] {
+    for species in [FishSpecies::Jellyfish, FishSpecies::Starfish] {
         for (mutation, above, below) in [
             (Mutation::DorsalFin, 1, 0),
             (Mutation::VentralFin, 0, 1),
@@ -291,7 +297,7 @@ fn a_line_unfish_follows_the_same_bands() {
 
 #[test]
 fn a_one_glyph_body_wears_a_lure_and_a_dorsal_fin_on_one_row() {
-    for species in [FishSpecies::Jellyfish, FishSpecies::Estrella] {
+    for species in [FishSpecies::Jellyfish, FishSpecies::Starfish] {
         let mut body = fish(species);
         grow(&mut body, Mutation::Lure);
         grow(&mut body, Mutation::DorsalFin);
