@@ -7,10 +7,7 @@ use crate::entities::components::BlinkTimer;
 pub use crate::entities::glistening::GlisteningMode;
 use crate::fishes::fused::FusedComponent;
 use crate::fishes::mutations::Mutation;
-use crate::fishes::species::{
-    EYE_CIRCLE, EYE_CIRCLE_SHUT, EYE_ROUND, EYE_ROUND_SHUT, TAIL_EQUAL, TAIL_WAVE_LEFT,
-    TAIL_WAVE_RIGHT,
-};
+use crate::fishes::species::{TAIL_EQUAL, TAIL_WAVE_LEFT, TAIL_WAVE_RIGHT, shut_eye};
 use crate::sprite::{BodyExtension, Feet};
 
 const WAVE_THRESHOLD: f32 = 0.8;
@@ -156,19 +153,11 @@ impl EyeState {
         self.blink.tick(dt);
     }
 
-    pub fn small_char(&self) -> char {
+    pub fn glyph(&self, open: char) -> char {
         if self.blink.is_open {
-            EYE_ROUND
+            open
         } else {
-            EYE_ROUND_SHUT
-        }
-    }
-
-    pub fn big_char(&self) -> char {
-        if self.blink.is_open {
-            EYE_CIRCLE
-        } else {
-            EYE_CIRCLE_SHUT
+            shut_eye(open)
         }
     }
 

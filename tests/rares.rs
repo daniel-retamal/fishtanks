@@ -224,6 +224,45 @@ fn every_species_fills_its_display_width_both_ways() {
     }
 }
 
+fn eye_glyphs_seen(fish: &Fish, facing: Direction) -> Vec<char> {
+    let mut seen = fish.clone();
+    seen.facing = facing;
+    seen.habits.alert = f32::MAX;
+    if let Some(mutant) = seen.mutant.as_mut() {
+        for eye in mutant.all_eyes_mut() {
+            eye.set_open(true);
+        }
+    }
+    let row = rows_of(&seen)[seen.line_sprite().body_row].clone();
+    let mut glyphs: Vec<char> = row.chars().filter(|c| ['º', 'ʘ'].contains(c)).collect();
+    glyphs.sort_unstable();
+    glyphs
+}
+
+#[test]
+fn a_mutated_fish_shows_its_own_eye_from_both_sides() {
+    let mut rng = rand::rng();
+    for &species in ALL_SPECIES {
+        let config = species.config();
+        if config.auto_mutate || !matches!(config.body, BodyTemplate::Standard(_)) {
+            continue;
+        }
+        let mut fish = Fish::new(species, "Probe".to_string(), 10.0, 10.0, &mut rng);
+        if !fish.supports_now(Mutation::BodyColor) {
+            continue;
+        }
+        apply_mutation_to_fish(&mut fish, Mutation::BodyColor, &mut rng);
+        let left = eye_glyphs_seen(&fish, Direction::Left);
+        let right = eye_glyphs_seen(&fish, Direction::Right);
+        assert_eq!(
+            left,
+            right,
+            "{} looks different from each side",
+            species.display_name()
+        );
+    }
+}
+
 #[test]
 fn a_mutated_tail_is_drawn_and_fills_its_display_width_both_ways() {
     const CYCLES: usize = 2;

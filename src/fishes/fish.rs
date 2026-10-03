@@ -1442,10 +1442,15 @@ impl Fish {
                 invert_mouth(*chars_left.last().unwrap())
             };
 
+            let (left_eye, right_eye) = self.eye_glyphs();
             let eye_chars: Vec<char> = if facing_left_fixed {
-                mutant.left_eyes.iter().map(|e| e.small_char()).collect()
+                mutant.left_eyes.iter().map(|e| e.glyph(left_eye)).collect()
             } else {
-                mutant.right_eyes.iter().map(|e| e.big_char()).collect()
+                mutant
+                    .right_eyes
+                    .iter()
+                    .map(|e| e.glyph(right_eye))
+                    .collect()
             };
 
             let mut out_chars: Vec<char> = Vec::new();
@@ -1481,11 +1486,11 @@ impl Fish {
                             .double_head_eyes
                             .iter()
                             .map(|e| {
-                                if facing_left_fixed {
-                                    e.big_char()
+                                e.glyph(if facing_left_fixed {
+                                    right_eye
                                 } else {
-                                    e.small_char()
-                                }
+                                    left_eye
+                                })
                             })
                             .collect();
                         let d_count = double_eyes.len();
@@ -1613,7 +1618,7 @@ impl Fish {
 
         let sway_high = self.sway.phase.sin() > WAVE_THRESHOLD;
         let max_eyes = mutant.left_eyes.len().max(mutant.right_eyes.len());
-        let wide_eyed = self.is_wide_eyed();
+        let (left_eye, right_eye) = self.eye_glyphs();
 
         let mut chars: Vec<char> = Vec::new();
         let (eye_start, eye_count, extra_body, double_eye_start, double_eye_count) =
@@ -1632,16 +1637,12 @@ impl Fish {
                 let eye_start = chars.len();
                 let eye_count = if facing_left {
                     for e in &mutant.left_eyes {
-                        chars.push(if wide_eyed {
-                            e.big_char()
-                        } else {
-                            e.small_char()
-                        });
+                        chars.push(e.glyph(left_eye));
                     }
                     mutant.left_eyes.len()
                 } else {
                     for e in &mutant.right_eyes {
-                        chars.push(e.big_char());
+                        chars.push(e.glyph(right_eye));
                     }
                     mutant.right_eyes.len()
                 };
@@ -1655,11 +1656,7 @@ impl Fish {
                     }
                     let start = chars.len();
                     for e in &mutant.double_head_eyes {
-                        chars.push(if facing_left {
-                            e.big_char()
-                        } else {
-                            e.small_char()
-                        });
+                        chars.push(e.glyph(if facing_left { right_eye } else { left_eye }));
                     }
                     let count = mutant.double_head_eyes.len();
                     chars.push(if facing_left { '>' } else { '<' });
@@ -1787,13 +1784,18 @@ impl Fish {
         }
     }
 
-    fn is_wide_eyed(&self) -> bool {
-        match self.species.config().body {
+    fn eye_glyphs(&self) -> (char, char) {
+        let config = self.species.config();
+        let (left, right) = match config.body {
             BodyTemplate::Standard(chars) | BodyTemplate::Alternating(chars, _) => {
-                chars.eye_left == EYE_CIRCLE
+                (chars.eye_left, chars.eye_right)
             }
-            BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => false,
+            BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => (EYE_ROUND, EYE_ROUND),
+        };
+        if config.auto_mutate {
+            return (left, EYE_CIRCLE);
         }
+        (left, right)
     }
 
     fn mutant_colors(&self, mutant: &MutantState, n: usize) -> Vec<Color> {
@@ -2263,7 +2265,7 @@ impl Fish {
                     out_chars.push(mouth_ch);
                     let eye_start = out_chars.len();
                     for e in &mutant.left_eyes {
-                        out_chars.push(e.small_char());
+                        out_chars.push(e.glyph(self.eye_glyphs().0));
                     }
                     let eye_count = mutant.left_eyes.len();
                     for _ in 0..self.body_size {
@@ -2277,7 +2279,7 @@ impl Fish {
                         }
                         let d_start = out_chars.len();
                         for e in &mutant.double_head_eyes {
-                            out_chars.push(e.big_char());
+                            out_chars.push(e.glyph(self.eye_glyphs().1));
                         }
                         let d_count = mutant.double_head_eyes.len();
                         out_chars.push(mirror_mouth);
@@ -2360,13 +2362,9 @@ impl Fish {
             } else {
                 chars.push(raw_mouth);
                 let eye_start = chars.len();
-                let wide_eyed = self.is_wide_eyed();
+                let (left_eye, right_eye) = self.eye_glyphs();
                 for e in &mutant.left_eyes {
-                    chars.push(if wide_eyed {
-                        e.big_char()
-                    } else {
-                        e.small_char()
-                    });
+                    chars.push(e.glyph(left_eye));
                 }
                 let eye_count = mutant.left_eyes.len();
                 let extra_body = max_eyes - eye_count;
@@ -2379,7 +2377,7 @@ impl Fish {
                     }
                     let start = chars.len();
                     for e in &mutant.double_head_eyes {
-                        chars.push(e.big_char());
+                        chars.push(e.glyph(right_eye));
                     }
                     let count = mutant.double_head_eyes.len();
                     chars.push('>');
@@ -2720,7 +2718,7 @@ fn mutant_hydra_cells(mutant: &MutantState) -> Vec<(char, Option<Color>)> {
     mutant
         .hydra_eyes
         .iter()
-        .map(|e| (e.small_char(), e.color.or(mutant.eye_color)))
+        .map(|e| (e.glyph(EYE_ROUND), e.color.or(mutant.eye_color)))
         .collect()
 }
 
