@@ -15,6 +15,7 @@ use crate::fishes::mutant::{Circadian, EyeState, MutantState, MutantTail, Mutati
 use crate::fishes::mutations::{
     MutantBacked, Mutatable, Mutation, MutationOutcome, apply_mutant_mutation,
 };
+use crate::fishes::revert::Look;
 use crate::loot::MilkVariant;
 use crate::sprite::{Band, BodyExtension};
 use crate::tank::Sky;
@@ -263,9 +264,7 @@ impl Cow {
 
 const COW_CAPS: &[Mutation] = &[
     Mutation::SizeIncrease,
-    Mutation::SizeDecrease,
     Mutation::EyeIncrease,
-    Mutation::EyeDecrease,
     Mutation::ColorPatch,
     Mutation::EyeColor,
     Mutation::GlistenFast,
@@ -273,7 +272,6 @@ const COW_CAPS: &[Mutation] = &[
     Mutation::GlistenMode,
     Mutation::GlistenColor,
     Mutation::GlistenEnable,
-    Mutation::GlistenDisable,
     Mutation::BodyColor,
     Mutation::Telophase,
     Mutation::BackwardsTelophase,
@@ -288,8 +286,8 @@ const COW_CAPS: &[Mutation] = &[
     Mutation::Hydra,
     Mutation::Spikes,
     Mutation::Wings,
-    Mutation::DecreaseExtension,
     Mutation::Lure,
+    Mutation::Revert,
 ];
 
 const COW_HYDRA_HEAD_W: usize = 4;
@@ -362,9 +360,21 @@ impl Mutatable for Cow {
     fn apply_one(&mut self, mutation: Mutation, rng: &mut impl RngExt) -> MutationOutcome {
         apply_mutant_mutation(self, mutation, rng)
     }
+    fn record(&self) -> Option<&MutationRecord> {
+        self.mutations.as_deref()
+    }
     fn record_mut(&mut self) -> &mut MutationRecord {
         self.mutations
             .get_or_insert_with(|| Box::new(MutationRecord::default()))
+    }
+    fn look(&self) -> Look {
+        Cow::look(self)
+    }
+    fn wear(&mut self, look: &Look) {
+        Cow::wear(self, look);
+    }
+    fn refresh_width(&mut self) {
+        self.recompute_display_width();
     }
     fn circadian(&self) -> Circadian {
         self.mutant.circadian

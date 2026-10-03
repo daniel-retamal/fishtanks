@@ -9,6 +9,7 @@ use crate::fishes::mutant::{
 use crate::fishes::mutations::{
     MutantBacked, Mutatable, Mutation, MutationOutcome, apply_mutation, ensure_fish_mutant,
 };
+use crate::fishes::revert::{revert, revert_latest, settle};
 use crate::fishes::species::BodyTemplate;
 use crate::fishes::unfish::{UnfishKind, worm_display_width};
 use crate::util::{exponential_event, hyperbolic_scale, sample_exponential};
@@ -28,14 +29,7 @@ fn rad_mean_secs(fish: &Fish) -> f32 {
 }
 
 fn mutation_affects_both_halves(mutation: Mutation) -> bool {
-    !matches!(
-        mutation,
-        Mutation::Telophase
-            | Mutation::BackwardsTelophase
-            | Mutation::Cytokinesis
-            | Mutation::Endocytosis
-            | Mutation::Engulfment
-    )
+    !mutation.fuses()
 }
 
 fn restore_from_snapshot(snapshot: &Fish, x: f32, y: f32, weight_g: u32) -> Fish {
@@ -228,15 +222,34 @@ impl Tank {
         else {
             return false;
         };
+        if mutation == Mutation::Revert {
+            return self.revert_fish(idx, &mut rng);
+        }
         let was_fused = self.fish[idx].fused_render_halves().is_some();
         let outcome = apply_mutation(&mut self.fish[idx], mutation, &mut rng);
         self.propagate_mutation_to_halves(idx, mutation, &mut rng);
         if was_fused && mutation == Mutation::Endocytosis {
             self.collapse_endocytosis(idx, &mut rng);
+            settle(&mut self.fish[idx]);
         }
         if matches!(outcome, MutationOutcome::SplitRequested) {
             self.split_fish(idx);
+            settle(&mut self.fish[idx]);
         }
+        self.signal(WorldSignal::Mutation);
+        true
+    }
+
+    fn revert_fish(&mut self, idx: usize, rng: &mut impl RngExt) -> bool {
+        let Some(undone) = revert(&mut self.fish[idx], rng) else {
+            return false;
+        };
+        for component in self.fish[idx].fused_components_mut() {
+            if let Some(snapshot) = component.fish_snapshot_mut() {
+                revert_latest(snapshot, undone);
+            }
+        }
+        self.fish[idx].refresh_width();
         self.signal(WorldSignal::Mutation);
         true
     }
@@ -328,10 +341,23 @@ impl Tank {
         let Some(mutation) = Self::resolve_mutation(&self.cows[idx], token, true, &mut rng) else {
             return false;
         };
+        if mutation == Mutation::Revert {
+            let Some(undone) = revert(&mut self.cows[idx], &mut rng) else {
+                return false;
+            };
+            for component in &mut self.cows[idx].mutant.fused {
+                if let Some(snapshot) = component.cow_snapshot_mut() {
+                    revert_latest(snapshot, undone);
+                }
+            }
+            self.signal(WorldSignal::Mutation);
+            return true;
+        }
         let outcome = apply_mutation(&mut self.cows[idx], mutation, &mut rng);
         self.propagate_cow_mutation_to_halves(idx, mutation, &mut rng);
         if matches!(outcome, MutationOutcome::SplitRequested) {
             self.split_cow(idx);
+            settle(&mut self.cows[idx]);
         }
         self.signal(WorldSignal::Mutation);
         true

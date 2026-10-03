@@ -7,6 +7,7 @@ use crate::entities::components::BlinkTimer;
 pub use crate::entities::glistening::GlisteningMode;
 use crate::fishes::fused::FusedComponent;
 use crate::fishes::mutations::Mutation;
+use crate::fishes::revert::Look;
 use crate::fishes::species::{TAIL_EQUAL, TAIL_WAVE_LEFT, TAIL_WAVE_RIGHT, shut_eye};
 use crate::sprite::{BodyExtension, Feet};
 
@@ -170,24 +171,63 @@ impl EyeState {
     }
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Mark {
+    pub seed: u64,
+    #[serde(default)]
+    pub mass_g: u32,
+    #[serde(default)]
+    pub bonus_pct: u32,
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct MutationRecord {
     pub count: u32,
     pub history: Vec<String>,
     pub partners: Vec<String>,
+    #[serde(default)]
+    pub marks: Vec<Mark>,
+    #[serde(default)]
+    pub origin: Option<Box<Look>>,
+    #[serde(default)]
+    pub settled: usize,
 }
 
 impl MutationRecord {
     pub fn child_of(parent_count: u32, parent_name: &str) -> Self {
         Self {
             count: parent_count,
-            history: Vec::new(),
             partners: vec![parent_name.to_string()],
+            ..Self::default()
         }
     }
 
     pub fn has(&self, mutation: Mutation) -> bool {
         self.history.iter().any(|token| token == mutation.token())
+    }
+
+    pub fn note(&mut self, mutation: Mutation, mark: Mark) {
+        self.count += 1;
+        self.history.push(mutation.token().to_string());
+        self.marks.push(mark);
+    }
+
+    pub fn is_legacy(&self) -> bool {
+        self.marks.len() != self.history.len()
+            || (self.origin.is_none() && !self.history.is_empty())
+    }
+
+    pub fn settle(&mut self, look: Look) {
+        self.origin = Some(Box::new(look));
+        self.settled = self.history.len();
+    }
+
+    pub fn revertible(&self) -> Vec<usize> {
+        (self.settled.min(self.history.len())..self.history.len())
+            .filter(|&index| {
+                Mutation::parse(&self.history[index]).is_some_and(Mutation::can_be_reverted)
+            })
+            .collect()
     }
 }
 

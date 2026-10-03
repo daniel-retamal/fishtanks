@@ -820,13 +820,13 @@ fn ear_color_pink_by_default_then_earcolor_recolors() {
 }
 
 #[test]
-fn eardecrease_and_earcolor_locked_until_an_ear_exists() {
+fn revert_and_earcolor_are_locked_until_an_ear_exists() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Merluza, "Vincent".to_string(), &mut rng);
     assert!(
-        !tank.apply_named_mutation("Vincent", "eardecrease"),
-        "eardecrease is locked while the fish has no ears"
+        !tank.apply_named_mutation("Vincent", "revert"),
+        "revert is locked while the fish has no mutation"
     );
     assert!(
         !tank.apply_named_mutation("Vincent", "earcolor"),
@@ -834,13 +834,17 @@ fn eardecrease_and_earcolor_locked_until_an_ear_exists() {
     );
     tank.apply_named_mutation("Vincent", "ear");
     let widened = tank.fish[0].display_width;
-    assert!(tank.apply_named_mutation("Vincent", "eardecrease"));
+    assert!(tank.apply_named_mutation("Vincent", "revert"));
     let fish = &tank.fish[0];
-    assert_eq!(fish.mutant.as_ref().unwrap().ear_count, 0);
+    assert_eq!(fish.mutant.as_ref().map_or(0, |m| m.ear_count), 0);
     assert_eq!(
         fish.display_width,
         widened - 1,
-        "removing the ear shrinks the fish back"
+        "reverting the ear shrinks the fish back"
+    );
+    assert!(
+        !tank.apply_named_mutation("Vincent", "revert"),
+        "a revert is never itself reverted"
     );
 }
 
@@ -904,8 +908,8 @@ fn skull_ear_cap_matches_its_row_count() {
     }
     assert_eq!(applied, SKULL_HEIGHT as usize);
     assert!(
-        tank.apply_named_mutation("Skull", "eardecrease"),
-        "eardecrease unlocks once the skull has ears"
+        tank.apply_named_mutation("Skull", "revert"),
+        "revert unlocks once the skull has ears"
     );
     assert!(
         tank.apply_named_mutation("Skull", "ear"),
@@ -1038,7 +1042,7 @@ fn hydra_fills_to_body_capacity_then_locks() {
 }
 
 #[test]
-fn shrinking_the_body_sheds_excess_hydra_eyes() {
+fn reverting_growth_sheds_excess_hydra_eyes() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Merluza, "Hydro".to_string(), &mut rng);
@@ -1047,7 +1051,7 @@ fn shrinking_the_body_sheds_excess_hydra_eyes() {
     }
     while tank.apply_named_mutation("Hydro", "hydra") {}
     for _ in 0..4 {
-        tank.apply_named_mutation("Hydro", "sizedecrease");
+        tank.apply_named_mutation("Hydro", "revert");
     }
     let fish = &tank.fish[0];
     assert!(
@@ -1233,8 +1237,8 @@ fn cow_grows_spikes_on_its_back_and_gates_its_followups() {
     let mut rng = rng();
     let name = tank.spawn_cow(CowVariant::Brown, &mut rng);
     assert!(
-        !tank.apply_named_mutation(&name, "decreaseextension"),
-        "decreaseextension is locked until the cow has an extension"
+        !tank.apply_named_mutation(&name, "revert"),
+        "revert is locked until the cow has a mutation"
     );
     let before = tank.cows[0].display_width;
     assert!(
@@ -1286,7 +1290,7 @@ fn cow_hydra_is_invalid_while_doubled() {
 }
 
 #[test]
-fn cow_shrinking_sheds_excess_hydra_heads() {
+fn cow_reverting_growth_sheds_excess_hydra_heads() {
     let mut tank = make_tank();
     let mut rng = rng();
     let name = tank.spawn_cow(CowVariant::Brown, &mut rng);
@@ -1295,13 +1299,12 @@ fn cow_shrinking_sheds_excess_hydra_heads() {
     }
     while tank.apply_named_mutation(&name, "hydra") {}
     for _ in 0..8 {
-        tank.apply_named_mutation(&name, "sizedecrease");
+        tank.apply_named_mutation(&name, "revert");
     }
     let cow = &tank.cows[0];
-    assert_eq!(
-        cow.mutant.hydra_eyes.len(),
-        cow_hydra_capacity(cow),
-        "shrinking the torso sheds hydra heads it can no longer host"
+    assert!(
+        cow.mutant.hydra_eyes.len() <= cow_hydra_capacity(cow),
+        "reverting growth sheds hydra heads the torso can no longer host"
     );
     let _ = cow_sprite(cow);
 }
@@ -1407,14 +1410,10 @@ fn feet_copy_the_color_of_the_cell_directly_above() {
 }
 
 #[test]
-fn nofeet_and_feetcolor_locked_until_feet_exist() {
+fn feetcolor_is_locked_until_feet_exist_and_goes_with_them() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Merluza, "Bare".to_string(), &mut rng);
-    assert!(
-        !tank.apply_named_mutation("Bare", "nofeet"),
-        "nofeet is locked while the fish has no feet"
-    );
     assert!(
         !tank.apply_named_mutation("Bare", "feetcolor"),
         "feetcolor is locked while the fish has no feet"
@@ -1436,10 +1435,18 @@ fn nofeet_and_feetcolor_locked_until_feet_exist() {
             .is_some(),
         "feetcolor assigns an explicit foot color"
     );
-    assert!(tank.apply_named_mutation("Bare", "nofeet"));
+    while tank.fish[0].feet().is_some() {
+        assert!(tank.apply_named_mutation("Bare", "revert"));
+    }
     assert!(
-        tank.fish[0].mutant.as_ref().unwrap().feet.is_none(),
-        "nofeet removes the feet"
+        tank.fish[0]
+            .mutations
+            .as_ref()
+            .unwrap()
+            .history
+            .iter()
+            .all(|token| token != "feetcolor"),
+        "a foot colour leaves with the feet it coloured"
     );
     assert_eq!(
         tank.fish[0].line_sprite().rows.len(),
@@ -1490,7 +1497,7 @@ fn ball_feet_are_recorded_and_keep_the_fixed_width() {
         !tank.apply_named_mutation("Orb", "feet"),
         "a ball cannot grow a second set of feet"
     );
-    assert!(tank.apply_named_mutation("Orb", "nofeet"));
+    assert!(tank.apply_named_mutation("Orb", "revert"));
     assert!(tank.fish[0].unfish_state.as_ref().unwrap().feet.is_none());
 }
 
@@ -1609,10 +1616,6 @@ fn extension_followups_and_feet_exclusion_are_gated() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Merluza, "Gate".to_string(), &mut rng);
-    assert!(
-        !tank.apply_named_mutation("Gate", "decreaseextension"),
-        "decreaseextension is locked while there is no extension"
-    );
     assert!(tank.apply_named_mutation("Gate", "spikes"));
     assert!(
         !tank.apply_named_mutation("Gate", "feet"),
@@ -1621,25 +1624,17 @@ fn extension_followups_and_feet_exclusion_are_gated() {
 }
 
 #[test]
-fn decreaseextension_clears_the_extension() {
+fn reverting_the_only_extension_clears_both_bands() {
     let mut tank = make_tank();
     let mut rng = rng();
-    tank.spawn_fish(FishSpecies::Mutantfish, "Trim".to_string(), &mut rng);
-    force_extension(&mut tank.fish[0], ExtensionVariant::Spike);
-    assert!(tank.apply_named_mutation("Trim", "decreaseextension"));
+    tank.spawn_fish(FishSpecies::Salmon, "Trim".to_string(), &mut rng);
+    assert!(tank.apply_named_mutation("Trim", "spikes"));
+    assert!(tank.apply_named_mutation("Trim", "revert"));
     assert!(
-        tank.fish[0]
-            .mutant
-            .as_ref()
-            .unwrap()
-            .body_extension
-            .is_none(),
-        "decreaseextension clears every extension"
+        tank.fish[0].body_extension().is_empty(),
+        "the spikes are gone from both bands"
     );
-    assert!(
-        !tank.apply_named_mutation("Trim", "decreaseextension"),
-        "with no extension the follow-up locks again"
-    );
+    assert_eq!(tank.fish[0].line_sprite().rows.len(), 1);
 }
 
 #[test]

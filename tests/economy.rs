@@ -11,6 +11,7 @@ use fishtank::{
         fused::FusedComponent,
         mutations::{Mutation, apply_mutation_to_fish},
         parts::{Part, RIG_WAIT_MAX_SECS, RIG_WAIT_MIN_SECS},
+        revert::revert_latest,
         species::{ALL_SPECIES, FishSpecies, SizeCategory, pellets_to_cap},
     },
     ledger::{Direction, Flow},
@@ -478,9 +479,15 @@ fn sizeincrease_grows_a_fish_by_one_segment_of_its_mass() {
         "a Mutantfish's mass is its worth"
     );
 
-    let before = fish.weight_g;
-    apply_mutation_to_fish(&mut fish, Mutation::SizeDecrease, &mut rng);
-    assert_eq!(fish.weight_g, before, "growth never runs backwards");
+    let eaten = 250;
+    fish.weight_g += eaten;
+    assert!(revert_latest(&mut fish, Mutation::SizeIncrease));
+    assert_eq!(fish.body_size as u32, body);
+    assert_eq!(
+        fish.weight_g,
+        6_000 + eaten,
+        "reverting the growth takes back its segment, never what the fish ate"
+    );
 }
 
 #[test]

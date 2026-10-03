@@ -9,5 +9,6 @@ pub mod habits;
 pub mod mutant;
 pub mod mutations;
 pub mod parts;
+pub mod revert;
 pub mod species;
 pub mod unfish;

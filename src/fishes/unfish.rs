@@ -534,6 +534,30 @@ impl UnfishState {
         }
     }
 
+    pub fn wear(&mut self, look: &UnfishState) {
+        self.floating_eyes = look.floating_eyes.clone();
+        self.ball_has_center_eye = look.ball_has_center_eye;
+        self.slime_body_color = look.slime_body_color;
+        self.slime_glisten_enabled = look.slime_glisten_enabled;
+        self.slime_glisten_color = look.slime_glisten_color;
+        self.slime_glisten_mode = look.slime_glisten_mode;
+        self.slime_glisten_speed = look.slime_glisten_speed;
+        self.worm_segments = look.worm_segments;
+        self.worm_extra_eyes = look.worm_extra_eyes;
+        self.worm_eye_colors = look.worm_eye_colors.clone();
+        self.slime_eye_color = look.slime_eye_color;
+        self.slime_color_patches = look.slime_color_patches.clone();
+        self.wake_color = look.wake_color;
+        self.circadian = look.circadian;
+        self.heterochromia = look.heterochromia;
+        self.ear_count = look.ear_count;
+        self.ear_color = look.ear_color;
+        self.hydra_count = look.hydra_count;
+        self.feet = look.feet;
+        self.body_extension = look.body_extension;
+        self.adornments = look.adornments;
+    }
+
     pub fn is_invisible(&self) -> bool {
         self.kind == UnfishKind::Blinker && self.blinker_phase == BlinkerPhase::Invisible
     }
@@ -666,14 +690,6 @@ impl UnfishState {
             None
         };
         try_place_eye(&mut self.floating_eyes, interior, center, rng);
-    }
-
-    pub fn remove_floating_eye(&mut self, rng: &mut impl RngExt) {
-        if self.floating_eyes.is_empty() {
-            return;
-        }
-        let idx = rng.random_range(0..self.floating_eyes.len());
-        self.floating_eyes.remove(idx);
     }
 
     pub fn worm_eye_count(&self) -> usize {

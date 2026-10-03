@@ -1,12 +1,13 @@
-use rand::RngExt;
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use ratatui::style::Color;
 
 use super::fish::{ENGULF_WINDOW_SECS, Fish, compute_display_width};
 use super::fused::FusedComponent;
 use super::mutant::{
-    Adornments, Circadian, EyeState, MIN_BODY_CHARS, MutantState, MutantTail, MutationRecord,
+    Adornments, Circadian, EyeState, MIN_BODY_CHARS, Mark, MutantState, MutantTail, MutationRecord,
     random_rgb,
 };
+use super::revert::{Look, can_revert, revert, settle_old_record};
 use super::species::{BodyTemplate, FishSpecies, SINGLE_EYE, TailKind};
 use super::unfish::{
     BALL_HEIGHT, SKULL_HEIGHT, SLIME_GLISTEN_SPEED_FAST, SLIME_GLISTEN_SPEED_SLOW, UnfishKind,
@@ -27,7 +28,6 @@ const SWAY_SPEED_CLAMP_MIN: f32 = 0.01;
 pub const STRAWBERRY_SELL_BONUS_PCT: u32 = 25;
 const LEGACY_WAKE_TOKEN: &str = "bubblecolor";
 const WORM_MAX_SEGMENTS: usize = 12;
-const WORM_MIN_SEGMENTS: usize = 1;
 const WORM_MAX_EXTRA_EYES: usize = 4;
 const DOUBLE_EYE_COUNT_MAX: usize = 3;
 const MAX_EARS: usize = 4;
@@ -37,9 +37,7 @@ const HYDRA_EYES_PER_APPLICATION_MAX: usize = 2;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mutation {
     SizeIncrease,
-    SizeDecrease,
     EyeIncrease,
-    EyeDecrease,
     ColorPatch,
     EyeColor,
     GlistenFast,
@@ -47,7 +45,6 @@ pub enum Mutation {
     GlistenMode,
     GlistenColor,
     GlistenEnable,
-    GlistenDisable,
     BodyColor,
     BodyVariant,
     TailVariant,
@@ -64,30 +61,26 @@ pub enum Mutation {
     HelpedByGod,
     Heterochromia,
     Ear,
-    EarDecrease,
     EarColor,
     Hydra,
     Feet,
-    NoFeet,
     FeetColor,
     Spikes,
     Wings,
     Tentacles,
-    DecreaseExtension,
     Lure,
     Bill,
     DorsalFin,
     VentralFin,
     Lunar,
     Puff,
+    Revert,
 }
 
 impl Mutation {
     pub const ALL: &'static [Mutation] = &[
         Mutation::SizeIncrease,
-        Mutation::SizeDecrease,
         Mutation::EyeIncrease,
-        Mutation::EyeDecrease,
         Mutation::ColorPatch,
         Mutation::EyeColor,
         Mutation::GlistenFast,
@@ -95,7 +88,6 @@ impl Mutation {
         Mutation::GlistenMode,
         Mutation::GlistenColor,
         Mutation::GlistenEnable,
-        Mutation::GlistenDisable,
         Mutation::BodyColor,
         Mutation::BodyVariant,
         Mutation::TailVariant,
@@ -112,22 +104,20 @@ impl Mutation {
         Mutation::HelpedByGod,
         Mutation::Heterochromia,
         Mutation::Ear,
-        Mutation::EarDecrease,
         Mutation::EarColor,
         Mutation::Hydra,
         Mutation::Feet,
-        Mutation::NoFeet,
         Mutation::FeetColor,
         Mutation::Spikes,
         Mutation::Wings,
         Mutation::Tentacles,
-        Mutation::DecreaseExtension,
         Mutation::Lure,
         Mutation::Bill,
         Mutation::DorsalFin,
         Mutation::VentralFin,
         Mutation::Lunar,
         Mutation::Puff,
+        Mutation::Revert,
     ];
 
     pub const ADORNMENTS: &'static [Mutation] = &[
@@ -142,9 +132,7 @@ impl Mutation {
     pub fn token(self) -> &'static str {
         match self {
             Mutation::SizeIncrease => "sizeincrease",
-            Mutation::SizeDecrease => "sizedecrease",
             Mutation::EyeIncrease => "eyeincrease",
-            Mutation::EyeDecrease => "eyedecrease",
             Mutation::ColorPatch => "colorpatch",
             Mutation::EyeColor => "eyecolor",
             Mutation::GlistenFast => "glistenfast",
@@ -152,7 +140,6 @@ impl Mutation {
             Mutation::GlistenMode => "glistenmode",
             Mutation::GlistenColor => "glistencolor",
             Mutation::GlistenEnable => "glistenenable",
-            Mutation::GlistenDisable => "glistendisable",
             Mutation::BodyColor => "bodycolor",
             Mutation::BodyVariant => "bodyvariant",
             Mutation::TailVariant => "tailvariant",
@@ -169,22 +156,20 @@ impl Mutation {
             Mutation::HelpedByGod => "helpedbygod",
             Mutation::Heterochromia => "heterochromia",
             Mutation::Ear => "ear",
-            Mutation::EarDecrease => "eardecrease",
             Mutation::EarColor => "earcolor",
             Mutation::Hydra => "hydra",
             Mutation::Feet => "feet",
-            Mutation::NoFeet => "nofeet",
             Mutation::FeetColor => "feetcolor",
             Mutation::Spikes => "spikes",
             Mutation::Wings => "wings",
             Mutation::Tentacles => "tentacles",
-            Mutation::DecreaseExtension => "decreaseextension",
             Mutation::Lure => "lure",
             Mutation::Bill => "bill",
             Mutation::DorsalFin => "dorsalfin",
             Mutation::VentralFin => "ventralfin",
             Mutation::Lunar => "lunar",
             Mutation::Puff => "puff",
+            Mutation::Revert => "revert",
         }
     }
 
@@ -202,6 +187,21 @@ impl Mutation {
 
     pub fn divides(self) -> bool {
         matches!(self, Mutation::Cytokinesis)
+    }
+
+    pub fn fuses(self) -> bool {
+        matches!(
+            self,
+            Mutation::Telophase
+                | Mutation::BackwardsTelophase
+                | Mutation::Cytokinesis
+                | Mutation::Endocytosis
+                | Mutation::Engulfment
+        )
+    }
+
+    pub fn can_be_reverted(self) -> bool {
+        !self.fuses() && self != Mutation::Revert
     }
 
     pub fn adorns(self) -> bool {
@@ -263,7 +263,17 @@ pub trait Mutatable {
     fn is_double(&self) -> bool;
     fn has_glisten(&self) -> bool;
     fn apply_one(&mut self, mutation: Mutation, rng: &mut impl RngExt) -> MutationOutcome;
+    fn record(&self) -> Option<&MutationRecord>;
     fn record_mut(&mut self) -> &mut MutationRecord;
+    fn look(&self) -> Look;
+    fn wear(&mut self, look: &Look);
+    fn refresh_width(&mut self);
+
+    fn worth(&self) -> (u32, u32) {
+        (0, 0)
+    }
+
+    fn set_worth(&mut self, _worth: (u32, u32)) {}
 
     fn circadian(&self) -> Circadian {
         Circadian::Neutral
@@ -376,18 +386,15 @@ pub trait Mutatable {
             Mutation::Endocytosis => self.is_double(),
             Mutation::Engulfment => !self.is_double(),
             Mutation::GlistenEnable => !self.has_glisten(),
-            Mutation::GlistenDisable => self.has_glisten(),
             Mutation::NightOwl => self.circadian() != Circadian::NightOwl,
             Mutation::HelpedByGod => self.circadian() != Circadian::HelpedByGod,
             Mutation::Ear => self.ear_count() < self.max_ears(),
-            Mutation::EarDecrease => self.ear_count() > 0,
             Mutation::EarColor => self.ear_count() > 0,
             Mutation::Hydra => self.hydra_count() < self.hydra_max(),
             Mutation::Feet => self.band_free(Band::Bottom),
-            Mutation::NoFeet => self.has_feet(),
             Mutation::FeetColor => self.has_feet(),
-            Mutation::DecreaseExtension => !self.extension().is_empty(),
             Mutation::WakeColor => self.leaves_a_wake(),
+            Mutation::Revert => can_revert(self),
             _ => true,
         }
     }
@@ -469,21 +476,9 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
         return MutationOutcome::Applied;
     }
     match mutation {
-        Mutation::SizeIncrease | Mutation::SizeDecrease => {
-            let delta = if matches!(mutation, Mutation::SizeIncrease) {
-                1
-            } else {
-                -1
-            };
-            let max_eyes = {
-                let mutant = target.mutant();
-                mutant.left_eyes.len().max(mutant.right_eyes.len())
-            };
-            let min_size = max_eyes + MIN_BODY_CHARS;
+        Mutation::SizeIncrease => {
             let old_size = target.body_size();
-            let new_size = (old_size as i32 + delta)
-                .clamp(min_size as i32, MUTATION_MAX_BODY_SIZE as i32)
-                as usize;
+            let new_size = (old_size + 1).min(MUTATION_MAX_BODY_SIZE).max(old_size);
             target.set_body_size(new_size);
             if new_size > old_size {
                 target.gain_segment_mass(old_size);
@@ -504,29 +499,16 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
                 mutant.color_patches.drain(0..excess);
             }
         }
-        Mutation::EyeIncrease | Mutation::EyeDecrease => {
-            let delta = if matches!(mutation, Mutation::EyeIncrease) {
-                1
-            } else {
-                -1
-            };
+        Mutation::EyeIncrease => {
             let body_size = target.body_size();
-            let max_eyes = body_size.saturating_sub(MIN_BODY_CHARS).clamp(1, 4) as i32;
+            let max_eyes = body_size.saturating_sub(MIN_BODY_CHARS).clamp(1, 4);
             let mutant = target.mutant_mut();
-            let floor = |eyes: usize| (eyes as i32).min(1);
-            let new_left = (mutant.left_eyes.len() as i32 + delta)
-                .clamp(floor(mutant.left_eyes.len()), max_eyes) as usize;
-            while mutant.left_eyes.len() < new_left {
-                mutant.left_eyes.push(EyeState::new(rng));
+            for eyes in [&mut mutant.left_eyes, &mut mutant.right_eyes] {
+                let grown = (eyes.len() + 1).min(max_eyes).max(eyes.len());
+                while eyes.len() < grown {
+                    eyes.push(EyeState::new(rng));
+                }
             }
-            mutant.left_eyes.truncate(new_left);
-            let new_right = (mutant.right_eyes.len() as i32 + delta)
-                .clamp(floor(mutant.right_eyes.len()), max_eyes)
-                as usize;
-            while mutant.right_eyes.len() < new_right {
-                mutant.right_eyes.push(EyeState::new(rng));
-            }
-            mutant.right_eyes.truncate(new_right);
         }
         Mutation::EyeColor => {
             let mutant = target.mutant_mut();
@@ -607,10 +589,6 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
             target.set_sway_speed(s);
             target.mutant_mut().glistening_color = Some(WHITE);
         }
-        Mutation::GlistenDisable => {
-            target.set_sway_speed(target.default_sway_speed());
-            target.mutant_mut().glistening_color = None;
-        }
         Mutation::Alienation => {
             target.set_color(LIGHT_GREEN);
             let mutant = target.mutant_mut();
@@ -634,10 +612,6 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
         Mutation::Ear => {
             target.mutant_mut().ear_count += 1;
         }
-        Mutation::EarDecrease => {
-            let mutant = target.mutant_mut();
-            mutant.ear_count = mutant.ear_count.saturating_sub(1);
-        }
         Mutation::EarColor => {
             target.mutant_mut().ear_color = Some(random_rgb(rng));
         }
@@ -655,16 +629,12 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
         Mutation::Feet => {
             target.mutant_mut().feet = Some(roll_feet(rng));
         }
-        Mutation::NoFeet => {
-            target.mutant_mut().feet = None;
-        }
         Mutation::FeetColor => {
             if let Some(feet) = target.mutant_mut().feet.as_mut() {
                 feet.color = Some(random_rgb(rng));
             }
         }
-        Mutation::Spikes | Mutation::Wings | Mutation::Tentacles => {}
-        Mutation::DecreaseExtension => target.mutant_mut().body_extension = None,
+        Mutation::Spikes | Mutation::Wings | Mutation::Tentacles | Mutation::Revert => {}
         Mutation::Lure
         | Mutation::Bill
         | Mutation::DorsalFin
@@ -680,9 +650,7 @@ const MUTANT_FULL_CAPS: &[Mutation] = Mutation::ALL;
 
 const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::SizeIncrease,
-    Mutation::SizeDecrease,
     Mutation::EyeIncrease,
-    Mutation::EyeDecrease,
     Mutation::ColorPatch,
     Mutation::EyeColor,
     Mutation::GlistenFast,
@@ -690,7 +658,6 @@ const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::GlistenMode,
     Mutation::GlistenColor,
     Mutation::GlistenEnable,
-    Mutation::GlistenDisable,
     Mutation::BodyColor,
     Mutation::Telophase,
     Mutation::BackwardsTelophase,
@@ -703,18 +670,17 @@ const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
     Mutation::Feet,
-    Mutation::NoFeet,
     Mutation::FeetColor,
     Mutation::Spikes,
     Mutation::Wings,
     Mutation::Tentacles,
-    Mutation::DecreaseExtension,
     Mutation::Lure,
     Mutation::Bill,
     Mutation::DorsalFin,
     Mutation::VentralFin,
     Mutation::Lunar,
     Mutation::Puff,
+    Mutation::Revert,
 ];
 
 const FIXED_JELLY_CAPS: &[Mutation] = &[
@@ -728,26 +694,23 @@ const FIXED_JELLY_CAPS: &[Mutation] = &[
     Mutation::GlistenMode,
     Mutation::GlistenColor,
     Mutation::GlistenEnable,
-    Mutation::GlistenDisable,
     Mutation::WakeColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::Feet,
-    Mutation::NoFeet,
     Mutation::FeetColor,
     Mutation::Spikes,
     Mutation::Wings,
     Mutation::Tentacles,
-    Mutation::DecreaseExtension,
     Mutation::Lure,
     Mutation::DorsalFin,
     Mutation::VentralFin,
     Mutation::Puff,
+    Mutation::Revert,
 ];
 
 const SLIME_CAPS: &[Mutation] = &[
     Mutation::EyeIncrease,
-    Mutation::EyeDecrease,
     Mutation::ColorPatch,
     Mutation::EyeColor,
     Mutation::GlistenFast,
@@ -755,27 +718,24 @@ const SLIME_CAPS: &[Mutation] = &[
     Mutation::GlistenMode,
     Mutation::GlistenColor,
     Mutation::GlistenEnable,
-    Mutation::GlistenDisable,
     Mutation::BodyColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
     Mutation::Ear,
-    Mutation::EarDecrease,
     Mutation::EarColor,
     Mutation::Hydra,
     Mutation::Feet,
-    Mutation::NoFeet,
     Mutation::FeetColor,
     Mutation::Spikes,
     Mutation::Wings,
     Mutation::Tentacles,
-    Mutation::DecreaseExtension,
     Mutation::Lure,
     Mutation::Bill,
     Mutation::DorsalFin,
     Mutation::VentralFin,
     Mutation::Lunar,
+    Mutation::Revert,
 ];
 
 const FIGURE_CAPS: &[Mutation] = &[
@@ -784,7 +744,6 @@ const FIGURE_CAPS: &[Mutation] = &[
     Mutation::GlistenMode,
     Mutation::GlistenColor,
     Mutation::GlistenEnable,
-    Mutation::GlistenDisable,
     Mutation::BodyColor,
     Mutation::Alienation,
     Mutation::Strawberry,
@@ -794,19 +753,16 @@ const FIGURE_CAPS: &[Mutation] = &[
     Mutation::DorsalFin,
     Mutation::VentralFin,
     Mutation::Feet,
-    Mutation::NoFeet,
     Mutation::FeetColor,
     Mutation::Spikes,
     Mutation::Wings,
     Mutation::Tentacles,
-    Mutation::DecreaseExtension,
+    Mutation::Revert,
 ];
 
 const WORM_CAPS: &[Mutation] = &[
     Mutation::SizeIncrease,
-    Mutation::SizeDecrease,
     Mutation::EyeIncrease,
-    Mutation::EyeDecrease,
     Mutation::ColorPatch,
     Mutation::EyeColor,
     Mutation::GlistenFast,
@@ -814,7 +770,6 @@ const WORM_CAPS: &[Mutation] = &[
     Mutation::GlistenMode,
     Mutation::GlistenColor,
     Mutation::GlistenEnable,
-    Mutation::GlistenDisable,
     Mutation::BodyColor,
     Mutation::Telophase,
     Mutation::BackwardsTelophase,
@@ -825,16 +780,14 @@ const WORM_CAPS: &[Mutation] = &[
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
     Mutation::Ear,
-    Mutation::EarDecrease,
     Mutation::EarColor,
     Mutation::Hydra,
     Mutation::Feet,
-    Mutation::NoFeet,
     Mutation::FeetColor,
     Mutation::Spikes,
     Mutation::Wings,
     Mutation::Tentacles,
-    Mutation::DecreaseExtension,
+    Mutation::Revert,
 ];
 
 fn fixed_is_single_char(left: &[&'static str]) -> bool {
@@ -924,21 +877,11 @@ pub fn apply_unfish_mutation(
             Mutation::SizeIncrease if style == UnfishMutationStyle::Worm => {
                 us.worm_segments = (us.worm_segments + 1).min(WORM_MAX_SEGMENTS);
             }
-            Mutation::SizeDecrease if style == UnfishMutationStyle::Worm => {
-                us.worm_segments = us.worm_segments.saturating_sub(1).max(WORM_MIN_SEGMENTS);
-                us.hydra_count = us.hydra_count.min(us.worm_segments.saturating_sub(1));
-            }
             Mutation::EyeIncrease => match style {
                 UnfishMutationStyle::Worm => {
                     us.worm_extra_eyes = (us.worm_extra_eyes + 1).min(WORM_MAX_EXTRA_EYES);
                 }
                 UnfishMutationStyle::Slime => us.add_floating_eye(rng),
-            },
-            Mutation::EyeDecrease => match style {
-                UnfishMutationStyle::Worm => {
-                    us.worm_extra_eyes = us.worm_extra_eyes.saturating_sub(1);
-                }
-                UnfishMutationStyle::Slime => us.remove_floating_eye(rng),
             },
             Mutation::Telophase if style == UnfishMutationStyle::Worm => {
                 if us.fused.is_empty() {
@@ -962,7 +905,6 @@ pub fn apply_unfish_mutation(
             Mutation::EyeColor => us.recolor_one_eye(rng),
             Mutation::Heterochromia => us.make_heterochromatic(rng),
             Mutation::GlistenEnable => us.slime_glisten_enabled = true,
-            Mutation::GlistenDisable => us.slime_glisten_enabled = false,
             Mutation::GlistenFast => us.slime_glisten_speed = SLIME_GLISTEN_SPEED_FAST,
             Mutation::GlistenSlow => us.slime_glisten_speed = SLIME_GLISTEN_SPEED_SLOW,
             Mutation::GlistenMode => {
@@ -973,10 +915,8 @@ pub fn apply_unfish_mutation(
             Mutation::NightOwl => us.circadian = Circadian::NightOwl,
             Mutation::HelpedByGod => us.circadian = Circadian::HelpedByGod,
             Mutation::Ear => us.ear_count += 1,
-            Mutation::EarDecrease => us.ear_count = us.ear_count.saturating_sub(1),
             Mutation::EarColor => us.ear_color = Some(random_rgb(rng)),
             Mutation::Feet => us.feet = Some(roll_feet(rng)),
-            Mutation::NoFeet => us.feet = None,
             Mutation::FeetColor => {
                 if let Some(feet) = us.feet.as_mut() {
                     feet.color = Some(random_rgb(rng));
@@ -987,7 +927,6 @@ pub fn apply_unfish_mutation(
                     extend(&mut us.body_extension, *variant, bands);
                 }
             }
-            Mutation::DecreaseExtension => us.body_extension = None,
             mutation if mutation.adorns() => us.adornments.grow(mutation),
             Mutation::Hydra if style == UnfishMutationStyle::Slime => {
                 let cap = body_size.saturating_sub(1);
@@ -1017,9 +956,20 @@ pub fn apply_unfish_mutation(
             _ => {}
         }
     }
-    let us = fish.unfish_state.as_mut().unwrap();
-    if style == UnfishMutationStyle::Worm {
+    if style == UnfishMutationStyle::Worm
+        && let Some(us) = fish.unfish_state.as_mut()
+    {
         us.resync_worm_eye_colors(rng);
+    }
+    refresh_unfish_width(fish);
+    MutationOutcome::Applied
+}
+
+fn refresh_unfish_width(fish: &mut Fish) {
+    let Some(us) = fish.unfish_state.as_ref() else {
+        return;
+    };
+    if us.kind.mutation_style() == UnfishMutationStyle::Worm {
         fish.display_width = worm_display_width(
             us.worm_segments,
             us.worm_extra_eyes,
@@ -1031,7 +981,6 @@ pub fn apply_unfish_mutation(
         let extras = us.ear_count + us.hydra_count + us.adornments.lead();
         fish.display_width = compute_display_width(FishSpecies::Unfish, fish.body_size) + extras;
     }
-    MutationOutcome::Applied
 }
 
 impl Mutatable for Fish {
@@ -1100,9 +1049,38 @@ impl Mutatable for Fish {
         apply_mutant_mutation(self, mutation, rng)
     }
 
+    fn record(&self) -> Option<&MutationRecord> {
+        self.mutations.as_deref()
+    }
+
     fn record_mut(&mut self) -> &mut MutationRecord {
         self.mutations
             .get_or_insert_with(|| Box::new(MutationRecord::default()))
+    }
+
+    fn look(&self) -> Look {
+        Fish::look(self)
+    }
+
+    fn wear(&mut self, look: &Look) {
+        Fish::wear(self, look);
+    }
+
+    fn refresh_width(&mut self) {
+        if self.unfish_state.is_some() {
+            refresh_unfish_width(self);
+            return;
+        }
+        self.recompute_display_width();
+    }
+
+    fn worth(&self) -> (u32, u32) {
+        (self.weight_g, self.sell_price_bonus_pct)
+    }
+
+    fn set_worth(&mut self, (weight_g, bonus_pct): (u32, u32)) {
+        self.weight_g = weight_g;
+        self.sell_price_bonus_pct = bonus_pct;
     }
 
     fn circadian(&self) -> Circadian {
@@ -1271,10 +1249,27 @@ pub fn apply_mutation<M: Mutatable>(
     mutation: Mutation,
     rng: &mut impl RngExt,
 ) -> MutationOutcome {
-    let outcome = target.apply_one(mutation, rng);
-    let record = target.record_mut();
-    record.count += 1;
-    record.history.push(mutation.token().to_string());
+    if mutation == Mutation::Revert {
+        revert(target, rng);
+        return MutationOutcome::Applied;
+    }
+    settle_old_record(target);
+    if target.record().is_none_or(|record| record.origin.is_none()) {
+        let look = target.look();
+        target.record_mut().settle(look);
+    }
+    let seed: u64 = rng.random();
+    let (mass_before, bonus_before) = target.worth();
+    let outcome = target.apply_one(mutation, &mut SmallRng::seed_from_u64(seed));
+    let (mass_after, bonus_after) = target.worth();
+    target.record_mut().note(
+        mutation,
+        Mark {
+            seed,
+            mass_g: mass_after.saturating_sub(mass_before),
+            bonus_pct: bonus_after.saturating_sub(bonus_before),
+        },
+    );
     outcome
 }
 
