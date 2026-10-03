@@ -13,8 +13,8 @@ use super::mutant::{
 };
 use super::mutations::{grow_birthmarks, native_eyes, tail_kind_to_mutant_tail};
 use super::species::{
-    BodyChars, BodyFill, BodySource, BodyTemplate, Cycle, EYE_CIRCLE, EYE_ROUND, FishSpecies,
-    Habit, Locomotion, PatternKind, Sin, SizeCategory, Skin, TailKind, Zoomie,
+    BodyChars, BodyFill, BodySource, BodyTemplate, Cycle, EYE_CIRCLE, EYE_ROUND, EyeAt,
+    FishSpecies, Habit, Locomotion, PatternKind, Sin, SizeCategory, Skin, TailKind, Zoomie,
 };
 use super::unfish::{
     BALL_WIDTH, BLINKER_BASE_COLOR, BLINKER_GLISTEN_MID, BLINKER_GLISTEN_PEAK, BLINKER_MID_COLOR,
@@ -75,6 +75,7 @@ const NIGHTOWL_SPEED_MULT: f32 = 0.4;
 const NIGHTOWL_SINK_DY: f32 = 1.5;
 const HUE_SHIFT_SECS: f32 = 3.0;
 const FEET_ROW_COUNT: usize = 1;
+const STONES: [char; 3] = ['o', 'O', '0'];
 pub const ENGULF_WINDOW_SECS: f32 = 10.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -770,7 +771,7 @@ impl Fish {
 
     fn fill_body(&self, cells: &mut [(char, Color)], facing_left: bool) {
         let config = self.species.config();
-        if config.body_fill != BodyFill::Junk {
+        if config.body_fill == BodyFill::Species {
             return;
         }
         let (BodyTemplate::Standard(chars) | BodyTemplate::Alternating(chars, _)) = config.body
@@ -799,13 +800,19 @@ impl Fish {
             if !body_glyphs.contains(&cell.0) {
                 continue;
             }
-            let (glyph, color) = junk_cell(&mut rng);
+            let (glyph, color) = match config.body_fill {
+                BodyFill::Stones => (STONES[rng.random_range(0..STONES.len())], None),
+                _ => {
+                    let (glyph, color) = junk_cell(&mut rng);
+                    (glyph, Some(color))
+                }
+            };
             cell.0 = if facing_left {
                 glyph
             } else {
                 mirror_char(glyph)
             };
-            if !keeps_its_colours {
+            if let Some(color) = color.filter(|_| !keeps_its_colours) {
                 cell.1 = color;
             }
         }
@@ -834,10 +841,11 @@ impl Fish {
             && !matches!(config.body, BodyTemplate::Fixed { .. })
             && segs.len() >= 2
         {
+            let from_head = MOUTH_WIDTH as usize + self.cells_before_eye(self.body_size);
             let eye_idx = if matches!(self.facing, Direction::Right) {
-                segs.len() - 2
+                segs.len() - 1 - from_head
             } else {
-                1
+                from_head
             };
             segs[eye_idx].1 = eye_color;
         }
@@ -1150,10 +1158,32 @@ impl Fish {
             .map(|_| if substituting { wave_char } else { body_char })
             .collect();
         let tail = tail_chars(body_chars, facing, self.sway.phase);
-        let mut chars = vec![mouth, eye];
-        chars.extend(body);
+        let before = self.cells_before_eye(body.len());
+        let mut chars = vec![mouth];
+        chars.extend(&body[..before]);
+        chars.push(eye);
+        chars.extend(&body[before..]);
         chars.extend(tail);
         chars
+    }
+
+    fn cells_before_eye(&self, body_len: usize) -> usize {
+        match self.species.config().eye_at {
+            EyeAt::Head => 0,
+            EyeAt::Middle => body_len / 2,
+        }
+    }
+
+    fn centre_eyes(
+        &self,
+        segs: &mut [(char, Color)],
+        eye_start: usize,
+        eye_count: usize,
+        body_len: usize,
+    ) -> usize {
+        let before = self.cells_before_eye(body_len);
+        segs[eye_start..eye_start + eye_count + before].rotate_left(eye_count);
+        before
     }
 
     fn segments_unfish(&self) -> LineCells {
@@ -1720,15 +1750,21 @@ impl Fish {
             &eye_b_colors,
         );
         let mut segs: Vec<(char, Color)> = chars.into_iter().zip(colors).collect();
+        let body_len = self.body_size + extra_body;
+        let before = if mutant.is_double && mutant.backwards {
+            0
+        } else {
+            self.centre_eyes(&mut segs, eye_start, eye_count, body_len)
+        };
         insert_line_hydra(
             &mut segs,
-            eye_start + eye_count,
-            self.body_size + extra_body,
+            eye_start + before + eye_count,
+            body_len - before,
             &mutant_hydra_cells(mutant),
         );
         insert_ears(
             &mut segs,
-            eye_start + eye_count,
+            eye_start + before + eye_count,
             mutant.ear_count,
             ear_glyph(facing_left),
             mutant.ear_color.unwrap_or(PINK),
@@ -1745,9 +1781,14 @@ impl Fish {
             .hydra_eyes
             .len()
             .min((self.body_size + extra_body).saturating_sub(1));
+        let around_eyes = if before > 0 {
+            eye_count + mutant.ear_count
+        } else {
+            0
+        };
         let span = self.mutant_body_span(
-            eye_start + eye_count + mutant.ear_count,
-            body_core_len + hydra_used,
+            eye_start + eye_count + mutant.ear_count - around_eyes,
+            body_core_len + hydra_used + around_eyes,
             segs.len(),
             facing_left,
         );
@@ -1815,9 +1856,10 @@ impl Fish {
     }
 
     pub fn eye_x(&self) -> i32 {
+        let from_head = MOUTH_WIDTH + self.cells_before_eye(self.body_size) as i32;
         match self.facing {
-            Direction::Left => self.head_x() + MOUTH_WIDTH,
-            Direction::Right => self.head_x() - MOUTH_WIDTH,
+            Direction::Left => self.head_x() + from_head,
+            Direction::Right => self.head_x() - from_head,
         }
     }
 
@@ -2426,15 +2468,21 @@ impl Fish {
             &eye_b_colors,
         );
         let mut segs: Vec<(char, Color)> = chars.into_iter().zip(colors).collect();
+        let body_len = self.body_size + extra_body;
+        let before = if mutant.is_double && mutant.backwards {
+            0
+        } else {
+            self.centre_eyes(&mut segs, eye_start, eye_count, body_len)
+        };
         insert_line_hydra(
             &mut segs,
-            eye_start + eye_count,
-            self.body_size + extra_body,
+            eye_start + before + eye_count,
+            body_len - before,
             &mutant_hydra_cells(mutant),
         );
         insert_ears(
             &mut segs,
-            eye_start + eye_count,
+            eye_start + before + eye_count,
             mutant.ear_count,
             ear_glyph(true),
             mutant.ear_color.unwrap_or(PINK),

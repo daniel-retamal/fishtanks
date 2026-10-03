@@ -263,6 +263,66 @@ fn a_mutated_fish_shows_its_own_eye_from_both_sides() {
     }
 }
 
+fn piedra_body(fish: &Fish, facing: Direction) -> String {
+    let mut seen = fish.clone();
+    seen.facing = facing;
+    seen.habits.alert = f32::MAX;
+    rows_of(&seen)[seen.line_sprite().body_row].clone()
+}
+
+#[test]
+fn a_stonefish_looks_out_from_the_middle_of_its_stones() {
+    let mut rng = rand::rng();
+    let piedra = Fish::new(
+        FishSpecies::Piedra,
+        "Rock".to_string(),
+        10.0,
+        10.0,
+        &mut rng,
+    );
+    let mutated = {
+        let mut fish = piedra.clone();
+        apply_mutation_to_fish(&mut fish, Mutation::BodyColor, &mut rng);
+        fish
+    };
+    for fish in [&mut piedra.clone(), &mut mutated.clone()] {
+        if let Some(mutant) = fish.mutant.as_mut() {
+            for eye in mutant.all_eyes_mut() {
+                eye.set_open(true);
+            }
+        }
+        let left = piedra_body(fish, Direction::Left);
+        let right = piedra_body(fish, Direction::Right);
+        let cells: Vec<char> = left.chars().collect();
+        let eye = cells
+            .iter()
+            .position(|&c| c == 'º')
+            .expect("the eye is open");
+        assert_eq!(cells.len(), fish.body_size + 3, "{left}");
+        assert_eq!(
+            eye,
+            1 + fish.body_size / 2,
+            "the eye sits mid-stone: {left}"
+        );
+        assert!(
+            cells[1..cells.len() - 1]
+                .iter()
+                .all(|c| ['o', 'O', '0', 'º'].contains(c)),
+            "a body of stones: {left}"
+        );
+        let mirrored: String = left.chars().rev().collect();
+        assert_eq!(right, mirrored, "facing right is the same rock");
+        assert_eq!(
+            fish.eye_x() - fish.head_x(),
+            if fish.facing_left() {
+                eye as i32
+            } else {
+                -(eye as i32)
+            }
+        );
+    }
+}
+
 #[test]
 fn a_mutated_tail_is_drawn_and_fills_its_display_width_both_ways() {
     const CYCLES: usize = 2;

@@ -181,6 +181,13 @@ impl Habitat {
 pub enum BodyFill {
     Species,
     Junk,
+    Stones,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EyeAt {
+    Head,
+    Middle,
 }
 
 const APPRAISAL_LUCK_BITS: u32 = 53;
@@ -429,6 +436,7 @@ pub struct SpeciesConfig {
     pub body: BodyTemplate,
     pub body_source: BodySource,
     pub body_fill: BodyFill,
+    pub eye_at: EyeAt,
     pub palette: &'static [Color],
     pub pattern: PatternKind,
     pub sway_speed: f32,
@@ -799,6 +807,7 @@ fn standard_config(
         body: BodyTemplate::Standard(body),
         body_source: BodySource::Species,
         body_fill: BodyFill::Species,
+        eye_at: EyeAt::Head,
         palette,
         pattern,
         sway_speed,
@@ -848,6 +857,7 @@ fn fixed_config(
         body: BodyTemplate::Fixed { left, right },
         body_source: BodySource::Species,
         body_fill: BodyFill::Species,
+        eye_at: EyeAt::Head,
         palette,
         pattern,
         sway_speed: 0.0,
@@ -1032,6 +1042,7 @@ impl FishSpecies {
                     body: BodyTemplate::Alternating(DEADFISH_BC_SEMI, DEADFISH_BC_PLUS),
                     body_source: BodySource::Species,
                     body_fill: BodyFill::Species,
+                    eye_at: EyeAt::Head,
                     palette: &DEADFISH_PALETTE,
                     pattern: Solid,
                     sway_speed: 0.04,
@@ -1240,6 +1251,7 @@ impl FishSpecies {
                 body: BodyTemplate::Standard(standard(EYE_CIRCLE, TailKind::Wide)),
                 body_source: BodySource::MutantState,
                 body_fill: BodyFill::Species,
+                eye_at: EyeAt::Head,
                 palette: &MUTANT_GREEN_PALETTE,
                 pattern: Solid,
                 sway_speed: 0.11,
@@ -1386,6 +1398,8 @@ impl FishSpecies {
                 config.locomotion = Locomotion::Floor;
                 config.zoomie = Zoomie::None;
                 config.habit = Some(Habit::Ambush);
+                config.body_fill = BodyFill::Stones;
+                config.eye_at = EyeAt::Middle;
                 config
             }
             Pejesapo => {
@@ -1690,6 +1704,7 @@ impl FishSpecies {
                 body: BodyTemplate::Standard(standard(EYE_ROUND, TailKind::Wide)),
                 body_source: BodySource::UnfishState,
                 body_fill: BodyFill::Species,
+                eye_at: EyeAt::Head,
                 palette: &UNFISH_PALETTE,
                 pattern: Solid,
                 sway_speed: 0.10,
