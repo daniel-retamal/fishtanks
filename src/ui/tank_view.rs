@@ -23,13 +23,14 @@ use crate::{
     fishes::botfish::BotfishState,
     fishes::fish::{Fish, line_extension_bands},
     fishes::parts::Display,
+    fishes::species::{EYE_CIRCLE, EYE_ROUND, EYE_ROUND_SHUT, Skin},
     fishes::unfish::{
         BALL_BASE, BALL_CENTER_ROW, BALL_EYE_COL, BALL_EYE_ROW, BALL_WIDTH, SKULL_CENTER_ROW,
         SKULL_CLOSED, SKULL_OPEN, SKULL_WIDTH, UNFISH_BODY_COLOR, UNFISH_EYE_COLOR, UnfishKind,
         is_multi_row,
     },
     tank::speech_ink,
-    tank::{Tank, TankBackground},
+    tank::{INK_COLOR, InkBlot, TRAIL_GLYPH, Tank, TankBackground, TrailMark},
     tanks::alien::{AlienPyramid, AlienStar, pyramid_canvas_w, pyramid_lines},
     tanks::coral::{
         CORAL_A_LINES, CORAL_A_ROWS, CORAL_COLOR, CoralAlgaeInstance, CoralStructure,
@@ -245,6 +246,9 @@ impl Widget for TankView<'_> {
                 render_heaven_background(bg, self.show_names, area, buf);
             }
         }
+        for mark in &self.tank.trails {
+            render_trail(mark, area, buf);
+        }
         for bubble in &self.tank.bubbles {
             render_bubble(bubble, area, buf);
         }
@@ -267,11 +271,15 @@ impl Widget for TankView<'_> {
         for food in &self.tank.food {
             render_food(food, area, buf);
         }
+        let water = self.tank.water_color();
         for fish in &self.tank.fish {
-            render_fish(fish, area, buf);
+            render_fish(fish, water, area, buf);
         }
         for fish in &self.tank.fish {
             render_fish_surfaces(fish, area, buf);
+        }
+        for blot in &self.tank.inks {
+            render_ink(blot, area, buf);
         }
         if let TankBackground::Coral { floor_algae, .. } = &self.tank.background {
             for fa in floor_algae {
@@ -284,7 +292,7 @@ impl Widget for TankView<'_> {
         for ufo in &self.tank.ufos {
             render_ufo(ufo, area, buf);
             if let Some(fish) = ufo.carried_fish() {
-                render_fish(fish, area, buf);
+                render_fish(fish, water, area, buf);
             }
         }
         if self.show_names {
@@ -663,6 +671,40 @@ fn render_bubble(bubble: &Bubble, area: Rect, buf: &mut Buffer) {
     }
 }
 
+fn render_trail(mark: &TrailMark, area: Rect, buf: &mut Buffer) {
+    if mark.x < 0 || mark.y < 0 {
+        return;
+    }
+    let (x, y) = (area.x as i32 + mark.x, area.y as i32 + mark.y);
+    if x >= area.right() as i32 || y >= area.bottom() as i32 {
+        return;
+    }
+    let cell = &mut buf[(x as u16, y as u16)];
+    if cell.symbol() != " " {
+        return;
+    }
+    cell.set_char(TRAIL_GLYPH).set_style(
+        Style::new()
+            .fg(mark.color_now())
+            .remove_modifier(Modifier::all()),
+    );
+}
+
+fn render_ink(blot: &InkBlot, area: Rect, buf: &mut Buffer) {
+    for &(x, y, glyph) in &blot.cells {
+        if x < 0 || y < 0 {
+            continue;
+        }
+        let (sx, sy) = (area.x as i32 + x, area.y as i32 + y);
+        if sx >= area.right() as i32 || sy >= area.bottom() as i32 {
+            continue;
+        }
+        overdraw(buf, sx as u16, sy as u16)
+            .set_char(glyph)
+            .set_style(Style::new().fg(INK_COLOR).remove_modifier(Modifier::all()));
+    }
+}
+
 fn render_food(food: &Food, area: Rect, buf: &mut Buffer) {
     let x = area.x + food.position.x as u16;
     let y = area.y + food.position.y as u16;
@@ -679,7 +721,7 @@ fn render_fish_name(fish: &Fish, area: Rect, buf: &mut Buffer) {
 }
 
 fn render_fish_label(fish: &Fish, color: Color, area: Rect, buf: &mut Buffer) {
-    if fish.is_invisible() {
+    if fish.is_invisible() || fish.is_out_of_sight(area.width) {
         return;
     }
     if let Some(ref us) = fish.unfish_state
@@ -735,7 +777,7 @@ fn rows_above_body(fish: &Fish, names_shown: bool) -> i32 {
 }
 
 fn render_fish_net(fish: &Fish, names_shown: bool, area: Rect, buf: &mut Buffer) {
-    if fish.is_invisible() {
+    if fish.is_invisible() || fish.is_out_of_sight(area.width) {
         return;
     }
     let Some(net) = fish.script().and_then(BotfishState::net_label) else {
@@ -746,7 +788,7 @@ fn render_fish_net(fish: &Fish, names_shown: bool, area: Rect, buf: &mut Buffer)
 }
 
 fn render_fish_speech(fish: &Fish, area: Rect, buf: &mut Buffer) {
-    if fish.is_invisible() {
+    if fish.is_invisible() || fish.is_out_of_sight(area.width) {
         return;
     }
     let bubbles = fish_bubbles(fish);
@@ -882,7 +924,7 @@ fn draw_bubble(
     }
 }
 
-fn render_fish(fish: &Fish, area: Rect, buf: &mut Buffer) {
+fn render_fish(fish: &Fish, water: Color, area: Rect, buf: &mut Buffer) {
     if fish.is_invisible() {
         return;
     }
@@ -897,11 +939,16 @@ fn render_fish(fish: &Fish, area: Rect, buf: &mut Buffer) {
         }
     }
 
-    render_line_sprite(fish, area, buf);
+    render_line_sprite(fish, water, area, buf);
 }
 
-fn render_line_sprite(fish: &Fish, area: Rect, buf: &mut Buffer) {
+fn is_eye_glyph(glyph: char) -> bool {
+    matches!(glyph, EYE_ROUND | EYE_ROUND_SHUT | EYE_CIRCLE)
+}
+
+fn render_line_sprite(fish: &Fish, water: Color, area: Rect, buf: &mut Buffer) {
     let sprite = fish.line_sprite();
+    let skin = fish.species.config().skin;
     let body_screen_y = area.y as i32 + fish.position.y as i32;
     let base_y = body_screen_y - sprite.body_row as i32;
     let x_base = area.x as i32 + fish.position.x as i32;
@@ -922,9 +969,33 @@ fn render_line_sprite(fish: &Fish, area: Rect, buf: &mut Buffer) {
                 break;
             }
             if sx >= area.x as i32 {
-                buf[(sx as u16, sy as u16)]
-                    .set_char(ch)
-                    .set_style(Style::new().fg(color).remove_modifier(Modifier::all()));
+                let cell = &mut buf[(sx as u16, sy as u16)];
+                let behind = (cell.symbol() != " ").then(|| (cell.symbol().to_string(), cell.fg));
+                let plain = Style::new().fg(color).remove_modifier(Modifier::all());
+                match (skin, behind) {
+                    (_, _) if is_eye_glyph(ch) => {
+                        cell.set_char(ch).set_style(plain);
+                    }
+                    (Skin::Camouflage, Some((_, under))) => {
+                        let hue = if under == Color::Reset { water } else { under };
+                        cell.set_char(ch)
+                            .set_style(Style::new().fg(hue).remove_modifier(Modifier::all()));
+                    }
+                    (Skin::Camouflage, None) => {
+                        cell.set_char(ch)
+                            .set_style(Style::new().fg(water).remove_modifier(Modifier::all()));
+                    }
+                    (Skin::SeeThrough, Some((symbol, _))) => {
+                        cell.set_symbol(&symbol).set_style(plain);
+                    }
+                    (Skin::SeeThrough, None) => {
+                        cell.set_char(ch)
+                            .set_style(plain.add_modifier(Modifier::DIM));
+                    }
+                    _ => {
+                        cell.set_char(ch).set_style(plain);
+                    }
+                }
             }
             col += w;
         }
@@ -1821,7 +1892,7 @@ fn render_soul_wall(wall: &SoulWall, show_names: bool, area: Rect, buf: &mut Buf
 fn render_souls(wall: &SoulWall, area: Rect, buf: &mut Buffer) {
     let mut canvas = Buffer::empty(area);
     for soul in wall.drifting() {
-        render_fish(soul, area, &mut canvas);
+        render_fish(soul, Color::Reset, area, &mut canvas);
     }
     let style = Style::new()
         .fg(wall.color())
@@ -2556,7 +2627,7 @@ mod tests {
         }
         let area = Rect::new(0, 0, 60, 24);
         let mut buf = Buffer::empty(area);
-        render_fish(&fish, area, &mut buf);
+        render_fish(&fish, Color::Reset, area, &mut buf);
         let body_y = area.y + fish.position.y as u16;
         let feet_y = body_y + 1;
         let feet = (0..area.width)
@@ -2615,7 +2686,7 @@ mod tests {
         }
         let area = Rect::new(0, 0, 60, 24);
         let mut buf = Buffer::empty(area);
-        render_fish(&fish, area, &mut buf);
+        render_fish(&fish, Color::Reset, area, &mut buf);
         let body_y = area.y + fish.position.y as u16;
         let below = (0..area.width)
             .filter(|&x| buf[(x, body_y + 1)].symbol() == "|")
@@ -2695,7 +2766,7 @@ mod tests {
                 let mut fish = Fish::new(species, "T".into(), 6.0, 8.0, &mut rng);
                 fish.facing = facing;
                 let mut buf = Buffer::empty(area);
-                render_fish(&fish, area, &mut buf);
+                render_fish(&fish, Color::Reset, area, &mut buf);
                 assert_body_row_matches(&fish, &buf, area);
             }
         }
@@ -2703,7 +2774,7 @@ mod tests {
             let mut fish = Fish::new_unfish(UnfishKind::Reversed, "U".into(), 6.0, 8.0, &mut rng);
             fish.facing = facing;
             let mut buf = Buffer::empty(area);
-            render_fish(&fish, area, &mut buf);
+            render_fish(&fish, Color::Reset, area, &mut buf);
             assert_body_row_matches(&fish, &buf, area);
         }
     }

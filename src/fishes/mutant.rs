@@ -26,12 +26,63 @@ pub enum Circadian {
 }
 
 impl Circadian {
-    pub fn forced_eye_open(self) -> Option<bool> {
+    pub fn asleep(self, daylight: bool) -> bool {
+        self == Circadian::NightOwl && daylight
+    }
+
+    pub fn forced_eye_open(self, daylight: bool) -> Option<bool> {
         match self {
             Circadian::Neutral => None,
-            Circadian::NightOwl => Some(false),
+            Circadian::NightOwl => self.asleep(daylight).then_some(false),
             Circadian::HelpedByGod => Some(true),
         }
+    }
+}
+
+pub const LURE_LEAD: usize = 2;
+pub const BILL_LEAD: usize = 2;
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Adornments {
+    #[serde(default)]
+    pub lure: bool,
+    #[serde(default)]
+    pub bill: bool,
+    #[serde(default)]
+    pub dorsal_fin: bool,
+    #[serde(default)]
+    pub ventral_fin: bool,
+    #[serde(default)]
+    pub lunar: bool,
+    #[serde(default)]
+    pub puff: bool,
+}
+
+impl Adornments {
+    pub fn slot(&mut self, mutation: Mutation) -> Option<&mut bool> {
+        match mutation {
+            Mutation::Lure => Some(&mut self.lure),
+            Mutation::Bill => Some(&mut self.bill),
+            Mutation::DorsalFin => Some(&mut self.dorsal_fin),
+            Mutation::VentralFin => Some(&mut self.ventral_fin),
+            Mutation::Lunar => Some(&mut self.lunar),
+            Mutation::Puff => Some(&mut self.puff),
+            _ => None,
+        }
+    }
+
+    pub fn has(mut self, mutation: Mutation) -> bool {
+        self.slot(mutation).is_some_and(|grown| *grown)
+    }
+
+    pub fn grow(&mut self, mutation: Mutation) {
+        if let Some(grown) = self.slot(mutation) {
+            *grown = true;
+        }
+    }
+
+    pub fn lead(self) -> usize {
+        usize::from(self.lure) * LURE_LEAD + usize::from(self.bill) * BILL_LEAD
     }
 }
 
@@ -40,6 +91,8 @@ pub enum MutantTail {
     Wide,
     Swaying,
     Curly,
+    Narrow,
+    Bare,
 }
 
 impl MutantTail {
@@ -48,11 +101,15 @@ impl MutantTail {
             MutantTail::Wide => 2,
             MutantTail::Swaying => 2,
             MutantTail::Curly => 3,
+            MutantTail::Narrow => 1,
+            MutantTail::Bare => 0,
         }
     }
 
     pub fn chars(self, facing_left: bool, phase: f32) -> Vec<char> {
         match self {
+            MutantTail::Bare => Vec::new(),
+            MutantTail::Narrow => vec![if facing_left { '<' } else { '>' }],
             MutantTail::Wide => vec!['>', '<'],
             MutantTail::Swaying => {
                 let base = if facing_left {
@@ -168,6 +225,10 @@ pub struct MutantState {
     pub ear_color: Option<Color>,
     pub feet: Option<Feet>,
     pub body_extension: Option<BodyExtension>,
+    #[serde(default)]
+    pub adornments: Adornments,
+    #[serde(default)]
+    pub patterned: bool,
 }
 
 impl MutantState {
@@ -194,6 +255,8 @@ impl MutantState {
             ear_color: None,
             feet: None,
             body_extension: None,
+            adornments: Adornments::default(),
+            patterned: true,
         }
     }
 
@@ -226,6 +289,8 @@ impl MutantState {
             ear_color: None,
             feet: None,
             body_extension: None,
+            adornments: Adornments::default(),
+            patterned: false,
         }
     }
 
@@ -242,7 +307,7 @@ impl MutantState {
         } else {
             1 + max_eyes + body_size + self.tail_variant.display_width()
         };
-        base + self.ear_count + self.hydra_eyes.len()
+        base + self.ear_count + self.hydra_eyes.len() + self.adornments.lead()
     }
 
     pub fn all_eyes_mut(&mut self) -> impl Iterator<Item = &mut EyeState> {
@@ -281,8 +346,8 @@ impl MutantState {
         eye.color.or(self.eye_color).unwrap_or(default)
     }
 
-    pub fn tick_eyes(&mut self, dt: f32) {
-        let forced = self.circadian.forced_eye_open();
+    pub fn tick_eyes(&mut self, dt: f32, daylight: bool) {
+        let forced = self.circadian.forced_eye_open(daylight);
         for e in self.all_eyes_mut() {
             e.tick(dt);
             if let Some(open) = forced {

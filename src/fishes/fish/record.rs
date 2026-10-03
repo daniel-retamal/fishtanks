@@ -13,6 +13,7 @@ use crate::fishes::botfish::BotfishState;
 use crate::fishes::mutant::{MutantState, MutationRecord};
 use crate::fishes::species::{FishSpecies, SizeCategory};
 use crate::fishes::unfish::UnfishState;
+use crate::tank::Sky;
 
 #[derive(Serialize, Deserialize)]
 pub struct Placement {
@@ -96,6 +97,8 @@ impl From<Fish> for FishRecord {
             pending_rad_mutations,
             speech: _,
             field_cache: _,
+            sky: _,
+            habits: _,
             direction_timer: _,
             zoomie_timer: _,
             zoomed_secs: _,
@@ -175,6 +178,8 @@ impl From<FishRecord> for Fish {
             pending_rad_mutations: record.pending_rad_mutations,
             speech: None,
             field_cache: Vec::new(),
+            sky: Sky::default(),
+            habits: Box::default(),
             direction_timer: rng.random_range(DIRECTION_TIMER_MIN..DIRECTION_TIMER_MAX),
             zoomie_timer: rng.random_range(ZOOMIE_INITIAL_TIMER_MIN..ZOOMIE_INITIAL_TIMER_MAX),
             zoomed_secs: 0.0,

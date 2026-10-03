@@ -4,7 +4,8 @@ use ratatui::style::Color;
 use super::fish::{ENGULF_WINDOW_SECS, Fish, compute_display_width};
 use super::fused::FusedComponent;
 use super::mutant::{
-    Circadian, EyeState, MIN_BODY_CHARS, MutantState, MutantTail, MutationRecord, random_rgb,
+    Adornments, Circadian, EyeState, MIN_BODY_CHARS, MutantState, MutantTail, MutationRecord,
+    random_rgb,
 };
 use super::species::{BodyTemplate, FishSpecies, SINGLE_EYE, TailKind};
 use super::unfish::{
@@ -72,6 +73,12 @@ pub enum Mutation {
     FeetColor,
     BodyExtension,
     DecreaseExtension,
+    Lure,
+    Bill,
+    DorsalFin,
+    VentralFin,
+    Lunar,
+    Puff,
 }
 
 impl Mutation {
@@ -112,6 +119,21 @@ impl Mutation {
         Mutation::FeetColor,
         Mutation::BodyExtension,
         Mutation::DecreaseExtension,
+        Mutation::Lure,
+        Mutation::Bill,
+        Mutation::DorsalFin,
+        Mutation::VentralFin,
+        Mutation::Lunar,
+        Mutation::Puff,
+    ];
+
+    pub const ADORNMENTS: &'static [Mutation] = &[
+        Mutation::Lure,
+        Mutation::Bill,
+        Mutation::DorsalFin,
+        Mutation::VentralFin,
+        Mutation::Lunar,
+        Mutation::Puff,
     ];
 
     pub fn token(self) -> &'static str {
@@ -152,6 +174,12 @@ impl Mutation {
             Mutation::FeetColor => "feetcolor",
             Mutation::BodyExtension => "bodyextension",
             Mutation::DecreaseExtension => "decreaseextension",
+            Mutation::Lure => "lure",
+            Mutation::Bill => "bill",
+            Mutation::DorsalFin => "dorsalfin",
+            Mutation::VentralFin => "ventralfin",
+            Mutation::Lunar => "lunar",
+            Mutation::Puff => "puff",
         }
     }
 
@@ -166,6 +194,10 @@ impl Mutation {
 
     pub fn divides(self) -> bool {
         matches!(self, Mutation::Cytokinesis)
+    }
+
+    pub fn adorns(self) -> bool {
+        Mutation::ADORNMENTS.contains(&self)
     }
 }
 
@@ -217,7 +249,9 @@ pub fn tail_kind_to_mutant_tail(kind: TailKind) -> MutantTail {
     match kind {
         TailKind::WideCurly => MutantTail::Curly,
         TailKind::Swaying { .. } => MutantTail::Swaying,
-        _ => MutantTail::Wide,
+        TailKind::Short | TailKind::Custom { .. } => MutantTail::Narrow,
+        TailKind::None => MutantTail::Bare,
+        TailKind::Wide => MutantTail::Wide,
     }
 }
 
@@ -260,9 +294,20 @@ pub trait Mutatable {
         false
     }
 
+    fn adornments(&self) -> Adornments {
+        Adornments::default()
+    }
+
+    fn has_line_head(&self) -> bool {
+        true
+    }
+
     fn supports_now(&self, mutation: Mutation) -> bool {
         if !self.capabilities().contains(&mutation) {
             return false;
+        }
+        if mutation.adorns() {
+            return self.has_line_head() && !self.adornments().has(mutation);
         }
         match mutation {
             Mutation::Telophase => !self.is_double() || self.backwards(),
@@ -402,12 +447,16 @@ pub fn apply_mutant_mutation<T: MutantBacked>(
             let body_size = target.body_size();
             let max_eyes = body_size.saturating_sub(MIN_BODY_CHARS).clamp(1, 4) as i32;
             let mutant = target.mutant_mut();
-            let new_left = (mutant.left_eyes.len() as i32 + delta).clamp(1, max_eyes) as usize;
+            let floor = |eyes: usize| (eyes as i32).min(1);
+            let new_left = (mutant.left_eyes.len() as i32 + delta)
+                .clamp(floor(mutant.left_eyes.len()), max_eyes) as usize;
             while mutant.left_eyes.len() < new_left {
                 mutant.left_eyes.push(EyeState::new(rng));
             }
             mutant.left_eyes.truncate(new_left);
-            let new_right = (mutant.right_eyes.len() as i32 + delta).clamp(1, max_eyes) as usize;
+            let new_right = (mutant.right_eyes.len() as i32 + delta)
+                .clamp(floor(mutant.right_eyes.len()), max_eyes)
+                as usize;
             while mutant.right_eyes.len() < new_right {
                 mutant.right_eyes.push(EyeState::new(rng));
             }
@@ -467,7 +516,7 @@ pub fn apply_mutant_mutation<T: MutantBacked>(
             mutant.tail_variant = match mutant.tail_variant {
                 MutantTail::Wide => MutantTail::Swaying,
                 MutantTail::Swaying => MutantTail::Curly,
-                MutantTail::Curly => MutantTail::Wide,
+                MutantTail::Curly | MutantTail::Narrow | MutantTail::Bare => MutantTail::Wide,
             };
         }
         Mutation::MouthVariant => {
@@ -550,6 +599,12 @@ pub fn apply_mutant_mutation<T: MutantBacked>(
         }
         Mutation::BodyExtension => grow_extension(&mut target.mutant_mut().body_extension, rng),
         Mutation::DecreaseExtension => shrink_extension(&mut target.mutant_mut().body_extension),
+        Mutation::Lure
+        | Mutation::Bill
+        | Mutation::DorsalFin
+        | Mutation::VentralFin
+        | Mutation::Lunar
+        | Mutation::Puff => target.mutant_mut().adornments.grow(mutation),
     }
     target.recompute_display_width();
     MutationOutcome::Applied
@@ -586,6 +641,12 @@ const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::FeetColor,
     Mutation::BodyExtension,
     Mutation::DecreaseExtension,
+    Mutation::Lure,
+    Mutation::Bill,
+    Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Lunar,
+    Mutation::Puff,
 ];
 
 const FIXED_JELLY_CAPS: &[Mutation] = &[
@@ -608,6 +669,10 @@ const FIXED_JELLY_CAPS: &[Mutation] = &[
     Mutation::FeetColor,
     Mutation::BodyExtension,
     Mutation::DecreaseExtension,
+    Mutation::Lure,
+    Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Puff,
 ];
 
 const SLIME_CAPS: &[Mutation] = &[
@@ -635,6 +700,26 @@ const SLIME_CAPS: &[Mutation] = &[
     Mutation::FeetColor,
     Mutation::BodyExtension,
     Mutation::DecreaseExtension,
+    Mutation::Lure,
+    Mutation::Bill,
+    Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Lunar,
+];
+
+const FIGURE_CAPS: &[Mutation] = &[
+    Mutation::GlistenFast,
+    Mutation::GlistenSlow,
+    Mutation::GlistenMode,
+    Mutation::GlistenColor,
+    Mutation::GlistenEnable,
+    Mutation::GlistenDisable,
+    Mutation::BodyColor,
+    Mutation::Alienation,
+    Mutation::Strawberry,
+    Mutation::BubbleColor,
+    Mutation::NightOwl,
+    Mutation::HelpedByGod,
 ];
 
 const WORM_CAPS: &[Mutation] = &[
@@ -679,32 +764,44 @@ pub(crate) fn ensure_fish_mutant(fish: &mut Fish, rng: &mut impl RngExt) {
     if fish.mutant.is_some() {
         return;
     }
-    let body = fish.species.config().body;
+    let config = fish.species.config();
+    let body = config.body;
     let tail = match body {
         BodyTemplate::Standard(bc) | BodyTemplate::Alternating(bc, _) => {
             tail_kind_to_mutant_tail(bc.tail)
         }
-        BodyTemplate::Fixed { .. } => MutantTail::Wide,
+        BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => MutantTail::Wide,
     };
     let mut mutant = MutantState::new_for_standard(tail, rng);
-    if let BodyTemplate::Fixed { left, .. } = body {
-        let n_chars = left.first().map(|s| s.chars().count()).unwrap_or(1);
-        if n_chars > 1 {
-            let n_base = n_chars.saturating_sub(2).max(1);
-            fish.body_size = n_base;
-            mutant.left_eyes.clear();
-            mutant.right_eyes.clear();
+    mutant.eye_color = config.eye_color;
+    match body {
+        BodyTemplate::Fixed { left, .. } => {
+            let n_chars = left.first().map(|s| s.chars().count()).unwrap_or(1);
+            if n_chars > 1 {
+                let n_base = n_chars.saturating_sub(2).max(1);
+                fish.body_size = n_base;
+                mutant.left_eyes.clear();
+                mutant.right_eyes.clear();
+            }
+            fish.display_width = compute_display_width(fish.species, 0);
         }
-        fish.display_width = compute_display_width(fish.species, 0);
-    } else {
-        fish.display_width = mutant.display_width(fish.body_size);
+        BodyTemplate::Figure(_) => {
+            fish.display_width = compute_display_width(fish.species, 0);
+        }
+        _ => fish.display_width = mutant.display_width(fish.body_size),
     }
     fish.mutant = Some(Box::new(mutant));
 }
 
+pub(crate) fn grow_birthmarks(fish: &mut Fish, rng: &mut impl RngExt) {
+    for &mutation in fish.species.config().born_with {
+        fish.apply_one(mutation, rng);
+    }
+}
+
 pub(crate) fn native_eyes(species: FishSpecies, rng: &mut impl RngExt) -> Option<Box<MutantState>> {
     let config = species.config();
-    if config.eyes <= SINGLE_EYE {
+    if config.eyes == SINGLE_EYE {
         return None;
     }
     let (BodyTemplate::Standard(chars) | BodyTemplate::Alternating(chars, _)) = config.body else {
@@ -803,6 +900,7 @@ pub fn apply_unfish_mutation(
             }
             Mutation::BodyExtension => grow_extension(&mut us.body_extension, rng),
             Mutation::DecreaseExtension => shrink_extension(&mut us.body_extension),
+            mutation if mutation.adorns() => us.adornments.grow(mutation),
             Mutation::Hydra if style == UnfishMutationStyle::Slime => {
                 let cap = body_size.saturating_sub(1);
                 let remaining = cap.saturating_sub(us.hydra_count);
@@ -842,7 +940,7 @@ pub fn apply_unfish_mutation(
             us.hydra_count,
         );
     } else if !is_multi_row(us.kind) {
-        let extras = us.ear_count + us.hydra_count;
+        let extras = us.ear_count + us.hydra_count + us.adornments.lead();
         fish.display_width = compute_display_width(FishSpecies::Unfish, fish.body_size) + extras;
     }
     MutationOutcome::Applied
@@ -868,6 +966,18 @@ impl Mutatable for Fish {
                     FIXED_MULTICHAR_CAPS
                 }
             }
+            BodyTemplate::Figure(_) => FIGURE_CAPS,
+        }
+    }
+
+    fn adornments(&self) -> Adornments {
+        Fish::adornments(self)
+    }
+
+    fn has_line_head(&self) -> bool {
+        match self.unfish_state.as_ref() {
+            Some(us) => !is_multi_row(us.kind) && us.kind != UnfishKind::Worm,
+            None => true,
         }
     }
 
@@ -963,7 +1073,7 @@ impl Mutatable for Fish {
             BodyTemplate::Standard(_) | BodyTemplate::Alternating(_, _) => {
                 self.body_size.saturating_sub(1)
             }
-            BodyTemplate::Fixed { .. } => 0,
+            BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => 0,
         }
     }
 }
@@ -980,6 +1090,9 @@ impl MutantBacked for Fish {
     }
     fn set_color(&mut self, c: Color) {
         self.color = c;
+        if let Some(mutant) = self.mutant.as_mut() {
+            mutant.patterned = false;
+        }
     }
     fn sway_speed(&self) -> f32 {
         self.sway_speed
@@ -1002,7 +1115,7 @@ impl MutantBacked for Fish {
         } else {
             match self.species.config().body {
                 BodyTemplate::Standard(_) | BodyTemplate::Alternating(_, _) => 1,
-                BodyTemplate::Fixed { .. } => 0,
+                BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => 0,
             }
         }
     }
@@ -1010,7 +1123,10 @@ impl MutantBacked for Fish {
         self.sell_price_bonus_pct = self.sell_price_bonus_pct.saturating_add(pct);
     }
     fn gain_segment_mass(&mut self, grown_from: usize) {
-        if matches!(self.species.config().body, BodyTemplate::Fixed { .. }) {
+        if matches!(
+            self.species.config().body,
+            BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_)
+        ) {
             return;
         }
         let Ok(segments) = u32::try_from(grown_from) else {
@@ -1035,10 +1151,11 @@ impl MutantBacked for Fish {
         let Some(mutant) = self.mutant.as_ref() else {
             return;
         };
+        let lead = mutant.adornments.lead();
         self.display_width = match self.species.config().body {
             BodyTemplate::Fixed { left, .. } => {
                 let n_chars = left.first().map(|s| s.chars().count()).unwrap_or(1);
-                if n_chars > 1 {
+                let width = if n_chars > 1 {
                     let n_eyes = mutant.left_eyes.len().max(mutant.right_eyes.len());
                     if mutant.is_double {
                         2 * (1 + n_eyes + self.body_size)
@@ -1049,8 +1166,10 @@ impl MutantBacked for Fish {
                     2
                 } else {
                     compute_display_width(self.species, self.body_size)
-                }
+                };
+                width + lead
             }
+            BodyTemplate::Figure(_) => compute_display_width(self.species, self.body_size),
             _ => mutant.display_width(self.body_size),
         };
     }

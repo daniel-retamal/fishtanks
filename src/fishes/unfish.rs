@@ -8,7 +8,7 @@ use crate::colors::{DARK_GRAY, GRAY, WHITE};
 use crate::entities::components::BlinkTimer;
 use crate::entities::glistening::GlisteningMode;
 use crate::fishes::fused::FusedComponent;
-use crate::fishes::mutant::{Circadian, random_rgb};
+use crate::fishes::mutant::{Adornments, Circadian, random_rgb};
 use crate::fishes::species::Sin;
 use crate::sprite::{BodyExtension, EAR_LEFT, EAR_RIGHT, Feet};
 use crate::util::{even_indices, sample_exponential};
@@ -448,6 +448,8 @@ pub struct UnfishState {
     pub hydra_count: usize,
     pub feet: Option<Feet>,
     pub body_extension: Option<BodyExtension>,
+    #[serde(default)]
+    pub adornments: Adornments,
 }
 
 impl UnfishState {
@@ -527,6 +529,7 @@ impl UnfishState {
             hydra_count: 0,
             feet: None,
             body_extension: None,
+            adornments: Adornments::default(),
         }
     }
 
@@ -534,8 +537,8 @@ impl UnfishState {
         self.kind == UnfishKind::Blinker && self.blinker_phase == BlinkerPhase::Invisible
     }
 
-    pub fn tick(&mut self, dt: f32, rng: &mut impl RngExt) {
-        let forced_eye = self.circadian.forced_eye_open();
+    pub fn tick(&mut self, dt: f32, daylight: bool, rng: &mut impl RngExt) {
+        let forced_eye = self.circadian.forced_eye_open(daylight);
         self.eye.tick(dt);
         self.wings.tick(dt);
         if let Some(open) = forced_eye {

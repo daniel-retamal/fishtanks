@@ -7,7 +7,7 @@ use crate::fishes::fish::{
     BLESSING_GLOW_SECS, BLESSING_INTERVAL_SECS, Direction, EATING_DURATION, Fish, FishState,
 };
 use crate::fishes::mutations::{MutantBacked, Mutatable, Mutation, apply_mutation};
-use crate::fishes::species::FishSpecies;
+use crate::fishes::species::{FishSpecies, Habit};
 use crate::fishes::unfish::{
     PHANTOM_CROSS_TANK_CHANCE, PHANTOM_TELEPORT_MEAN, SPAWNABLE_UNFISH, UnfishKind,
     VOID_SPAWN_MEAN_SECS, is_multi_row,
@@ -16,11 +16,11 @@ use crate::names;
 use crate::settings::Settings;
 use crate::util::{events_in, sample_exponential};
 
+use super::{BLIND_SMELL_RADIUS, Tank, TankEvent};
 use super::{
     SEEK_BOOST_GROWTH, SEEK_BOOST_INITIAL_MAX, SEEK_DX_DEADZONE, SEEK_DY_MULTIPLIER, SEEK_NORM_MIN,
     ZOOMIE_BUBBLES_PER_SEC,
 };
-use super::{Tank, TankEvent};
 use crate::entities::food::{CANDY_GAIN_MULT, FOOD_WEIGHT_GAIN_G};
 
 fn sq(x: f32) -> f32 {
@@ -104,16 +104,19 @@ impl Tank {
                         &mut rng,
                     );
                     b.cash_value = Some(CASHFISH_ZOOMIE_CASH * cash_stacks);
+                    b.poppable = false;
                     b
                 } else if fish.ability_stacks(FishSpecies::Holyfish) > 0 {
-                    Bubble::new(
+                    let mut b = Bubble::new(
                         tail_x,
                         fish.position.y,
                         BubblePhase::rising(&mut rng),
                         WHITE,
                         None,
                         &mut rng,
-                    )
+                    );
+                    b.poppable = false;
+                    b
                 } else {
                     Bubble::new(
                         tail_x,
@@ -206,32 +209,33 @@ impl Tank {
             let fx = self.food[idx].position.x as i32;
             let fy = self.food[idx].position.y as i32;
             if (head_x - fx).abs() <= 1 && head_y == fy {
-                if self.fish[i].ability_stacks(FishSpecies::Candyfish) > 0 {
-                    self.food[idx].is_candy = true;
-                    self.fish[i].state = FishState::Eating {
-                        time_remaining: EATING_DURATION,
-                    };
-                    continue;
-                }
-                self.food[idx].eaten = true;
-                self.fish[i].state = FishState::Eating {
-                    time_remaining: EATING_DURATION,
-                };
-                let cat = self.fish[i].size_category;
-                let cap = if self.fish[i].is_weight_uncapped() {
-                    0
-                } else {
-                    self.fish[i].species.config().weight_cap[cat as usize]
-                };
-                let gain = if self.food[idx].is_candy {
-                    FOOD_WEIGHT_GAIN_G * CANDY_GAIN_MULT
-                } else {
-                    FOOD_WEIGHT_GAIN_G
-                };
-                let new_w = self.fish[i].weight_g + gain;
-                self.fish[i].weight_g = if cap == 0 { new_w } else { new_w.min(cap) };
+                self.bite(i, idx);
             }
         }
+    }
+
+    pub(super) fn bite(&mut self, i: usize, idx: usize) {
+        self.fish[i].state = FishState::Eating {
+            time_remaining: EATING_DURATION,
+        };
+        if self.fish[i].ability_stacks(FishSpecies::Candyfish) > 0 {
+            self.food[idx].is_candy = true;
+            return;
+        }
+        self.food[idx].eaten = true;
+        let cat = self.fish[i].size_category;
+        let cap = if self.fish[i].is_weight_uncapped() {
+            0
+        } else {
+            self.fish[i].species.config().weight_cap[cat as usize]
+        };
+        let gain = if self.food[idx].is_candy {
+            FOOD_WEIGHT_GAIN_G * CANDY_GAIN_MULT
+        } else {
+            FOOD_WEIGHT_GAIN_G
+        };
+        let new_w = self.fish[i].weight_g + gain;
+        self.fish[i].weight_g = if cap == 0 { new_w } else { new_w.min(cap) };
     }
 
     pub(super) fn assign_food_to_idle_fish(&mut self) {
@@ -245,22 +249,49 @@ impl Tank {
             ) {
                 continue;
             }
-            if self.fish[i].is_wired() || self.fish[i].is_pinned() || !self.fish[i].seeks_food() {
+            let fish = &self.fish[i];
+            if fish.is_wired()
+                || fish.is_pinned()
+                || fish.is_asleep()
+                || !fish.locomotion().swims()
+                || !fish.seeks_food()
+            {
                 continue;
             }
             let fish_len = self.fish[i].display_width as f32;
             let head_x = self.fish[i].head_x() as f32;
             let fish_y = self.fish[i].position.y;
-            let nearest_idx = self.food.iter().enumerate().min_by(|(_, a), (_, b)| {
-                let da = sq(head_x - a.position.x) + sq(fish_y - a.position.y);
-                let db = sq(head_x - b.position.x) + sq(fish_y - b.position.y);
-                da.partial_cmp(&db).unwrap()
-            });
+            let smell = if self.fish[i].habit() == Some(Habit::Blind) {
+                BLIND_SMELL_RADIUS
+            } else {
+                f32::INFINITY
+            };
+            let nearest_idx = self
+                .food
+                .iter()
+                .enumerate()
+                .filter(|(_, food)| {
+                    sq(head_x - food.position.x) + sq(fish_y - food.position.y) <= sq(smell)
+                })
+                .min_by(|(_, a), (_, b)| {
+                    let da = sq(head_x - a.position.x) + sq(fish_y - a.position.y);
+                    let db = sq(head_x - b.position.x) + sq(fish_y - b.position.y);
+                    da.partial_cmp(&db).unwrap()
+                });
             if let Some((idx, _)) = nearest_idx {
                 let mut rng = rand::rng();
                 let center_x = self.fish[i].position.x + (fish_len - 1.0) / 2.0;
                 let food_x = self.food[idx].position.x;
-                let approach_right = center_x <= food_x;
+                let lead = self.fish[i].lead() as f32;
+                let mouth_reach_facing_left = (self.width as f32 - fish_len).max(0.0) + lead + 1.0;
+                let mouth_reach_facing_right = fish_len - 1.0 - lead - 1.0;
+                let approach_right = if food_x > mouth_reach_facing_left {
+                    true
+                } else if food_x < mouth_reach_facing_right {
+                    false
+                } else {
+                    center_x <= food_x
+                };
                 self.fish[i].seek_boost = rng.random_range(0.0_f32..SEEK_BOOST_INITIAL_MAX);
                 self.fish[i].facing = if approach_right {
                     Direction::Right
@@ -559,7 +590,7 @@ impl Tank {
                 }
             }
             if cross_tank {
-                events.push(TankEvent::PhantomCrossTank {
+                events.push(TankEvent::Wander {
                     fish_name: fish.name.clone(),
                 });
             } else if teleport {
@@ -1466,7 +1497,7 @@ mod wiring_tests {
     fn an_unwired_botfish_zoomies_so_that_wiring_one_is_visible() {
         let mut tank = tank_with_botfish(false);
         assert!(
-            FishSpecies::Botfish.config().can_zoomie,
+            FishSpecies::Botfish.config().zoomie.zooms(),
             "a botfish must be able to zoomie, or wiring it changes nothing you can watch"
         );
         assert!(zoomies_within_window(&mut tank), "a loose botfish plays");

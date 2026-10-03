@@ -395,7 +395,8 @@ pub fn gen_field_value(
             Some(quote) => plain(quote),
             None => {
                 let count = rng.random_range(2..=8u32);
-                plain((0..count).map(|_| "glub").collect::<Vec<_>>().join(" "))
+                let voice = fish.species.config().flavour.voice;
+                plain((0..count).map(|_| voice).collect::<Vec<_>>().join(" "))
             }
         },
 

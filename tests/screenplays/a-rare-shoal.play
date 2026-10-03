@@ -1,0 +1,29 @@
+# SCREENPLAY · a rare shoal: the Rares that draw more than one row, in the tank, the index and a
+# show card. The lure, the fins and the multi-row figures must keep every border whole.
+
+clear
+run /spawn caracol "Shelly"
+run /spawn linterna "Lamp"
+run /spawn tollo "Fin"
+run /spawn luna "Mola"
+run /spawn caballito "Romeo"
+run /spawn martillo "Hammer"
+run /spawn neon "Shoal"
+run /spawn pulpo "Inky"
+run /spawn globo "Puff"
+run /spawn ermitano "Pagu"
+tick 30
+snap the rare shoal in the tank
+run /index
+expect Shelly
+expect º._(@)
+snap the index draws every rare whole
+key esc
+run /show "Lamp"
+expect Lamp
+snap the anglerfish on its show card
+key esc
+run /show "Mola"
+expect Mola
+snap the sunfish with both fins on its show card
+key esc

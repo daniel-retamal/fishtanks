@@ -12,6 +12,50 @@ pub const DAY_LENGTH_SECS: f32 = 1440.0;
 pub const HOUR_SECS: f32 = DAY_LENGTH_SECS / HOURS_PER_DAY as f32;
 pub const DAWN_HOUR: u32 = 6;
 pub const DUSK_HOUR: u32 = 20;
+pub const LUNAR_MONTH_DAYS: u32 = 8;
+pub const FULL_MOON: u32 = LUNAR_MONTH_DAYS / 2;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sky {
+    pub daylight: bool,
+    pub moon: u32,
+    pub calm: bool,
+}
+
+impl Default for Sky {
+    fn default() -> Self {
+        Self {
+            daylight: true,
+            moon: FULL_MOON,
+            calm: false,
+        }
+    }
+}
+
+impl Sky {
+    pub fn is_night(self) -> bool {
+        !self.daylight
+    }
+
+    pub fn lights(self, cell: usize, width: usize) -> bool {
+        let phase = self.moon % LUNAR_MONTH_DAYS;
+        if width == 0 {
+            return false;
+        }
+        let waxing = phase <= FULL_MOON;
+        let days_lit = if waxing {
+            phase
+        } else {
+            LUNAR_MONTH_DAYS - phase
+        };
+        let lit = (width as u32 * days_lit).div_ceil(FULL_MOON) as usize;
+        if waxing {
+            cell >= width.saturating_sub(lit)
+        } else {
+            cell < lit
+        }
+    }
+}
 pub const RAD_TANK_RADS: u32 = 10;
 pub const SELECTOR_OPEN: char = '{';
 pub const SELECTOR_CLOSE: char = '}';
@@ -342,6 +386,8 @@ impl Tank {
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct DayClock {
     elapsed: f32,
+    #[serde(default)]
+    days: u32,
 }
 
 impl DayClock {
@@ -355,9 +401,25 @@ impl DayClock {
 
     pub fn tick(&mut self, dt: f32) -> bool {
         let was = self.hour();
-        self.elapsed = (self.elapsed + dt).rem_euclid(DAY_LENGTH_SECS);
+        let reached = self.elapsed + dt;
+        if reached >= DAY_LENGTH_SECS {
+            self.days = self.days.wrapping_add((reached / DAY_LENGTH_SECS) as u32);
+        }
+        self.elapsed = reached.rem_euclid(DAY_LENGTH_SECS);
         let now = self.hour();
         now != was && now == DAWN_HOUR
+    }
+
+    pub fn is_daylight(&self) -> bool {
+        (DAWN_HOUR..DUSK_HOUR).contains(&self.hour())
+    }
+
+    pub fn sky(&self, calm: bool) -> Sky {
+        Sky {
+            daylight: self.is_daylight(),
+            moon: self.days % LUNAR_MONTH_DAYS,
+            calm,
+        }
     }
 }
 

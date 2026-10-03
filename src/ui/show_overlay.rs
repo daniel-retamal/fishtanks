@@ -73,7 +73,7 @@ impl ShowState {
         all: bool,
         rng: &mut impl RngExt,
     ) -> Self {
-        let mut display_fish = fish.clone();
+        let mut display_fish = fish.portrait();
         display_fish.facing = Direction::Right;
 
         let mut show_fields: Vec<ShowField> = vec![

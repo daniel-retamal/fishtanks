@@ -561,7 +561,8 @@ fn fixed_cell_width(column: FixedColumn, snapshot: &FishSnapshot) -> usize {
     }
 }
 
-fn display_clone(mut fish: Fish) -> Fish {
+fn display_clone(fish: Fish) -> Fish {
+    let mut fish = fish.portrait();
     fish.facing = Direction::Left;
     fish
 }

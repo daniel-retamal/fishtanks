@@ -50,6 +50,7 @@ pub struct Bubble {
     pub color: Color,
     pub dead: bool,
     pub cash_value: Option<u32>,
+    pub poppable: bool,
     sway: SwayState,
     base_x: f32,
     rise_speed: f32,
@@ -84,6 +85,7 @@ impl Bubble {
             color,
             dead: false,
             cash_value: None,
+            poppable: true,
             phase,
         }
     }

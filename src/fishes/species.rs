@@ -3,9 +3,12 @@ use std::sync::LazyLock;
 
 use ratatui::style::Color;
 
+use super::art::{CABALLITO, CARACOL, COFRE, ERMITANO, MARTILLO, NEON, PULPO};
+use super::figure::Figure;
+use super::mutations::Mutation;
 use crate::economy::{Money, Purchasable, Rarity, Sellable};
 use crate::entities::food::{FOOD_BUY_PRICE, FOOD_WEIGHT_GAIN_G};
-use crate::loot::{CashValue, JUNK_OUTLINE};
+use crate::loot::{CashValue, JUNK_OUTLINE, StockItem};
 use crate::tank::TankKind;
 
 pub const SINGLE_EYE: usize = 1;
@@ -27,10 +30,11 @@ pub const TAIL_WAVE_LEFT: char = '彡';
 pub const TAIL_WAVE_RIGHT: char = 'ミ';
 pub const TAIL_EQUAL: char = '≡';
 use crate::colors::{
-    AMBER, AMBER_DARK, AMBER_LIGHT, BLUE, CYAN, DARK_GRAY, FOREST, GOLD, GRAY, GREEN_BRIGHT,
-    GREEN_LIGHT, LIGHT_BLUE, LIGHT_CYAN, LIGHT_MAGENTA, LIGHT_RED, LIGHT_YELLOW, MAGENTA, NAVY,
-    NAVY_DARK, NAVY_LIGHT, ORANGE, ORANGE_DARK, ORANGE_LIGHT, PINK, PURPLE, PURPLE_LIGHT, RED,
-    RED_DARK, SILVER, VIOLET, WHITE, YELLOW,
+    AMBER, AMBER_DARK, AMBER_LIGHT, BLUE, BROWN, BROWN_DARK, CREAM, CYAN, DARK_GRAY, FOREST, GOLD,
+    GRAY, GREEN_BRIGHT, GREEN_DARK, GREEN_LIGHT, KHAKI, LIGHT_BLUE, LIGHT_CYAN, LIGHT_MAGENTA,
+    LIGHT_RED, LIGHT_YELLOW, MAGENTA, NAVY, NAVY_DARK, NAVY_LIGHT, OLIVE, OLIVE_LIGHT, ORANGE,
+    ORANGE_DARK, ORANGE_LIGHT, PINK, PURPLE, PURPLE_LIGHT, RED, RED_DARK, SILVER, STEEL, TAN, TEAL,
+    TERRACOTTA, VIOLET, WHITE, YELLOW,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -86,6 +90,33 @@ pub enum FishSpecies {
     Cheatfish,
     Unfish,
     Junkfish,
+    Caracol,
+    Babosa,
+    Estrella,
+    Ermitano,
+    Lenguado,
+    Piedra,
+    Pejesapo,
+    Cofre,
+    Caballito,
+    Morena,
+    Volador,
+    Espada,
+    Tollo,
+    Mariposa,
+    Linterna,
+    Luciernaga,
+    Bagre,
+    Luna,
+    Loro,
+    Mimo,
+    Timido,
+    Ciego,
+    Globo,
+    Pulpo,
+    Draco,
+    Neon,
+    Martillo,
 }
 
 impl FishSpecies {
@@ -193,6 +224,80 @@ impl Tint {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Zoomie {
+    None,
+    Burst,
+    Vertical,
+    Still,
+    Glide,
+    Lunge,
+    Hop,
+    Ink,
+}
+
+impl Zoomie {
+    pub fn zooms(self) -> bool {
+        self != Zoomie::None
+    }
+
+    pub fn moves(self) -> bool {
+        !matches!(self, Zoomie::None | Zoomie::Still)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Locomotion {
+    Swim,
+    Through,
+    Bounce,
+    Floor,
+    Sideways,
+    Glass,
+}
+
+impl Locomotion {
+    pub fn swims(self) -> bool {
+        matches!(self, Locomotion::Swim | Locomotion::Through)
+    }
+
+    pub fn walks(self) -> bool {
+        matches!(self, Locomotion::Floor | Locomotion::Sideways)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Habit {
+    Sync,
+    Pair,
+    Duel,
+    ShellSwap,
+    Chase,
+    Shadow,
+    Echo,
+    Shy,
+    Blind,
+    Backwards,
+    Ambush,
+    Escape,
+    Gape,
+    Twinkle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cycle {
+    OnBounce,
+    OnClock,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Skin {
+    Palette,
+    Camouflage,
+    Cycle(Cycle),
+    SeeThrough,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fortune {
     Doomed,
     Golden,
@@ -242,7 +347,11 @@ pub struct Flavour {
     pub sin: Option<Sin>,
     pub delicious: Option<&'static str>,
     pub has_seen_the_sky: bool,
+    pub voice: &'static str,
 }
+
+const GLUB: &str = "glub";
+const MIAU: &str = "miau";
 
 pub const ORDINARY_FLAVOUR: Flavour = Flavour {
     card_color: Tint::Plain,
@@ -252,6 +361,7 @@ pub const ORDINARY_FLAVOUR: Flavour = Flavour {
     sin: None,
     delicious: None,
     has_seen_the_sky: false,
+    voice: GLUB,
 };
 
 const MUTANT_FLAVOUR: Flavour = Flavour {
@@ -262,6 +372,7 @@ const MUTANT_FLAVOUR: Flavour = Flavour {
     sin: Some(Sin::Wrath),
     delicious: Some("NOOOOOOOOOO"),
     has_seen_the_sky: false,
+    voice: GLUB,
 };
 
 const CASH_FLAVOUR: Flavour = Flavour {
@@ -272,6 +383,7 @@ const CASH_FLAVOUR: Flavour = Flavour {
     sin: Some(Sin::Greed),
     delicious: Some("Yes."),
     has_seen_the_sky: true,
+    voice: GLUB,
 };
 
 const HOLY_FLAVOUR: Flavour = Flavour {
@@ -282,6 +394,17 @@ const HOLY_FLAVOUR: Flavour = Flavour {
     sin: Some(Sin::Lust),
     delicious: Some("Forbidden"),
     has_seen_the_sky: true,
+    voice: GLUB,
+};
+
+const SKY_FLAVOUR: Flavour = Flavour {
+    has_seen_the_sky: true,
+    ..ORDINARY_FLAVOUR
+};
+
+const CAT_FLAVOUR: Flavour = Flavour {
+    voice: MIAU,
+    ..ORDINARY_FLAVOUR
 };
 
 const CANDY_FLAVOUR: Flavour = Flavour {
@@ -321,8 +444,13 @@ pub struct SpeciesConfig {
     pub auto_glisten: bool,
     pub auto_mutate: bool,
     pub programmable: bool,
-    pub can_zoomie: bool,
-    pub zoomie_vertical: bool,
+    pub zoomie: Zoomie,
+    pub locomotion: Locomotion,
+    pub habit: Option<Habit>,
+    pub skin: Skin,
+    pub trail: Option<Tint>,
+    pub keepsake: Option<StockItem>,
+    pub born_with: &'static [Mutation],
     pub eye_color: Option<Color>,
     pub zoomie_bubble_color: Tint,
     pub flavour: Flavour,
@@ -400,6 +528,33 @@ pub const ALL_SPECIES: &[FishSpecies] = &[
     FishSpecies::Nishiki,
     FishSpecies::Aka,
     FishSpecies::Kuro,
+    FishSpecies::Caracol,
+    FishSpecies::Babosa,
+    FishSpecies::Estrella,
+    FishSpecies::Ermitano,
+    FishSpecies::Lenguado,
+    FishSpecies::Piedra,
+    FishSpecies::Pejesapo,
+    FishSpecies::Cofre,
+    FishSpecies::Caballito,
+    FishSpecies::Morena,
+    FishSpecies::Volador,
+    FishSpecies::Espada,
+    FishSpecies::Tollo,
+    FishSpecies::Mariposa,
+    FishSpecies::Linterna,
+    FishSpecies::Luciernaga,
+    FishSpecies::Bagre,
+    FishSpecies::Luna,
+    FishSpecies::Loro,
+    FishSpecies::Mimo,
+    FishSpecies::Timido,
+    FishSpecies::Ciego,
+    FishSpecies::Globo,
+    FishSpecies::Pulpo,
+    FishSpecies::Draco,
+    FishSpecies::Neon,
+    FishSpecies::Martillo,
     FishSpecies::Candyfish,
     FishSpecies::Holyfish,
     FishSpecies::Botfish,
@@ -438,6 +593,7 @@ pub enum BodyTemplate {
         left: &'static [&'static str],
         right: &'static [&'static str],
     },
+    Figure(&'static Figure),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -543,6 +699,48 @@ static DEADFISH_PALETTE: [Color; 2] = [WHITE, DARK_GRAY];
 static UNFISH_PALETTE: [Color; 1] = [WHITE];
 static CANDYFISH_PALETTE: [Color; 3] = [PINK, MAGENTA, LIGHT_MAGENTA];
 
+static CARACOL_PALETTE: [Color; 3] = [OLIVE_LIGHT, BROWN, TAN];
+static BABOSA_PALETTE: [Color; 3] = [PURPLE_LIGHT, VIOLET, PINK];
+static ESTRELLA_PALETTE: [Color; 4] = [TERRACOTTA, AMBER, PINK, VIOLET];
+static ERMITANO_PALETTE: [Color; 3] = [TERRACOTTA, ORANGE_LIGHT, JUNK_OUTLINE];
+static LENGUADO_PALETTE: [Color; 1] = [TAN];
+static PIEDRA_PALETTE: [Color; 4] = [GRAY, BROWN_DARK, DARK_GRAY, OLIVE];
+static PEJESAPO_PALETTE: [Color; 2] = [OLIVE, KHAKI];
+static COFRE_PALETTE: [Color; 8] = [
+    RED,
+    ORANGE,
+    YELLOW,
+    GREEN_BRIGHT,
+    CYAN,
+    NAVY_LIGHT,
+    VIOLET,
+    PINK,
+];
+static CABALLITO_PALETTE: [Color; 3] = [AMBER, ORANGE_LIGHT, AMBER_DARK];
+static MORENA_PALETTE: [Color; 3] = [OLIVE, OLIVE_LIGHT, KHAKI];
+static VOLADOR_PALETTE: [Color; 3] = [NAVY_LIGHT, SILVER, LIGHT_BLUE];
+static ESPADA_PALETTE: [Color; 3] = [NAVY, SILVER, NAVY_LIGHT];
+static TOLLO_PALETTE: [Color; 3] = [GRAY, SILVER, STEEL];
+static MARIPOSA_PALETTE: [Color; 3] = [YELLOW, YELLOW, WHITE];
+static LINTERNA_PALETTE: [Color; 2] = [DARK_GRAY, BROWN_DARK];
+static LUCIERNAGA_PALETTE: [Color; 2] = [DARK_GRAY, GREEN_DARK];
+static BAGRE_PALETTE: [Color; 3] = [BROWN_DARK, BROWN, TAN];
+static LUNA_PALETTE: [Color; 1] = [SILVER];
+static LORO_PALETTE: [Color; 4] = [TEAL, GREEN_BRIGHT, PINK, NAVY_LIGHT];
+static MIMO_PALETTE: [Color; 2] = [WHITE, DARK_GRAY];
+static TIMIDO_PALETTE: [Color; 2] = [CREAM, PINK];
+static CIEGO_PALETTE: [Color; 1] = [CREAM];
+static GLOBO_PALETTE: [Color; 3] = [KHAKI, TAN, CREAM];
+static PULPO_PALETTE: [Color; 4] = [TERRACOTTA, VIOLET, OLIVE_LIGHT, PINK];
+static DRACO_PALETTE: [Color; 3] = [LIGHT_CYAN, SILVER, WHITE];
+static NEON_PALETTE: [Color; 2] = [CYAN, LIGHT_RED];
+static MARTILLO_PALETTE: [Color; 3] = [STEEL, SILVER, GRAY];
+
+static ESTRELLA_LR: [&str; 1] = ["✶"];
+const NO_EYES: usize = 0;
+const TWO_EYES: usize = 2;
+const MORENA_SIZES: [usize; 4] = [8, 12, 16, 20];
+
 pub const DEADFISH_BC_SEMI: BodyChars = BodyChars {
     mouth_left: '<',
     mouth_right: '>',
@@ -616,8 +814,13 @@ fn standard_config(
         auto_glisten: false,
         auto_mutate: false,
         programmable: false,
-        can_zoomie: true,
-        zoomie_vertical: false,
+        zoomie: Zoomie::Burst,
+        locomotion: Locomotion::Swim,
+        habit: None,
+        skin: Skin::Palette,
+        trail: None,
+        keepsake: None,
+        born_with: &[],
         eye_color: None,
         zoomie_bubble_color: Tint::Plain,
         flavour: ORDINARY_FLAVOUR,
@@ -660,8 +863,13 @@ fn fixed_config(
         auto_glisten: false,
         auto_mutate: false,
         programmable: false,
-        can_zoomie: true,
-        zoomie_vertical: false,
+        zoomie: Zoomie::Burst,
+        locomotion: Locomotion::Swim,
+        habit: None,
+        skin: Skin::Palette,
+        trail: None,
+        keepsake: None,
+        born_with: &[],
         eye_color: None,
         zoomie_bubble_color: Tint::Plain,
         flavour: ORDINARY_FLAVOUR,
@@ -673,6 +881,53 @@ fn fixed_config(
         sell_cap,
     }
 }
+
+fn figure_config(
+    name: &'static str,
+    figure: &'static Figure,
+    palette: &'static [Color],
+    speed_range: (f32, f32),
+    rarity: Rarity,
+) -> SpeciesConfig {
+    let mut config = fixed_config(
+        name,
+        &[],
+        &[],
+        palette,
+        PatternKind::Solid,
+        speed_range,
+        rarity,
+    );
+    config.body = BodyTemplate::Figure(figure);
+    config.sway_speed = FIGURE_SWAY_SPEED;
+    config
+}
+
+const FIGURE_SWAY_SPEED: f32 = 0.08;
+
+const fn chars(
+    mouth: (char, char),
+    eye: char,
+    body: (char, char),
+    wave: (char, char),
+    tail: TailKind,
+) -> BodyChars {
+    BodyChars {
+        mouth_left: mouth.0,
+        mouth_right: mouth.1,
+        eye_left: eye,
+        eye_right: eye,
+        body_left: body.0,
+        wave_left: wave.0,
+        body_right: body.1,
+        wave_right: wave.1,
+        tail,
+    }
+}
+
+const MOUTH: (char, char) = ('<', '>');
+const ROUND: (char, char) = ('(', ')');
+const CURLED: (char, char) = ('{', '}');
 
 impl FishSpecies {
     pub fn config(self) -> SpeciesConfig {
@@ -792,8 +1047,13 @@ impl FishSpecies {
                     auto_glisten: false,
                     auto_mutate: false,
                     programmable: false,
-                    can_zoomie: true,
-                    zoomie_vertical: false,
+                    zoomie: Zoomie::Burst,
+                    locomotion: Locomotion::Swim,
+                    habit: None,
+                    skin: Skin::Palette,
+                    trail: None,
+                    keepsake: None,
+                    born_with: &[],
                     eye_color: None,
                     zoomie_bubble_color: Tint::Plain,
                     flavour: ORDINARY_FLAVOUR,
@@ -824,7 +1084,7 @@ impl FishSpecies {
                     (1.5, 3.0),
                     Rare,
                 );
-                config.zoomie_vertical = true;
+                config.zoomie = Zoomie::Vertical;
                 config
             }
             Turbofish => {
@@ -995,8 +1255,13 @@ impl FishSpecies {
                 auto_glisten: true,
                 auto_mutate: true,
                 programmable: false,
-                can_zoomie: true,
-                zoomie_vertical: false,
+                zoomie: Zoomie::Burst,
+                locomotion: Locomotion::Swim,
+                habit: None,
+                skin: Skin::Palette,
+                trail: None,
+                keepsake: None,
+                born_with: &[],
                 eye_color: None,
                 zoomie_bubble_color: Tint::Body,
                 flavour: MUTANT_FLAVOUR,
@@ -1023,6 +1288,403 @@ impl FishSpecies {
                 config.flavour = CANDY_FLAVOUR;
                 config
             }
+            Caracol => {
+                let mut config =
+                    figure_config("Caracol", &CARACOL, &CARACOL_PALETTE, (0.3, 0.6), Rare);
+                config.locomotion = Locomotion::Glass;
+                config.zoomie = Zoomie::Still;
+                config.trail = Some(Tint::Fixed(GRAY));
+                config
+            }
+            Babosa => {
+                let mut config = standard_config(
+                    "Babosa",
+                    chars(
+                        ('"', '"'),
+                        EYE_ROUND,
+                        ('~', '~'),
+                        ('≈', '≈'),
+                        TailKind::Custom {
+                            left: '*',
+                            right: '*',
+                        },
+                    ),
+                    &BABOSA_PALETTE,
+                    Glistening,
+                    0.12,
+                    (0.4, 0.8),
+                    Rare,
+                );
+                config.locomotion = Locomotion::Glass;
+                config.zoomie = Zoomie::None;
+                config.trail = Some(Tint::Body);
+                config
+            }
+            Estrella => {
+                let mut config = fixed_config(
+                    "Estrella",
+                    &ESTRELLA_LR,
+                    &ESTRELLA_LR,
+                    &ESTRELLA_PALETTE,
+                    Solid,
+                    (0.05, 0.15),
+                    Rare,
+                );
+                config.locomotion = Locomotion::Glass;
+                config.zoomie = Zoomie::None;
+                config.habit = Some(Habit::Twinkle);
+                config.flavour = SKY_FLAVOUR;
+                config
+            }
+            Ermitano => {
+                let mut config =
+                    figure_config("Ermitano", &ERMITANO, &ERMITANO_PALETTE, (0.8, 1.6), Rare);
+                config.locomotion = Locomotion::Sideways;
+                config.zoomie = Zoomie::None;
+                config.habit = Some(Habit::ShellSwap);
+                config.body_fill = BodyFill::Junk;
+                config.keepsake = Some(StockItem::Junk);
+                config.eye_color = Some(WHITE);
+                config
+            }
+            Lenguado => {
+                let mut config = standard_config(
+                    "Lenguado",
+                    chars(MOUTH, EYE_ROUND, ('=', '='), ('-', '-'), TailKind::Short),
+                    &LENGUADO_PALETTE,
+                    Solid,
+                    0.06,
+                    (1.0, 2.0),
+                    Rare,
+                );
+                config.eyes = TWO_EYES;
+                config.eye_color = Some(WHITE);
+                config.locomotion = Locomotion::Floor;
+                config.skin = Skin::Camouflage;
+                config
+            }
+            Piedra => {
+                let mut config = standard_config(
+                    "Piedra",
+                    chars(
+                        ('.', '.'),
+                        EYE_ROUND,
+                        ('O', 'O'),
+                        ('o', 'o'),
+                        TailKind::Custom {
+                            left: '.',
+                            right: '.',
+                        },
+                    ),
+                    &PIEDRA_PALETTE,
+                    Patchy,
+                    0.03,
+                    (0.1, 0.2),
+                    Rare,
+                );
+                config.eye_color = Some(AMBER);
+                config.locomotion = Locomotion::Floor;
+                config.zoomie = Zoomie::None;
+                config.habit = Some(Habit::Ambush);
+                config
+            }
+            Pejesapo => {
+                let mut config = standard_config(
+                    "Pejesapo",
+                    chars(
+                        MOUTH,
+                        EYE_CIRCLE,
+                        ('o', 'o'),
+                        ('O', 'O'),
+                        TailKind::Custom {
+                            left: ')',
+                            right: '(',
+                        },
+                    ),
+                    &PEJESAPO_PALETTE,
+                    Patchy,
+                    0.08,
+                    (0.6, 1.2),
+                    Rare,
+                );
+                config.eye_color = Some(AMBER);
+                config.locomotion = Locomotion::Floor;
+                config.zoomie = Zoomie::Hop;
+                config.born_with = &[Mutation::Feet];
+                config
+            }
+            Cofre => {
+                let mut config = figure_config("Cofre", &COFRE, &COFRE_PALETTE, (2.0, 3.0), Rare);
+                config.locomotion = Locomotion::Bounce;
+                config.zoomie = Zoomie::None;
+                config.skin = Skin::Cycle(Cycle::OnBounce);
+                config
+            }
+            Caballito => {
+                let mut config = figure_config(
+                    "Caballito",
+                    &CABALLITO,
+                    &CABALLITO_PALETTE,
+                    (0.5, 1.2),
+                    Rare,
+                );
+                config.zoomie = Zoomie::Vertical;
+                config.habit = Some(Habit::Pair);
+                config
+            }
+            Morena => {
+                let mut config = standard_config(
+                    "Morena",
+                    chars(
+                        MOUTH,
+                        EYE_CIRCLE,
+                        ('≈', '≈'),
+                        ('~', '~'),
+                        TailKind::Custom {
+                            left: '-',
+                            right: '-',
+                        },
+                    ),
+                    &MORENA_PALETTE,
+                    Patchy,
+                    0.09,
+                    (1.5, 3.0),
+                    Rare,
+                );
+                config.sizes = MORENA_SIZES;
+                config.locomotion = Locomotion::Through;
+                config.habit = Some(Habit::Gape);
+                config
+            }
+            Volador => {
+                let mut config = standard_config(
+                    "Volador",
+                    chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
+                    &VOLADOR_PALETTE,
+                    Striped,
+                    0.12,
+                    (4.0, 6.5),
+                    Rare,
+                );
+                config.zoomie = Zoomie::Glide;
+                config.flavour = SKY_FLAVOUR;
+                config
+            }
+            Espada => {
+                let mut config = standard_config(
+                    "Espada",
+                    chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
+                    &ESPADA_PALETTE,
+                    Striped,
+                    0.14,
+                    (5.0, 8.0),
+                    Rare,
+                );
+                config.zoomie = Zoomie::Lunge;
+                config.habit = Some(Habit::Duel);
+                config.born_with = &[Mutation::Bill];
+                config
+            }
+            Tollo => {
+                let mut config = standard_config(
+                    "Tollo",
+                    chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
+                    &TOLLO_PALETTE,
+                    Striped,
+                    0.11,
+                    (3.0, 5.0),
+                    Rare,
+                );
+                config.habit = Some(Habit::Chase);
+                config.born_with = &[Mutation::DorsalFin];
+                config
+            }
+            Mariposa => {
+                let mut config = standard_config(
+                    "Mariposa",
+                    chars(
+                        MOUTH,
+                        EYE_ROUND,
+                        ROUND,
+                        CURLED,
+                        TailKind::Custom {
+                            left: EYE_ROUND,
+                            right: EYE_ROUND,
+                        },
+                    ),
+                    &MARIPOSA_PALETTE,
+                    Striped,
+                    0.13,
+                    (2.0, 3.5),
+                    Rare,
+                );
+                config.eye_color = Some(DARK_GRAY);
+                config.habit = Some(Habit::Backwards);
+                config
+            }
+            Linterna => {
+                let mut config = standard_config(
+                    "Linterna",
+                    chars(MOUTH, EYE_CIRCLE, ROUND, CURLED, TailKind::Wide),
+                    &LINTERNA_PALETTE,
+                    Patchy,
+                    0.08,
+                    (1.0, 2.0),
+                    Rare,
+                );
+                config.eye_color = Some(WHITE);
+                config.born_with = &[Mutation::Lure];
+                config
+            }
+            Luciernaga => {
+                let mut config = standard_config(
+                    "Luciernaga",
+                    chars(MOUTH, '·', ROUND, CURLED, TailKind::Short),
+                    &LUCIERNAGA_PALETTE,
+                    Striped,
+                    0.10,
+                    (1.5, 3.0),
+                    Rare,
+                );
+                config.habit = Some(Habit::Sync);
+                config
+            }
+            Bagre => {
+                let mut config = standard_config(
+                    "Bagre",
+                    chars(('=', '='), EYE_ROUND, ROUND, CURLED, TailKind::Wide),
+                    &BAGRE_PALETTE,
+                    Striped,
+                    0.08,
+                    (1.5, 3.0),
+                    Rare,
+                );
+                config.born_with = &[Mutation::NightOwl];
+                config.flavour = CAT_FLAVOUR;
+                config
+            }
+            Luna => {
+                let mut config = standard_config(
+                    "Luna",
+                    chars(
+                        MOUTH,
+                        EYE_ROUND,
+                        ('o', 'o'),
+                        ('O', 'O'),
+                        TailKind::Custom {
+                            left: ')',
+                            right: '(',
+                        },
+                    ),
+                    &LUNA_PALETTE,
+                    Solid,
+                    0.05,
+                    (0.5, 1.2),
+                    Rare,
+                );
+                config.born_with = &[Mutation::DorsalFin, Mutation::VentralFin, Mutation::Lunar];
+                config
+            }
+            Loro => {
+                let mut config = standard_config(
+                    "Loro",
+                    chars(
+                        MOUTH,
+                        EYE_ROUND,
+                        ('}', '{'),
+                        (')', '('),
+                        TailKind::WideCurly,
+                    ),
+                    &LORO_PALETTE,
+                    Patchy,
+                    0.10,
+                    (2.0, 3.5),
+                    Rare,
+                );
+                config.habit = Some(Habit::Echo);
+                config
+            }
+            Mimo => {
+                let mut config = standard_config(
+                    "Mimo",
+                    chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
+                    &MIMO_PALETTE,
+                    Striped,
+                    0.10,
+                    (2.5, 4.0),
+                    Rare,
+                );
+                config.habit = Some(Habit::Shadow);
+                config
+            }
+            Timido => {
+                let mut config = standard_config(
+                    "Timido",
+                    chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Short),
+                    &TIMIDO_PALETTE,
+                    Striped,
+                    0.10,
+                    (2.0, 3.5),
+                    Rare,
+                );
+                config.habit = Some(Habit::Shy);
+                config
+            }
+            Ciego => {
+                let mut config = standard_config(
+                    "Ciego",
+                    chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
+                    &CIEGO_PALETTE,
+                    Solid,
+                    0.10,
+                    (2.0, 3.5),
+                    Rare,
+                );
+                config.eyes = NO_EYES;
+                config.habit = Some(Habit::Blind);
+                config
+            }
+            Globo => {
+                let mut config = standard_config(
+                    "Globo",
+                    chars(MOUTH, EYE_ROUND, ('o', 'o'), ('O', 'O'), TailKind::Short),
+                    &GLOBO_PALETTE,
+                    Patchy,
+                    0.09,
+                    (1.5, 3.0),
+                    Rare,
+                );
+                config.born_with = &[Mutation::Puff];
+                config
+            }
+            Pulpo => {
+                let mut config = figure_config("Pulpo", &PULPO, &PULPO_PALETTE, (1.0, 2.5), Rare);
+                config.eye_color = Some(WHITE);
+                config.zoomie = Zoomie::Ink;
+                config.skin = Skin::Cycle(Cycle::OnClock);
+                config.habit = Some(Habit::Escape);
+                config
+            }
+            Draco => {
+                let mut config = standard_config(
+                    "Draco",
+                    chars(MOUTH, EYE_ROUND, ROUND, CURLED, TailKind::Wide),
+                    &DRACO_PALETTE,
+                    Glistening,
+                    0.10,
+                    (2.0, 3.5),
+                    Rare,
+                );
+                config.skin = Skin::SeeThrough;
+                config
+            }
+            Neon => figure_config("Neon", &NEON, &NEON_PALETTE, (3.0, 5.0), Rare),
+            Martillo => {
+                let mut config =
+                    figure_config("Martillo", &MARTILLO, &MARTILLO_PALETTE, (2.5, 4.0), Rare);
+                config.eye_color = Some(WHITE);
+                config
+            }
             Unfish => SpeciesConfig {
                 name: "Unfish",
                 body: BodyTemplate::Standard(standard(EYE_ROUND, TailKind::Wide)),
@@ -1043,8 +1705,13 @@ impl FishSpecies {
                 auto_glisten: false,
                 auto_mutate: false,
                 programmable: false,
-                can_zoomie: false,
-                zoomie_vertical: false,
+                zoomie: Zoomie::None,
+                locomotion: Locomotion::Swim,
+                habit: None,
+                skin: Skin::Palette,
+                trail: None,
+                keepsake: None,
+                born_with: &[],
                 eye_color: None,
                 zoomie_bubble_color: Tint::Plain,
                 flavour: ORDINARY_FLAVOUR,

@@ -1,0 +1,14 @@
+# JOURNEY · a snail never swims: bought in the shop, it settles on the glass and crawls the frame.
+# A new game starts with Adam, Lilith and Eva, so the snail's shell (@) is the one in the tank.
+
+clear
+include scenes/start-with-a-stake.play
+include scenes/buy-a-fish.play Caracol Shelly
+tick 60
+expect @
+snap the snail holds on to the glass
+run /index
+expect Shelly
+snap the snail is in the index
+key esc
+absent Shelly

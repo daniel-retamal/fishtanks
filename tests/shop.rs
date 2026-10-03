@@ -88,7 +88,7 @@ fn what_is_not_for_sale_sinks_below_everything_that_is() {
         .iter()
         .copied()
         .filter(|species| species.buy_price() > cheapest().buy_price())
-        .max_by_key(|species| species.buy_price())
+        .min_by_key(|species| (species.buy_price(), species.display_name()))
         .expect("the shop sells something dearer");
     assert_eq!(ink(&mut tui, dearer.display_name()), DARK_GRAY);
     assert!(
