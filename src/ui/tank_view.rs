@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::colors::{LIGHT_CYAN, LIGHT_GREEN, PINK, WHITE, YELLOW};
 use crate::sprite::{
-    Cell, EAR_LEFT, EAR_RIGHT, Feet, PosedExtension, TRANSPARENT, feet_row, opaque_line,
+    Band, Cell, EAR_LEFT, EAR_RIGHT, Feet, PosedExtension, TRANSPARENT, feet_row, opaque_line,
     painted_span,
 };
 
@@ -21,7 +21,7 @@ use crate::{
     entities::speech::{Side, Tail, build_bubble, build_speech_bubble, is_bubble_text, shift_into},
     entities::ufo::{Ufo, ufo_sprite},
     fishes::botfish::BotfishState,
-    fishes::fish::{Fish, line_extension_bands},
+    fishes::fish::Fish,
     fishes::parts::Display,
     fishes::species::{EYE_CIRCLE, EYE_ROUND, EYE_ROUND_SHUT, Skin},
     fishes::unfish::{
@@ -1320,34 +1320,30 @@ fn render_extension_bands(
     area: Rect,
     buf: &mut Buffer,
 ) {
-    let Some(ext) = fish.body_extension() else {
-        return;
-    };
-    let posed = PosedExtension {
-        ext,
+    let extension = fish.body_extension();
+    let posed = |variant| PosedExtension {
+        variant,
         facing_left: fish.facing_left(),
         phase: fish.sway.phase,
         max_tentacles: Some(MULTI_ROW_MAX_TENTACLES),
     };
-    let top_cells = coat.cells(lines[0]);
-    let bottom_line = lines.last().copied().unwrap_or("");
-    let bottom_cells = coat.cells(bottom_line);
-    let top_span = painted_span(&top_cells);
-    let bottom_span = painted_span(&bottom_cells);
-    for depth in 0..ext.length {
-        if let Some(span) = top_span {
-            let top_row = posed.row(&top_cells, span, depth, true);
-            draw_appendage_row(&top_row, base_x, base_y - 1 - depth as i32, area, buf);
+    if let Some(variant) = extension.top {
+        let top_cells = coat.cells(lines[0]);
+        if let Some(span) = painted_span(&top_cells) {
+            for depth in 0..variant.rows() {
+                let row = posed(variant).row(&top_cells, span, depth, Band::Top);
+                draw_appendage_row(&row, base_x, base_y - 1 - depth as i32, area, buf);
+            }
         }
-        if let Some(span) = bottom_span {
-            let bottom_row = posed.row(&bottom_cells, span, depth, false);
-            draw_appendage_row(
-                &bottom_row,
-                base_x,
-                base_y + lines.len() as i32 + depth as i32,
-                area,
-                buf,
-            );
+    }
+    if let Some(variant) = extension.bottom {
+        let bottom_cells = coat.cells(lines.last().copied().unwrap_or(""));
+        if let Some(span) = painted_span(&bottom_cells) {
+            for depth in 0..variant.rows() {
+                let row = posed(variant).row(&bottom_cells, span, depth, Band::Bottom);
+                let y = base_y + lines.len() as i32 + depth as i32;
+                draw_appendage_row(&row, base_x, y, area, buf);
+            }
         }
     }
 }
@@ -1384,25 +1380,23 @@ fn render_worm_portal(fish: &Fish, area: Rect, buf: &mut Buffer) {
     let Some(span) = painted_span(&segs) else {
         return;
     };
-    if let Some(ext) = fish.body_extension() {
-        let posed = PosedExtension {
-            ext,
-            facing_left: fish.facing_left(),
-            phase: fish.sway.phase,
-            max_tentacles: None,
-        };
-        let (above, below) = line_extension_bands(ext.variant);
-        if above {
-            for depth in 0..ext.length {
-                let row = posed.row(&segs, span, depth, true);
-                draw_portal_row(&row, origin_x, body_y - 1 - depth as i32, area, buf);
-            }
+    let extension = fish.body_extension();
+    let posed = |variant| PosedExtension {
+        variant,
+        facing_left: fish.facing_left(),
+        phase: fish.sway.phase,
+        max_tentacles: None,
+    };
+    if let Some(variant) = extension.top {
+        for depth in 0..variant.rows() {
+            let row = posed(variant).row(&segs, span, depth, Band::Top);
+            draw_portal_row(&row, origin_x, body_y - 1 - depth as i32, area, buf);
         }
-        if below {
-            for depth in 0..ext.length {
-                let row = posed.row(&segs, span, depth, false);
-                draw_portal_row(&row, origin_x, body_y + 1 + depth as i32, area, buf);
-            }
+    }
+    if let Some(variant) = extension.bottom {
+        for depth in 0..variant.rows() {
+            let row = posed(variant).row(&segs, span, depth, Band::Bottom);
+            draw_portal_row(&row, origin_x, body_y + 1 + depth as i32, area, buf);
         }
         return;
     }
@@ -2038,7 +2032,7 @@ fn render_cow_extension(
     area: Rect,
     buf: &mut Buffer,
 ) {
-    let Some(ext) = cow.mutant.body_extension else {
+    let Some(variant) = cow.mutant.body_extension.and_then(|ext| ext.top) else {
         return;
     };
     let torso_row_idx = cow.sprite_top_offset() as usize + 1;
@@ -2059,13 +2053,13 @@ fn render_cow_extension(
         return;
     };
     let posed = PosedExtension {
-        ext,
+        variant,
         facing_left: COW_FACES_LEFT,
         phase: cow.sway.phase,
         max_tentacles: None,
     };
-    for depth in 0..ext.length {
-        let row = posed.row(&mask, span, depth, true);
+    for depth in 0..variant.rows() {
+        let row = posed.row(&mask, span, depth, Band::Top);
         let screen_y = base_y + torso_row_idx as i32 - 1 - depth as i32;
         draw_appendage_row(&row, base_x, screen_y, area, buf);
     }
@@ -2531,9 +2525,8 @@ mod tests {
         let mut fish = Fish::new_unfish(UnfishKind::Ball, "Orb".into(), 5.0, 5.0, &mut rng);
         if let Some(us) = fish.unfish_state.as_mut() {
             us.body_extension = Some(BodyExtension {
-                variant: ExtensionVariant::Spike,
-                length: 2,
-                seed: 0,
+                top: Some(ExtensionVariant::Spike),
+                bottom: Some(ExtensionVariant::Spike),
             });
         }
         let base_x = 10i32;
@@ -2564,9 +2557,8 @@ mod tests {
         let mut fish = Fish::new_unfish(UnfishKind::Ball, "Orb".into(), 5.0, 5.0, &mut rng);
         if let Some(us) = fish.unfish_state.as_mut() {
             us.body_extension = Some(BodyExtension {
-                variant: ExtensionVariant::Tentacle,
-                length: 1,
-                seed: 0,
+                top: None,
+                bottom: Some(ExtensionVariant::Tentacle),
             });
         }
         let base_x = 10i32;
@@ -2574,13 +2566,17 @@ mod tests {
         let area = Rect::new(0, 0, 40, 24);
         let mut buf = Buffer::empty(area);
         render_multi_row_unfish_at(&fish, base_x, base_y, area, &mut buf);
-        let top = (0..area.width)
-            .filter(|&x| buf[(x, (base_y - 1) as u16)].symbol() == "|")
-            .count();
+        let tentacles_on = |y: i32| {
+            (0..area.width)
+                .filter(|&x| ["|", "(", ")"].contains(&buf[(x, y as u16)].symbol()))
+                .count()
+        };
+        let below = tentacles_on(base_y + BALL_BASE.len() as i32);
         assert!(
-            (1..=MULTI_ROW_MAX_TENTACLES).contains(&top),
+            (1..=MULTI_ROW_MAX_TENTACLES).contains(&below),
             "a ball band carries at most two tentacles"
         );
+        assert_eq!(tentacles_on(base_y - 1), 0, "tentacles only hang below");
     }
 
     #[test]
@@ -2647,9 +2643,8 @@ mod tests {
         let mut rng = rand::rng();
         let mut cow = Cow::new("Bessie".into(), CowVariant::Brown, 5.0, 8.0, &mut rng);
         cow.mutant.body_extension = Some(BodyExtension {
-            variant: ExtensionVariant::Spike,
-            length: 2,
-            seed: 0,
+            top: Some(ExtensionVariant::Spike),
+            bottom: None,
         });
         let area = Rect::new(0, 0, 60, 24);
         let mut buf = Buffer::empty(area);
@@ -2679,9 +2674,8 @@ mod tests {
         let mut fish = Fish::new_unfish(UnfishKind::Worm, "Wiggly".into(), 6.0, 8.0, &mut rng);
         if let Some(us) = fish.unfish_state.as_mut() {
             us.body_extension = Some(BodyExtension {
-                variant: ExtensionVariant::Tentacle,
-                length: 2,
-                seed: 0,
+                top: None,
+                bottom: Some(ExtensionVariant::Tentacle),
             });
         }
         let area = Rect::new(0, 0, 60, 24);

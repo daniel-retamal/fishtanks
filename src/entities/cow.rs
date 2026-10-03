@@ -16,6 +16,7 @@ use crate::fishes::mutations::{
     MutantBacked, Mutatable, Mutation, MutationOutcome, apply_mutant_mutation,
 };
 use crate::loot::MilkVariant;
+use crate::sprite::{Band, BodyExtension};
 use crate::tank::Sky;
 
 mod record;
@@ -278,7 +279,6 @@ const COW_CAPS: &[Mutation] = &[
     Mutation::GlistenEnable,
     Mutation::GlistenDisable,
     Mutation::BodyColor,
-    Mutation::MouthVariant,
     Mutation::Telophase,
     Mutation::BackwardsTelophase,
     Mutation::Cytokinesis,
@@ -291,7 +291,8 @@ const COW_CAPS: &[Mutation] = &[
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
     Mutation::Hydra,
-    Mutation::BodyExtension,
+    Mutation::Spikes,
+    Mutation::Wings,
     Mutation::DecreaseExtension,
     Mutation::Lure,
 ];
@@ -382,8 +383,11 @@ impl Mutatable for Cow {
     fn hydra_max(&self) -> usize {
         cow_hydra_capacity(self)
     }
-    fn has_bodyextension(&self) -> bool {
-        self.mutant.body_extension.is_some()
+    fn extension(&self) -> BodyExtension {
+        self.mutant.body_extension.unwrap_or_default()
+    }
+    fn reserves(&self, band: Band) -> bool {
+        band == Band::Bottom
     }
 }
 

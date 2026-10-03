@@ -10,10 +10,11 @@ use crate::entities::glistening::{GlisteningMode, color_for_glisten, derive_glis
 use crate::fishes::figure::{Figure, Paint};
 use crate::fishes::habits::{Crawl, Side};
 use crate::fishes::mutant::BILL_LEAD;
+use crate::fishes::mutations::Mutatable;
 use crate::fishes::species::{Habit, Skin, Zoomie};
 use crate::fishes::unfish::UnfishKind;
 use crate::loot::junk_cell;
-use crate::sprite::{Cell, TRANSPARENT, mirror_char};
+use crate::sprite::{Band, Cell, TRANSPARENT, mirror_char};
 
 const LURE: char = 'º';
 const LURE_STALK: char = ',';
@@ -344,16 +345,23 @@ impl Fish {
                 cell.0 = PUFFED_BODY;
             }
         }
-        let above = [(lo, SPIKE_FRONT), (mid, SPIKE_MIDDLE), (hi, SPIKE_BACK)];
-        let below = [(lo, SPIKE_BACK), (mid, SPIKE_MIDDLE), (hi, SPIKE_FRONT)];
         let spikes = |marks: [(usize, char); 3]| -> Vec<(usize, Cell)> {
+            if lo == hi {
+                return vec![(lo, (SPIKE_MIDDLE, colors[lo]))];
+            }
             marks
                 .into_iter()
                 .map(|(col, glyph)| (col, (glyph, colors[col])))
                 .collect()
         };
-        place(sprite, &spikes(above), true);
-        place(sprite, &spikes(below), false);
+        if self.band_free(Band::Top) {
+            let above = [(lo, SPIKE_FRONT), (mid, SPIKE_MIDDLE), (hi, SPIKE_BACK)];
+            place(sprite, &spikes(above), true);
+        }
+        if self.band_free(Band::Bottom) {
+            let below = [(lo, SPIKE_BACK), (mid, SPIKE_MIDDLE), (hi, SPIKE_FRONT)];
+            place(sprite, &spikes(below), false);
+        }
     }
 
     pub fn is_gliding(&self) -> bool {

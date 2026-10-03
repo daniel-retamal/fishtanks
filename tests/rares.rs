@@ -12,14 +12,14 @@ use fishtank::{
         fish::{Direction, Fish, FishState, MOON_DARK, MOON_LIT},
         habits::{Chase, Side},
         mutant::Circadian,
-        mutations::{Mutatable, Mutation, apply_mutation, apply_mutation_to_fish},
+        mutations::{Holder, Mutatable, Mutation, apply_mutation, apply_mutation_to_fish},
         species::{ALL_SPECIES, BodyTemplate, FishSpecies, Habitat, Locomotion},
         unfish::UnfishKind,
     },
     loot::{LootPool, StockItem, school_weight},
     restore::Restorable,
     settings::Settings,
-    sprite::TRANSPARENT,
+    sprite::{Band, TRANSPARENT},
     tank::{FULL_MOON, LUNAR_MONTH_DAYS, Sky, Tank, TankEvent, TankKind},
     testing::Tui,
     ui::{
@@ -379,7 +379,13 @@ fn a_species_born_with_a_mutation_keeps_it_through_every_door() {
                 let has = fish.adornments().has(mutation)
                     || (mutation == Mutation::NightOwl
                         && fish.circadian_state() == Circadian::NightOwl)
-                    || (mutation == Mutation::Feet && fish.feet().is_some());
+                    || (mutation == Mutation::Feet && fish.feet().is_some())
+                    || mutation.extension().is_some_and(|variant| {
+                        variant
+                            .bands()
+                            .iter()
+                            .any(|&band| fish.body_extension().on(band) == Some(variant))
+                    });
                 assert!(
                     has,
                     "{} lost its {}",
@@ -1166,13 +1172,23 @@ fn a_figure_cannot_take_a_mutation_it_cannot_draw() {
         if !matches!(species.config().body, BodyTemplate::Figure(_)) {
             continue;
         }
+        let BodyTemplate::Figure(figure) = species.config().body else {
+            continue;
+        };
         let fish = Fish::new(species, "F".into(), 0.0, 0.0, &mut rng);
-        for mutation in [
-            Mutation::Lure,
-            Mutation::Telophase,
-            Mutation::Feet,
-            Mutation::Ear,
+        for (mutation, band) in [
+            (Mutation::DorsalFin, Band::Top),
+            (Mutation::Feet, Band::Bottom),
         ] {
+            assert_eq!(
+                fish.supports_now(mutation),
+                figure.leaves_free(band) && fish.holds(band) == Holder::Nothing,
+                "{} grows a {} only on a band its art and growths leave free",
+                species.display_name(),
+                mutation.token()
+            );
+        }
+        for mutation in [Mutation::Lure, Mutation::Telophase, Mutation::Ear] {
             assert!(
                 !fish.supports_now(mutation),
                 "{}: {}",

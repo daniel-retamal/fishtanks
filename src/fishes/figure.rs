@@ -1,5 +1,7 @@
 use ratatui::style::Color;
 
+use crate::sprite::Band;
+
 pub const EYE_PAINT: char = 'e';
 pub const JUNK_PAINT: char = 'j';
 const PALETTE_RADIX: u32 = 10;
@@ -45,6 +47,17 @@ impl Art {
             .map(|line| line.chars().count())
             .max()
             .unwrap_or(0)
+    }
+
+    pub fn leaves_free(&self, band: Band) -> bool {
+        let body = self.lines[self.body_row].trim();
+        if body.contains(' ') {
+            return false;
+        }
+        match band {
+            Band::Top => self.body_row == 0,
+            Band::Bottom => self.body_row + 1 == self.lines.len(),
+        }
     }
 
     pub fn cells(&self) -> Vec<Vec<Option<(char, Paint)>>> {
@@ -97,6 +110,10 @@ impl Figure {
 
     pub fn width(&self) -> usize {
         self.arts().map(|art| art.width()).max().unwrap_or(0)
+    }
+
+    pub fn leaves_free(&self, band: Band) -> bool {
+        self.arts().all(|art| art.leaves_free(band))
     }
 }
 

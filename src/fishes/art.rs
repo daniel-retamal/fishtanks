@@ -68,30 +68,16 @@ pub static CABALLITO: Figure = Figure {
 };
 
 pub static PULPO: Figure = Figure {
-    left: &[
-        Art {
-            lines: &[" ,-.", "(ººo)", " )))"],
-            paint: &[" 000", "0ee00", " 000"],
-            body_row: 1,
-        },
-        Art {
-            lines: &[" ,-.", "(ººo)", " ((("],
-            paint: &[" 000", "0ee00", " 000"],
-            body_row: 1,
-        },
-    ],
-    right: &[
-        Art {
-            lines: &[" .-,", "(oºº)", " ((("],
-            paint: &[" 000", "00ee0", " 000"],
-            body_row: 1,
-        },
-        Art {
-            lines: &[" .-,", "(oºº)", " )))"],
-            paint: &[" 000", "00ee0", " 000"],
-            body_row: 1,
-        },
-    ],
+    left: &[Art {
+        lines: &[" ,-.", "(ººo)"],
+        paint: &[" 000", "0ee00"],
+        body_row: 1,
+    }],
+    right: &[Art {
+        lines: &[" .-,", "(oºº)"],
+        paint: &[" 000", "00ee0"],
+        body_row: 1,
+    }],
     zooming: None,
 };
 

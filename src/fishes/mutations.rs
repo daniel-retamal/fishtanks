@@ -13,7 +13,7 @@ use super::unfish::{
     UnfishMutationStyle, is_multi_row, worm_display_width,
 };
 use crate::colors::{DARK_GRAY, LIGHT_GREEN, PINK, WHITE};
-use crate::sprite::{BodyExtension, ExtensionVariant, Feet, FeetStyle};
+use crate::sprite::{Band, BodyExtension, ExtensionVariant, Feet, FeetStyle};
 
 const MUTATION_MAX_BODY_SIZE: usize = 12;
 pub const MUTATION_PATCH_MAX: usize = 12;
@@ -32,8 +32,6 @@ const DOUBLE_EYE_COUNT_MAX: usize = 3;
 const MAX_EARS: usize = 4;
 const HYDRA_EYES_PER_APPLICATION_MIN: usize = 1;
 const HYDRA_EYES_PER_APPLICATION_MAX: usize = 2;
-const EXTENSION_MAX_LENGTH: usize = 8;
-const EXTENSION_VARIANT_COUNT: u8 = 3;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mutation {
@@ -71,7 +69,9 @@ pub enum Mutation {
     Feet,
     NoFeet,
     FeetColor,
-    BodyExtension,
+    Spikes,
+    Wings,
+    Tentacles,
     DecreaseExtension,
     Lure,
     Bill,
@@ -117,7 +117,9 @@ impl Mutation {
         Mutation::Feet,
         Mutation::NoFeet,
         Mutation::FeetColor,
-        Mutation::BodyExtension,
+        Mutation::Spikes,
+        Mutation::Wings,
+        Mutation::Tentacles,
         Mutation::DecreaseExtension,
         Mutation::Lure,
         Mutation::Bill,
@@ -172,7 +174,9 @@ impl Mutation {
             Mutation::Feet => "feet",
             Mutation::NoFeet => "nofeet",
             Mutation::FeetColor => "feetcolor",
-            Mutation::BodyExtension => "bodyextension",
+            Mutation::Spikes => "spikes",
+            Mutation::Wings => "wings",
+            Mutation::Tentacles => "tentacles",
             Mutation::DecreaseExtension => "decreaseextension",
             Mutation::Lure => "lure",
             Mutation::Bill => "bill",
@@ -199,6 +203,23 @@ impl Mutation {
     pub fn adorns(self) -> bool {
         Mutation::ADORNMENTS.contains(&self)
     }
+
+    pub fn extension(self) -> Option<ExtensionVariant> {
+        match self {
+            Mutation::Spikes => Some(ExtensionVariant::Spike),
+            Mutation::Wings => Some(ExtensionVariant::Wing),
+            Mutation::Tentacles => Some(ExtensionVariant::Tentacle),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Holder {
+    Nothing,
+    Fin,
+    Feet,
+    Extension(ExtensionVariant),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -216,32 +237,10 @@ pub fn roll_feet(rng: &mut impl RngExt) -> Feet {
     Feet { style, color: None }
 }
 
-pub fn roll_extension(rng: &mut impl RngExt) -> BodyExtension {
-    let variant = match rng.random_range(0..EXTENSION_VARIANT_COUNT) {
-        0 => ExtensionVariant::Tentacle,
-        1 => ExtensionVariant::Spike,
-        _ => ExtensionVariant::Wing,
-    };
-    BodyExtension {
-        variant,
-        length: variant.start_length(),
-        seed: rng.random::<u64>(),
-    }
-}
-
-fn grow_extension(slot: &mut Option<BodyExtension>, rng: &mut impl RngExt) {
-    match slot.as_mut() {
-        Some(ext) => ext.length = (ext.length + 1).min(EXTENSION_MAX_LENGTH),
-        None => *slot = Some(roll_extension(rng)),
-    }
-}
-
-fn shrink_extension(slot: &mut Option<BodyExtension>) {
-    if let Some(ext) = slot.as_mut() {
-        ext.length = ext.length.saturating_sub(1);
-        if ext.length == 0 {
-            *slot = None;
-        }
+fn extend(slot: &mut Option<BodyExtension>, variant: ExtensionVariant, bands: &[Band]) {
+    let extension = slot.get_or_insert_default();
+    for &band in bands {
+        extension.set(band, Some(variant));
     }
 }
 
@@ -286,8 +285,54 @@ pub trait Mutatable {
         false
     }
 
-    fn has_bodyextension(&self) -> bool {
+    fn extension(&self) -> BodyExtension {
+        BodyExtension::default()
+    }
+
+    fn reserves(&self, _band: Band) -> bool {
         false
+    }
+
+    fn holds(&self, band: Band) -> Holder {
+        let adornments = self.adornments();
+        let fin = match band {
+            Band::Top => adornments.dorsal_fin,
+            Band::Bottom => adornments.ventral_fin,
+        };
+        if fin {
+            return Holder::Fin;
+        }
+        if band == Band::Bottom && self.has_feet() {
+            return Holder::Feet;
+        }
+        match self.extension().on(band) {
+            Some(variant) => Holder::Extension(variant),
+            None => Holder::Nothing,
+        }
+    }
+
+    fn band_free(&self, band: Band) -> bool {
+        !self.reserves(band) && self.holds(band) == Holder::Nothing
+    }
+
+    fn can_extend(&self, band: Band, variant: ExtensionVariant) -> bool {
+        if self.reserves(band) {
+            return false;
+        }
+        match self.holds(band) {
+            Holder::Nothing => true,
+            Holder::Extension(held) => held != variant,
+            Holder::Fin | Holder::Feet => false,
+        }
+    }
+
+    fn bands_to_extend(&self, variant: ExtensionVariant) -> Vec<Band> {
+        variant
+            .bands()
+            .iter()
+            .copied()
+            .filter(|&band| self.can_extend(band, variant))
+            .collect()
     }
 
     fn backwards(&self) -> bool {
@@ -306,10 +351,17 @@ pub trait Mutatable {
         if !self.capabilities().contains(&mutation) {
             return false;
         }
-        if mutation.adorns() {
-            return self.has_line_head() && !self.adornments().has(mutation);
+        if let Some(variant) = mutation.extension() {
+            return !self.bands_to_extend(variant).is_empty();
+        }
+        let adornments = self.adornments();
+        if mutation.adorns() && (!self.has_line_head() || adornments.has(mutation)) {
+            return false;
         }
         match mutation {
+            Mutation::Lure | Mutation::Bill => !adornments.lure && !adornments.bill,
+            Mutation::DorsalFin => self.band_free(Band::Top),
+            Mutation::VentralFin => self.band_free(Band::Bottom),
             Mutation::Telophase => !self.is_double() || self.backwards(),
             Mutation::BackwardsTelophase => !self.is_double() || !self.backwards(),
             Mutation::Cytokinesis => self.is_double(),
@@ -323,11 +375,10 @@ pub trait Mutatable {
             Mutation::EarDecrease => self.ear_count() > 0,
             Mutation::EarColor => self.ear_count() > 0,
             Mutation::Hydra => self.hydra_count() < self.hydra_max(),
-            Mutation::Feet => !self.has_feet() && !self.has_bodyextension(),
+            Mutation::Feet => self.band_free(Band::Bottom),
             Mutation::NoFeet => self.has_feet(),
             Mutation::FeetColor => self.has_feet(),
-            Mutation::BodyExtension => !self.has_feet(),
-            Mutation::DecreaseExtension => self.has_bodyextension(),
+            Mutation::DecreaseExtension => !self.extension().is_empty(),
             _ => true,
         }
     }
@@ -397,11 +448,17 @@ fn seed_double<T: MutantBacked>(target: &mut T, rng: &mut impl RngExt, backwards
     mutant.backwards = backwards;
 }
 
-pub fn apply_mutant_mutation<T: MutantBacked>(
+pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
     target: &mut T,
     mutation: Mutation,
     rng: &mut impl RngExt,
 ) -> MutationOutcome {
+    if let Some(variant) = mutation.extension() {
+        let bands = target.bands_to_extend(variant);
+        extend(&mut target.mutant_mut().body_extension, variant, &bands);
+        target.recompute_display_width();
+        return MutationOutcome::Applied;
+    }
     match mutation {
         Mutation::SizeIncrease | Mutation::SizeDecrease => {
             let delta = if matches!(mutation, Mutation::SizeIncrease) {
@@ -597,8 +654,8 @@ pub fn apply_mutant_mutation<T: MutantBacked>(
                 feet.color = Some(random_rgb(rng));
             }
         }
-        Mutation::BodyExtension => grow_extension(&mut target.mutant_mut().body_extension, rng),
-        Mutation::DecreaseExtension => shrink_extension(&mut target.mutant_mut().body_extension),
+        Mutation::Spikes | Mutation::Wings | Mutation::Tentacles => {}
+        Mutation::DecreaseExtension => target.mutant_mut().body_extension = None,
         Mutation::Lure
         | Mutation::Bill
         | Mutation::DorsalFin
@@ -639,7 +696,9 @@ const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::Feet,
     Mutation::NoFeet,
     Mutation::FeetColor,
-    Mutation::BodyExtension,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
     Mutation::DecreaseExtension,
     Mutation::Lure,
     Mutation::Bill,
@@ -667,7 +726,9 @@ const FIXED_JELLY_CAPS: &[Mutation] = &[
     Mutation::Feet,
     Mutation::NoFeet,
     Mutation::FeetColor,
-    Mutation::BodyExtension,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
     Mutation::DecreaseExtension,
     Mutation::Lure,
     Mutation::DorsalFin,
@@ -698,7 +759,9 @@ const SLIME_CAPS: &[Mutation] = &[
     Mutation::Feet,
     Mutation::NoFeet,
     Mutation::FeetColor,
-    Mutation::BodyExtension,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
     Mutation::DecreaseExtension,
     Mutation::Lure,
     Mutation::Bill,
@@ -720,6 +783,15 @@ const FIGURE_CAPS: &[Mutation] = &[
     Mutation::BubbleColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
+    Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Feet,
+    Mutation::NoFeet,
+    Mutation::FeetColor,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
+    Mutation::DecreaseExtension,
 ];
 
 const WORM_CAPS: &[Mutation] = &[
@@ -752,7 +824,9 @@ const WORM_CAPS: &[Mutation] = &[
     Mutation::Feet,
     Mutation::NoFeet,
     Mutation::FeetColor,
-    Mutation::BodyExtension,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
     Mutation::DecreaseExtension,
 ];
 
@@ -834,6 +908,9 @@ pub fn apply_unfish_mutation(
     let worm_component = fish.fused_self_component();
     let sprite_width = fish.display_width;
     let body_size = fish.body_size;
+    let extension = mutation
+        .extension()
+        .map(|variant| (variant, fish.bands_to_extend(variant)));
     {
         let us = fish.unfish_state.as_mut().unwrap();
         match mutation {
@@ -898,8 +975,12 @@ pub fn apply_unfish_mutation(
                     feet.color = Some(random_rgb(rng));
                 }
             }
-            Mutation::BodyExtension => grow_extension(&mut us.body_extension, rng),
-            Mutation::DecreaseExtension => shrink_extension(&mut us.body_extension),
+            Mutation::Spikes | Mutation::Wings | Mutation::Tentacles => {
+                if let Some((variant, bands)) = &extension {
+                    extend(&mut us.body_extension, *variant, bands);
+                }
+            }
+            Mutation::DecreaseExtension => us.body_extension = None,
             mutation if mutation.adorns() => us.adornments.grow(mutation),
             Mutation::Hydra if style == UnfishMutationStyle::Slime => {
                 let cap = body_size.saturating_sub(1);
@@ -1050,13 +1131,12 @@ impl Mutatable for Fish {
         self.mutant.as_ref().is_some_and(|m| m.feet.is_some())
     }
 
-    fn has_bodyextension(&self) -> bool {
-        if let Some(us) = self.unfish_state.as_ref() {
-            return us.body_extension.is_some();
-        }
-        self.mutant
-            .as_ref()
-            .is_some_and(|m| m.body_extension.is_some())
+    fn extension(&self) -> BodyExtension {
+        self.body_extension()
+    }
+
+    fn reserves(&self, band: Band) -> bool {
+        Fish::reserves(self, band)
     }
 
     fn hydra_max(&self) -> usize {

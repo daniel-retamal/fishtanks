@@ -31,8 +31,8 @@ use crate::entities::speech::SpeechBubble;
 use crate::loot::{StockItem, junk_cell};
 use crate::settings::Settings;
 use crate::sprite::{
-    BodyExtension, EAR_LEFT, EAR_RIGHT, ExtensionVariant, Feet, PosedExtension, ear_glyph,
-    feet_row, mirror_char, painted_span,
+    Band, BodyExtension, EAR_LEFT, EAR_RIGHT, Feet, PosedExtension, ear_glyph, feet_row,
+    mirror_char, painted_span,
 };
 use crate::tank::Sky;
 use crate::util::even_indices;
@@ -862,11 +862,12 @@ impl Fish {
         self.mutant.as_ref().and_then(|m| m.feet)
     }
 
-    pub fn body_extension(&self) -> Option<BodyExtension> {
-        if let Some(us) = self.unfish_state.as_ref() {
-            return us.body_extension;
-        }
-        self.mutant.as_ref().and_then(|m| m.body_extension)
+    pub fn body_extension(&self) -> BodyExtension {
+        let slot = match self.unfish_state.as_ref() {
+            Some(us) => us.body_extension,
+            None => self.mutant.as_ref().and_then(|m| m.body_extension),
+        };
+        slot.unwrap_or_default()
     }
 
     pub fn line_sprite(&self) -> LineSprite {
@@ -887,6 +888,14 @@ impl Fish {
     }
 
     fn bare_line_sprite(&self) -> (LineSprite, Option<(usize, usize)>) {
+        let (mut sprite, span) = self.body_sprite();
+        if let Some(span) = span {
+            self.grow_bands(&mut sprite, span);
+        }
+        (sprite, span)
+    }
+
+    fn body_sprite(&self) -> (LineSprite, Option<(usize, usize)>) {
         if let Some(bot) = self.botfish_state.as_ref() {
             let sprite = self.botfish_line_sprite(bot.eye_color(), bot.tip_color());
             let span = self.botfish_body_span();
@@ -902,16 +911,52 @@ impl Fish {
         }
         let (body, struct_span) = self.line_cells();
         let span = struct_span.or_else(|| painted_span(&body));
-        if let (Some(ext), Some(span)) = (self.body_extension(), span) {
-            let sprite = self.line_sprite_with_extension(body, span, ext);
-            return (sprite, Some(span));
+        (
+            LineSprite {
+                rows: vec![body],
+                body_row: 0,
+            },
+            span,
+        )
+    }
+
+    fn grow_bands(&self, sprite: &mut LineSprite, span: (usize, usize)) {
+        let body = sprite.rows[sprite.body_row].clone();
+        let extension = self.body_extension();
+        let posed = |variant| PosedExtension {
+            variant,
+            facing_left: self.facing_left(),
+            phase: self.sway.phase,
+            max_tentacles: None,
+        };
+        let below = match (extension.bottom, self.feet()) {
+            (Some(variant), _) => posed(variant).rows(&body, span, Band::Bottom),
+            (None, Some(feet)) => vec![feet_row(&body, span, feet)],
+            (None, None) => Vec::new(),
+        };
+        let at = sprite.body_row + 1;
+        sprite.rows.splice(at..at, below);
+        if let Some(variant) = extension.top {
+            let above = posed(variant).rows(&body, span, Band::Top);
+            let at = sprite.body_row;
+            sprite.body_row += above.len();
+            sprite.rows.splice(at..at, above);
         }
-        let mut rows = vec![body];
-        if let (Some(feet), Some(span)) = (self.feet(), span) {
-            let feet = feet_row(&rows[0], span, feet);
-            rows.push(feet);
+    }
+
+    pub fn reserves(&self, band: Band) -> bool {
+        if self.zoomie() == Zoomie::Glide {
+            return true;
         }
-        (LineSprite { rows, body_row: 0 }, span)
+        if self.botfish_state.is_some() {
+            return band == Band::Top;
+        }
+        match self.species.config().body {
+            BodyTemplate::Figure(figure) if self.unfish_state.is_none() => {
+                !figure.leaves_free(band)
+            }
+            _ => false,
+        }
     }
 
     fn botfish_body_cells(&self, eye_color: Color) -> Vec<(char, Color)> {
@@ -1072,38 +1117,6 @@ impl Fish {
             rows,
             body_row: top,
         }
-    }
-
-    fn line_sprite_with_extension(
-        &self,
-        body: Vec<(char, Color)>,
-        span: (usize, usize),
-        ext: BodyExtension,
-    ) -> LineSprite {
-        let posed = PosedExtension {
-            ext,
-            facing_left: matches!(self.facing, Direction::Left),
-            phase: self.sway.phase,
-            max_tentacles: None,
-        };
-        let (above, below) = line_extension_bands(ext.variant);
-        let mut top_rows: Vec<Vec<(char, Color)>> = Vec::new();
-        if above {
-            for depth in (0..ext.length).rev() {
-                top_rows.push(posed.row(&body, span, depth, true));
-            }
-        }
-        let mut bottom_rows: Vec<Vec<(char, Color)>> = Vec::new();
-        if below {
-            for depth in 0..ext.length {
-                bottom_rows.push(posed.row(&body, span, depth, false));
-            }
-        }
-        let body_row = top_rows.len();
-        let mut rows = top_rows;
-        rows.push(body);
-        rows.extend(bottom_rows);
-        LineSprite { rows, body_row }
     }
 
     fn build_chars(&self, body: &BodyTemplate) -> Vec<char> {
@@ -2491,24 +2504,14 @@ impl Fish {
     }
 
     fn appendage_extent(&self) -> (f32, f32) {
-        if let Some(ext) = self.body_extension() {
-            let len = ext.length as f32;
-            let multi_row = self
-                .unfish_state
-                .as_ref()
-                .is_some_and(|us| is_multi_row(us.kind));
-            if multi_row {
-                return (len, len);
-            }
-            let (above, below) = line_extension_bands(ext.variant);
-            return (if above { len } else { 0.0 }, if below { len } else { 0.0 });
-        }
-        let below = if self.feet().is_some() {
-            FEET_ROW_COUNT as f32
+        let extension = self.body_extension();
+        let feet = if self.feet().is_some() {
+            FEET_ROW_COUNT
         } else {
-            0.0
+            0
         };
-        (0.0, below)
+        let below = extension.rows(Band::Bottom).max(feet);
+        (extension.rows(Band::Top) as f32, below as f32)
     }
 
     fn sprite_y_margins(&self) -> (f32, f32) {
@@ -2584,13 +2587,6 @@ impl Fish {
             Direction::Right => Direction::Left,
         };
         self.velocity.dx = -self.velocity.dx;
-    }
-}
-
-pub fn line_extension_bands(variant: ExtensionVariant) -> (bool, bool) {
-    match variant {
-        ExtensionVariant::Tentacle => (false, true),
-        ExtensionVariant::Spike | ExtensionVariant::Wing => (true, true),
     }
 }
 

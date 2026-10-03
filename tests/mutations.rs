@@ -1236,7 +1236,7 @@ fn cow_hydra_spawns_a_head_inside_the_torso_without_widening() {
 }
 
 #[test]
-fn cow_grows_a_body_extension_and_gates_its_followups() {
+fn cow_grows_spikes_on_its_back_and_gates_its_followups() {
     let mut tank = make_tank();
     let mut rng = rng();
     let name = tank.spawn_cow(CowVariant::Brown, &mut rng);
@@ -1245,8 +1245,14 @@ fn cow_grows_a_body_extension_and_gates_its_followups() {
         "decreaseextension is locked until the cow has an extension"
     );
     let before = tank.cows[0].display_width;
-    assert!(tank.apply_named_mutation(&name, "bodyextension"));
-    assert!(tank.cows[0].mutant.body_extension.is_some());
+    assert!(
+        !tank.apply_named_mutation(&name, "tentacles"),
+        "a cow stands on its legs: the bottom band is taken"
+    );
+    assert!(tank.apply_named_mutation(&name, "spikes"));
+    let ext = tank.cows[0].mutant.body_extension.unwrap();
+    assert_eq!(ext.top, Some(ExtensionVariant::Spike));
+    assert_eq!(ext.bottom, None);
     assert_eq!(
         tank.cows[0].display_width, before,
         "extensions rise above the torso and never widen the cow"
@@ -1522,22 +1528,21 @@ fn worm_feet_are_recorded_and_keep_its_width() {
     );
 }
 
-fn force_extension(fish: &mut Fish, variant: ExtensionVariant, length: usize) {
-    let ext = BodyExtension {
-        variant,
-        length,
-        seed: 0,
-    };
+fn force_extension(fish: &mut Fish, variant: ExtensionVariant) {
+    let mut ext = BodyExtension::default();
+    for &band in variant.bands() {
+        ext.set(band, Some(variant));
+    }
     fish.mutant.as_mut().unwrap().body_extension = Some(ext);
 }
 
 #[test]
-fn bodyextension_grows_appendage_rows_without_changing_width() {
+fn spikes_grow_appendage_rows_without_changing_width() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Merluza, "Octo".to_string(), &mut rng);
     let before_width = tank.fish[0].display_width;
-    assert!(tank.apply_named_mutation("Octo", "bodyextension"));
+    assert!(tank.apply_named_mutation("Octo", "spikes"));
     let fish = &tank.fish[0];
     let ext = fish
         .mutant
@@ -1545,11 +1550,8 @@ fn bodyextension_grows_appendage_rows_without_changing_width() {
         .unwrap()
         .body_extension
         .expect("extension recorded on the mutant state");
-    assert_eq!(
-        ext.length,
-        ext.variant.start_length(),
-        "the first application sets the variant's start length"
-    );
+    assert_eq!(ext.top, Some(ExtensionVariant::Spike));
+    assert_eq!(ext.bottom, Some(ExtensionVariant::Spike));
     assert_eq!(
         fish.display_width, before_width,
         "extensions live above/below the body and never change the rendered width"
@@ -1569,7 +1571,7 @@ fn tentacle_hangs_below_only_spike_sits_on_both_sides() {
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Mutantfish, "Reach".to_string(), &mut rng);
 
-    force_extension(&mut tank.fish[0], ExtensionVariant::Tentacle, 2);
+    force_extension(&mut tank.fish[0], ExtensionVariant::Tentacle);
     let sprite = tank.fish[0].line_sprite();
     assert_eq!(sprite.body_row, 0, "tentacles only hang below the body");
     assert_eq!(sprite.rows.len(), 3, "body plus two tentacle rows");
@@ -1578,7 +1580,7 @@ fn tentacle_hangs_below_only_spike_sits_on_both_sides() {
         "tentacle glyphs sit below the body"
     );
 
-    force_extension(&mut tank.fish[0], ExtensionVariant::Spike, 1);
+    force_extension(&mut tank.fish[0], ExtensionVariant::Spike);
     let sprite = tank.fish[0].line_sprite();
     assert_eq!(sprite.body_row, 1, "spikes flank the body top and bottom");
     assert_eq!(sprite.rows.len(), 3, "one spike row above, one below");
@@ -1591,7 +1593,7 @@ fn wing_glyph_mirrors_top_versus_bottom() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Mutantfish, "Soar".to_string(), &mut rng);
-    force_extension(&mut tank.fish[0], ExtensionVariant::Wing, 1);
+    force_extension(&mut tank.fish[0], ExtensionVariant::Wing);
     let sprite = tank.fish[0].line_sprite();
     let top: Vec<char> = sprite.rows[0]
         .iter()
@@ -1619,19 +1621,19 @@ fn extension_followups_and_feet_exclusion_are_gated() {
         !tank.apply_named_mutation("Gate", "decreaseextension"),
         "decreaseextension is locked while there is no extension"
     );
-    assert!(tank.apply_named_mutation("Gate", "bodyextension"));
+    assert!(tank.apply_named_mutation("Gate", "spikes"));
     assert!(
         !tank.apply_named_mutation("Gate", "feet"),
-        "feet cannot coexist with a body extension"
+        "feet cannot grow where a spike holds the bottom band"
     );
 }
 
 #[test]
-fn decreaseextension_removes_the_extension_at_length_zero() {
+fn decreaseextension_clears_the_extension() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Mutantfish, "Trim".to_string(), &mut rng);
-    force_extension(&mut tank.fish[0], ExtensionVariant::Spike, 1);
+    force_extension(&mut tank.fish[0], ExtensionVariant::Spike);
     assert!(tank.apply_named_mutation("Trim", "decreaseextension"));
     assert!(
         tank.fish[0]
@@ -1640,7 +1642,7 @@ fn decreaseextension_removes_the_extension_at_length_zero() {
             .unwrap()
             .body_extension
             .is_none(),
-        "an extension vanishes once its length drops to zero"
+        "decreaseextension clears every extension"
     );
     assert!(
         !tank.apply_named_mutation("Trim", "decreaseextension"),
@@ -1649,15 +1651,21 @@ fn decreaseextension_removes_the_extension_at_length_zero() {
 }
 
 #[test]
-fn feet_block_body_extension_too() {
+fn feet_keep_the_bottom_band_and_spikes_take_the_top() {
     let mut tank = make_tank();
     let mut rng = rng();
     tank.spawn_fish(FishSpecies::Merluza, "Booted".to_string(), &mut rng);
     assert!(tank.apply_named_mutation("Booted", "feet"));
     assert!(
-        !tank.apply_named_mutation("Booted", "bodyextension"),
-        "a body extension cannot grow while the fish has feet"
+        !tank.apply_named_mutation("Booted", "tentacles"),
+        "tentacles need the bottom band the feet stand on"
     );
+    assert!(tank.apply_named_mutation("Booted", "spikes"));
+    let mutant = tank.fish[0].mutant.as_ref().unwrap();
+    let ext = mutant.body_extension.unwrap();
+    assert_eq!(ext.top, Some(ExtensionVariant::Spike));
+    assert_eq!(ext.bottom, None, "the feet keep their band");
+    assert!(mutant.feet.is_some());
 }
 
 #[test]
@@ -1673,7 +1681,7 @@ fn slime_unfish_grows_extension_rows_without_changing_width() {
     );
     tank.place_fish(fish, "Slimy".to_string(), &mut rng);
     let before = tank.fish[0].display_width;
-    assert!(tank.apply_named_mutation("Slimy", "bodyextension"));
+    assert!(tank.apply_named_mutation("Slimy", "spikes"));
     assert!(
         tank.fish[0]
             .unfish_state
@@ -1699,7 +1707,7 @@ fn ball_extension_is_recorded_and_excludes_feet() {
     let fish = Fish::new_unfish(UnfishKind::Ball, "Orb".to_string(), 20.0, 10.0, &mut rng);
     tank.place_fish(fish, "Orb".to_string(), &mut rng);
     let before = tank.fish[0].display_width;
-    assert!(tank.apply_named_mutation("Orb", "bodyextension"));
+    assert!(tank.apply_named_mutation("Orb", "spikes"));
     assert!(
         tank.fish[0]
             .unfish_state
@@ -1725,7 +1733,7 @@ fn worm_extension_is_recorded_and_keeps_its_width() {
     let fish = Fish::new_unfish(UnfishKind::Worm, "Squirm".to_string(), 20.0, 10.0, &mut rng);
     tank.place_fish(fish, "Squirm".to_string(), &mut rng);
     let before = tank.fish[0].display_width;
-    assert!(tank.apply_named_mutation("Squirm", "bodyextension"));
+    assert!(tank.apply_named_mutation("Squirm", "spikes"));
     assert!(
         tank.fish[0]
             .unfish_state
