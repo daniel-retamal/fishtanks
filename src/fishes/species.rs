@@ -198,6 +198,13 @@ impl FishSpecies {
             .collect()
     }
 
+    pub fn born_sizes(self) -> &'static [SizeCategory] {
+        if self.config().auto_mutate {
+            return &[SizeCategory::M];
+        }
+        &SizeCategory::ALL
+    }
+
     pub fn buy_price(self) -> u32 {
         self.config().rarity.fish_buy_price()
     }
@@ -1826,7 +1833,6 @@ impl FishSpecies {
                 config.zoomie = Zoomie::Ink;
                 config.skin = Skin::Cycle(Cycle::OnClock);
                 config.habit = Some(Habit::Escape);
-                config.born_with = &[Mutation::Tentacles];
                 config
             }
             Glassfish => {

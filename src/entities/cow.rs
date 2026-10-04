@@ -13,7 +13,7 @@ use crate::entities::speech::SpeechBubble;
 use crate::fishes::fused::FusedComponent;
 use crate::fishes::mutant::{Circadian, EyeState, MutantState, MutantTail, MutationRecord};
 use crate::fishes::mutations::{
-    MutantBacked, Mutatable, Mutation, MutationOutcome, apply_mutant_mutation,
+    MutantBacked, Mutatable, Mutation, MutationOutcome, ONE_EYE, apply_mutant_mutation,
 };
 use crate::fishes::revert::Look;
 use crate::loot::MilkVariant;
@@ -265,6 +265,7 @@ impl Cow {
 const COW_CAPS: &[Mutation] = &[
     Mutation::SizeIncrease,
     Mutation::EyeIncrease,
+    Mutation::Cyclops,
     Mutation::ColorPatch,
     Mutation::EyeColor,
     Mutation::GlistenFast,
@@ -359,6 +360,9 @@ impl Mutatable for Cow {
     }
     fn apply_one(&mut self, mutation: Mutation, rng: &mut impl RngExt) -> MutationOutcome {
         apply_mutant_mutation(self, mutation, rng)
+    }
+    fn has_many_eyes(&self) -> bool {
+        self.eye_count() > ONE_EYE
     }
     fn record(&self) -> Option<&MutationRecord> {
         self.mutations.as_deref()
@@ -475,6 +479,9 @@ pub fn cow_display_width(cow: &Cow) -> usize {
 }
 
 const COW_LURE: char = 'º';
+const COW_EYE_OPEN: char = 'o';
+const COW_EYE_SHUT: char = '-';
+const COW_EMPTY_SOCKET: char = ' ';
 const COW_LURE_STALK: char = ',';
 const COW_LURE_GLOW_DAY: Color = AMBER_DARK;
 const COW_LURE_GLOW_NIGHT: Color = GOLD_BRIGHT;
@@ -504,6 +511,14 @@ pub fn cow_sprite(cow: &Cow) -> Vec<Vec<(char, Color)>> {
         row[1] = (COW_LURE_STALK, cow.color);
     }
     rows
+}
+
+fn socket_glyph(eye: Option<&EyeState>) -> char {
+    match eye {
+        Some(eye) if eye.is_open() => COW_EYE_OPEN,
+        Some(_) => COW_EYE_SHUT,
+        None => COW_EMPTY_SOCKET,
+    }
 }
 
 fn cow_head_render_count(cow: &Cow) -> usize {
@@ -554,16 +569,8 @@ fn cow_body_sprite(cow: &Cow) -> Vec<Vec<(char, Color)>> {
     row2.push(('(', body));
     for i in 0..head_render {
         let eye = cow.mutant.left_eyes.get(i);
-        let open = eye.is_none_or(|e| e.is_open());
-        let ch = if i < head_eye_render && open {
-            'o'
-        } else if i < head_eye_render {
-            '-'
-        } else {
-            ' '
-        };
         let cell_color = eye.map_or(eye_color, |e| cow.mutant.eye_render_color(e, eye_color));
-        row2.push((ch, cell_color));
+        row2.push((socket_glyph(eye), cell_color));
     }
     row2.push((')', body));
     row2.push(('\\', body));
@@ -584,14 +591,7 @@ fn cow_body_sprite(cow: &Cow) -> Vec<Vec<(char, Color)>> {
         let eye_index = head_eye_render + i;
         let is_eye = i < body_overflow;
         let eye = cow.mutant.left_eyes.get(eye_index);
-        let open = eye.is_none_or(|e| e.is_open());
-        let ch = if is_eye && open {
-            'o'
-        } else if is_eye {
-            '-'
-        } else {
-            ' '
-        };
+        let ch = socket_glyph(eye.filter(|_| is_eye));
         let color = if is_eye {
             eye.map_or(eye_color, |e| cow.mutant.eye_render_color(e, eye_color))
         } else {
@@ -842,9 +842,8 @@ fn double_cow_sprite(
     row2.push(('(', body));
     for i in 0..head_render {
         let eye = left_head_eyes.get(i);
-        let open = eye.is_none_or(|e| e.is_open());
         let cell_color = eye.map_or(eye_color, |e| skin.mutant.eye_render_color(e, eye_color));
-        row2.push((if open { 'o' } else { '-' }, cell_color));
+        row2.push((socket_glyph(eye), cell_color));
     }
     row2.push((')', body));
     row2.push(('\\', body));
@@ -855,9 +854,8 @@ fn double_cow_sprite(
     row2.push(('(', body));
     for i in 0..right_eyes {
         let eye = right_head_eyes.get(i);
-        let open = eye.is_none_or(|e| e.is_open());
         let cell_color = eye.map_or(eye_color, |e| skin.mutant.eye_render_color(e, eye_color));
-        row2.push((if open { 'o' } else { '-' }, cell_color));
+        row2.push((socket_glyph(eye), cell_color));
     }
     row2.push((')', body));
 

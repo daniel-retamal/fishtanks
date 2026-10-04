@@ -8,6 +8,10 @@ use fishtank::{
     },
     sprite::{Band, ExtensionVariant, TRANSPARENT},
 };
+use ratatui::style::Color;
+
+const OCTOPUS_SWAY_STEPS: usize = 16;
+const OCTOPUS_TENTACLES: usize = 3;
 
 fn fish(species: FishSpecies) -> Fish {
     let mut fish = Fish::new(species, "Probe".to_string(), 10.0, 10.0, &mut rand::rng());
@@ -203,25 +207,32 @@ fn a_puff_spikes_only_the_free_bands() {
 }
 
 #[test]
-fn an_octopus_is_born_with_tentacles_that_spikes_can_replace() {
+fn an_octopus_sways_its_own_three_tentacles_together_and_keeps_them() {
     let mut octopusfish = fish(FishSpecies::Octopusfish);
-    assert_eq!(
-        octopusfish.body_extension().bottom,
-        Some(ExtensionVariant::Tentacle),
-        "its tentacles are a birthmark"
-    );
     assert_eq!(octopusfish.mutation_count(), 0);
+    assert_eq!(octopusfish.body_extension().bottom, None);
+    for band in [Band::Top, Band::Bottom] {
+        assert!(octopusfish.reserves(band), "its own art fills {band:?}");
+    }
     assert!(!octopusfish.supports_now(Mutation::Tentacles));
-    assert!(
-        octopusfish.reserves(Band::Top),
-        "its mantle fills the top band"
-    );
-    grow(&mut octopusfish, Mutation::Spikes);
-    assert_eq!(
-        octopusfish.body_extension().bottom,
-        Some(ExtensionVariant::Spike)
-    );
-    assert_eq!(octopusfish.body_extension().top, None);
+    assert!(!octopusfish.supports_now(Mutation::Spikes));
+    let mut poses = std::collections::BTreeSet::new();
+    for step in 0..OCTOPUS_SWAY_STEPS {
+        octopusfish.sway.phase = step as f32 * std::f32::consts::TAU / OCTOPUS_SWAY_STEPS as f32;
+        let sprite = octopusfish.line_sprite();
+        let tentacles: Vec<(char, Color)> = sprite.rows[sprite.body_row + 1]
+            .iter()
+            .copied()
+            .filter(|&(c, _)| c != ' ' && c != TRANSPARENT)
+            .collect();
+        assert_eq!(tentacles.len(), OCTOPUS_TENTACLES, "{tentacles:?}");
+        assert!(
+            tentacles.iter().all(|&cell| cell == tentacles[0]),
+            "three tentacles, one glyph, one colour: {tentacles:?}"
+        );
+        poses.insert(tentacles[0].0);
+    }
+    assert_eq!(poses.len(), 2, "they sway together, both ways: {poses:?}");
 }
 
 #[test]

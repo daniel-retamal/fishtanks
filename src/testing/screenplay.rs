@@ -22,6 +22,10 @@ pub enum Cue {
     Clear,
     Run(String),
     Type(String),
+    Typewrite {
+        ticks: usize,
+        text: String,
+    },
     Press {
         key: KeyCode,
         times: usize,
@@ -263,6 +267,7 @@ impl Cue {
             "clear" => Ok(Cue::Clear),
             "run" => required(rest, "run needs a command line").map(Cue::Run),
             "type" => required(rest, "type needs text").map(Cue::Type),
+            "typewrite" => parse_typewrite(rest),
             "key" => parse_key(rest),
             "release" => parse_release(rest),
             "tick" => parse_count(rest).map(Cue::Tick),
@@ -273,7 +278,7 @@ impl Cue {
             "record" => parse_record(rest),
             "angle" => parse_angle(rest),
             other => Err(format!(
-                "unknown cue {other:?} (size, clear, run, type, key, release, tick, snap, select, expect, absent, record, angle, include)"
+                "unknown cue {other:?} (size, clear, run, type, typewrite, key, release, tick, snap, select, expect, absent, record, angle, include)"
             )),
         }
     }
@@ -291,6 +296,9 @@ impl Cue {
             }
             Cue::Type(text) => {
                 tui.type_text(text);
+            }
+            Cue::Typewrite { ticks, text } => {
+                tui.typewrite(text, *ticks);
             }
             Cue::Press { key, times } => {
                 for _ in 0..*times {
@@ -377,6 +385,16 @@ fn parse_key(rest: &str) -> Result<Cue, String> {
     Ok(Cue::Press { key, times })
 }
 
+fn parse_typewrite(rest: &str) -> Result<Cue, String> {
+    let Some((ticks, text)) = rest.split_once(char::is_whitespace) else {
+        return Err("typewrite needs <ticks> <text>".to_string());
+    };
+    Ok(Cue::Typewrite {
+        ticks: parse_count(ticks)?,
+        text: required(text.trim(), "typewrite needs text")?,
+    })
+}
+
 fn parse_record(rest: &str) -> Result<Cue, String> {
     let mut parts = rest.splitn(3, char::is_whitespace);
     let (Some(ticks), Some(every), Some(label)) = (parts.next(), parts.next(), parts.next()) else {
@@ -392,9 +410,10 @@ fn parse_record(rest: &str) -> Result<Cue, String> {
 fn parse_angle(rest: &str) -> Result<Cue, String> {
     let mut parts = rest.splitn(3, char::is_whitespace);
     let (Some(style), Some(every), Some(label)) = (parts.next(), parts.next(), parts.next()) else {
-        return Err("angle needs steer|hold <every> <label>".to_string());
+        return Err("angle needs steer|hold|watch <every> <label>".to_string());
     };
-    let style = Angling::parse(style).ok_or_else(|| format!("{style:?} is not steer or hold"))?;
+    let style =
+        Angling::parse(style).ok_or_else(|| format!("{style:?} is not steer, hold or watch"))?;
     Ok(Cue::Angle {
         style,
         every: parse_count(every)?,
@@ -474,6 +493,15 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn typewrite_films_one_still_a_letter() {
+        let play = Screenplay::parse("typewrite 2 hi there").expect("parses");
+        let mut tui = Tui::new();
+        play.perform(&mut tui).expect("performs");
+        assert_eq!(tui.reel().stills().len(), "hi there".len());
+        tui.screen().expect_find("hi there");
     }
 
     #[test]

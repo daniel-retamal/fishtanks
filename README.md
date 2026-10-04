@@ -112,21 +112,21 @@ Anything you type that is not a command is said out loud. Most of the time nobod
 
 ### Fishing
 
-Fishing is where money comes from, and the one thing that takes practice.
+Fishing is where catches come from: fish, cash, food, and stranger things.
 
-<img src="https://raw.githubusercontent.com/daniel-retamal/fishtanks/main/.github/assets/fishing.gif" alt="A whole cast: the wait, the bite, the fight and the catch, with the keys held shown underneath" width="700" />
+<img src="https://raw.githubusercontent.com/daniel-retamal/fishtanks/main/.github/assets/fishing.gif" alt="A whole cast: the wait, the bite, the fight and the catch, with the keys held shown underneath" width="520" />
 
 1. Type `/fish`, then **wait**. Touching `↓` before the bite scares the fish away.
 2. When the tip of the rod dips, **press `↓` once**. You have half a second.
 3. **Steer** with `←` and `→`: push the fish back toward the middle, before it reaches the red.
 4. **Reel** by holding `↓`, but only while the block on the track is **green**. Let go when it turns red. Holding `↓` and nothing else never lands a fish.
-5. When the yellow bar is full, the fish is yours. Name it and press `Enter`.
+5. When the catch bar on the right is full, the fish is yours. Name it and press `Enter`.
 
-Your first fish fight gently until you land three in a row. The [wiki](https://github.com/daniel-retamal/fishtanks/wiki/Fishing) has the long version.
+The [wiki](https://github.com/daniel-retamal/fishtanks/wiki/Fishing) has the long version.
 
 ### Getting started
 
-You begin with a Fishtank, three fishes, $50 and a bag of food. Fishing is where money comes from, so `/fish` early and often. Sell what you do not want to keep, feed the ones you do, and save up for a second tank. Every tank is a new set of rules, not just more room. The [wiki](https://github.com/daniel-retamal/fishtanks/wiki) explains every fish, tank and mechanic.
+You begin with a Fishtank, a few fishes, a little cash and a bag of food. Fishing is where money comes from, so `/fish` early and often. Sell what you do not want to keep, feed the ones you do, and save up for a second tank. Every tank is a new set of rules, not just more room. The [wiki](https://github.com/daniel-retamal/fishtanks/wiki) explains every fish, tank and mechanic.
 
 ### What is down there
 

@@ -32,6 +32,7 @@ const WORM_MAX_EXTRA_EYES: usize = 4;
 const DOUBLE_EYE_COUNT_MAX: usize = 3;
 const MOUTH_CELLS: usize = 1;
 const MAX_EARS: usize = 4;
+pub const ONE_EYE: usize = 1;
 const HYDRA_EYES_PER_APPLICATION_MIN: usize = 1;
 const HYDRA_EYES_PER_APPLICATION_MAX: usize = 2;
 
@@ -39,6 +40,7 @@ const HYDRA_EYES_PER_APPLICATION_MAX: usize = 2;
 pub enum Mutation {
     SizeIncrease,
     EyeIncrease,
+    Cyclops,
     ColorPatch,
     EyeColor,
     GlistenFast,
@@ -82,6 +84,7 @@ impl Mutation {
     pub const ALL: &'static [Mutation] = &[
         Mutation::SizeIncrease,
         Mutation::EyeIncrease,
+        Mutation::Cyclops,
         Mutation::ColorPatch,
         Mutation::EyeColor,
         Mutation::GlistenFast,
@@ -134,6 +137,7 @@ impl Mutation {
         match self {
             Mutation::SizeIncrease => "sizeincrease",
             Mutation::EyeIncrease => "eyeincrease",
+            Mutation::Cyclops => "cyclops",
             Mutation::ColorPatch => "colorpatch",
             Mutation::EyeColor => "eyecolor",
             Mutation::GlistenFast => "glistenfast",
@@ -374,6 +378,10 @@ pub trait Mutatable {
         true
     }
 
+    fn has_many_eyes(&self) -> bool {
+        false
+    }
+
     fn shows_eye_colour(&self) -> bool {
         true
     }
@@ -413,6 +421,7 @@ pub trait Mutatable {
             }
             Mutation::SizeIncrease => self.can_grow_body(),
             Mutation::EyeIncrease => self.can_grow_eyes(),
+            Mutation::Cyclops => self.has_many_eyes(),
             Mutation::EyeColor | Mutation::Heterochromia => self.shows_eye_colour(),
             Mutation::GlistenMode => self.has_glisten(),
             Mutation::ColorPatch => !self.has_glisten() && !adornments.lunar,
@@ -522,6 +531,12 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
         return MutationOutcome::Applied;
     }
     match mutation {
+        Mutation::Cyclops => {
+            let mutant = target.mutant_mut();
+            for eyes in [&mut mutant.left_eyes, &mut mutant.right_eyes] {
+                eyes.truncate(ONE_EYE);
+            }
+        }
         Mutation::SizeIncrease => {
             let old_size = target.body_size();
             let new_size = (old_size + 1).min(MUTATION_MAX_BODY_SIZE).max(old_size);
@@ -699,6 +714,7 @@ const MUTANT_FULL_CAPS: &[Mutation] = Mutation::ALL;
 const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::SizeIncrease,
     Mutation::EyeIncrease,
+    Mutation::Cyclops,
     Mutation::ColorPatch,
     Mutation::EyeColor,
     Mutation::GlistenFast,
@@ -835,6 +851,7 @@ const FIGURE_CAPS: &[Mutation] = &[
 const WORM_CAPS: &[Mutation] = &[
     Mutation::SizeIncrease,
     Mutation::EyeIncrease,
+    Mutation::Cyclops,
     Mutation::ColorPatch,
     Mutation::EyeColor,
     Mutation::GlistenFast,
@@ -942,6 +959,14 @@ impl Fish {
         left < most || right < most
     }
 
+    fn has_many_eyes(&self) -> bool {
+        if let Some(us) = self.unfish_state.as_ref() {
+            return us.kind.mutation_style() == UnfishMutationStyle::Worm && us.worm_extra_eyes > 0;
+        }
+        let (left, right) = self.eye_counts();
+        left.max(right) > ONE_EYE
+    }
+
     fn shows_eye_colour(&self) -> bool {
         if let Some(us) = self.unfish_state.as_ref() {
             return us.has_an_eye();
@@ -1037,6 +1062,7 @@ pub fn apply_unfish_mutation(
             Mutation::SizeIncrease if style == UnfishMutationStyle::Worm => {
                 us.worm_segments = (us.worm_segments + 1).min(WORM_MAX_SEGMENTS);
             }
+            Mutation::Cyclops if style == UnfishMutationStyle::Worm => us.worm_extra_eyes = 0,
             Mutation::EyeIncrease => match style {
                 UnfishMutationStyle::Worm => {
                     us.worm_extra_eyes = (us.worm_extra_eyes + 1).min(WORM_MAX_EXTRA_EYES);
@@ -1217,6 +1243,10 @@ impl Mutatable for Fish {
 
     fn can_grow_eyes(&self) -> bool {
         Fish::can_grow_eyes(self)
+    }
+
+    fn has_many_eyes(&self) -> bool {
+        Fish::has_many_eyes(self)
     }
 
     fn shows_eye_colour(&self) -> bool {

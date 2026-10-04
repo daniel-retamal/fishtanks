@@ -1,21 +1,27 @@
 use crossterm::event::KeyCode;
 
 use super::Tui;
+use crate::ui::fishing_overlay::FishingState;
 
 const CAST_LIMIT_TICKS: usize = 30 * 120;
 const LOOKAHEAD_STEPS: f32 = 6.0;
 const DEADBAND: f32 = 0.04;
-const REEL_ZONE: f32 = 0.3;
 const CENTRE: f32 = 0.5;
 const BITE_REACTION_TICKS: usize = 6;
+const GLANCE_TICKS: usize = 5;
+const SETTLE_TICKS: usize = GLANCE_TICKS;
+const LEFT: usize = 1;
+const RIGHT: usize = 2;
 const ROD_KEYS: [KeyCode; 3] = [KeyCode::Down, KeyCode::Left, KeyCode::Right];
 const KEY_NAMES: [&str; 3] = ["down", "left", "right"];
 const KEYS_TAG: &str = "keys=";
+const BITE_TAG: &str = "bite=";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Angling {
     Steer,
     Hold,
+    Watch,
 }
 
 impl Angling {
@@ -23,24 +29,21 @@ impl Angling {
         match word.to_ascii_lowercase().as_str() {
             "steer" => Some(Angling::Steer),
             "hold" => Some(Angling::Hold),
+            "watch" => Some(Angling::Watch),
             _ => None,
         }
     }
+}
 
-    fn wants(self, tui: &Tui, bite_seen: usize) -> [bool; 3] {
-        let Some(state) = tui.app.fishing_state() else {
-            return [false; 3];
-        };
-        if state.is_catching() {
-            return [bite_seen >= BITE_REACTION_TICKS, false, false];
-        }
-        if self == Angling::Hold {
-            return [true, false, false];
-        }
-        let ahead = state.fish_pos + state.fish_velocity * LOOKAHEAD_STEPS;
-        let reel = (ahead - CENTRE).abs() * 2.0 < REEL_ZONE;
-        [reel, ahead > CENTRE + DEADBAND, ahead < CENTRE - DEADBAND]
+fn steering(state: &FishingState, held: [bool; 3]) -> (bool, bool) {
+    let ahead = state.fish_pos + state.fish_velocity * LOOKAHEAD_STEPS;
+    let left = ahead > CENTRE + DEADBAND;
+    let right = ahead < CENTRE - DEADBAND;
+    let switching = (held[LEFT] && right) || (held[RIGHT] && left);
+    if switching {
+        return (false, false);
     }
+    (left, right)
 }
 
 pub struct Angler {
@@ -49,6 +52,7 @@ pub struct Angler {
     label: String,
     held: [bool; 3],
     bite_seen: usize,
+    hooked_at: Option<usize>,
 }
 
 impl Angler {
@@ -59,6 +63,7 @@ impl Angler {
             label: label.to_string(),
             held: [false; 3],
             bite_seen: 0,
+            hooked_at: None,
         }
     }
 
@@ -79,16 +84,60 @@ impl Angler {
             {
                 self.bite_seen += 1;
             }
-            let wants = self.style.wants(tui, self.bite_seen);
+            if self.hooked_at.is_none()
+                && tui
+                    .app
+                    .fishing_state()
+                    .is_some_and(|state| !state.is_catching())
+            {
+                self.hooked_at = Some(tick);
+            }
+            let wants = self.wants(tui, tick);
             for (slot, &down) in wants.iter().enumerate() {
                 self.hold(tui, slot, down);
             }
             tui.tick_n(1);
             if self.every > 0 && tick % self.every == 0 {
-                tui.record_frame(&format!("{} {tick:04} {}", self.label, self.keys()));
+                let biting = tui
+                    .app
+                    .fishing_state()
+                    .is_some_and(|state| state.is_biting());
+                tui.record_frame(&format!(
+                    "{} {tick:04} {} {BITE_TAG}{}",
+                    self.label,
+                    self.keys(),
+                    u8::from(biting)
+                ));
             }
         }
         Err(format!("the cast outlasted {CAST_LIMIT_TICKS} ticks"))
+    }
+
+    fn wants(&self, tui: &Tui, tick: usize) -> [bool; 3] {
+        let Some(state) = tui.app.fishing_state() else {
+            return [false; 3];
+        };
+        if self.style == Angling::Watch {
+            return [false; 3];
+        }
+        if state.is_catching() {
+            return [self.bite_seen >= BITE_REACTION_TICKS, false, false];
+        }
+        if self.style == Angling::Hold {
+            return [true, false, false];
+        }
+        let settling = self
+            .hooked_at
+            .is_some_and(|hooked| tick < hooked + SETTLE_TICKS);
+        if settling {
+            return [state.in_the_green(), false, false];
+        }
+        if !tick.is_multiple_of(GLANCE_TICKS) {
+            return self.held;
+        }
+        let reel = state.in_the_green();
+        let (left, right) = steering(state, self.held);
+        [reel, left, right]
     }
 
     fn hold(&mut self, tui: &mut Tui, slot: usize, down: bool) {
@@ -143,6 +192,11 @@ mod tests {
     #[test]
     fn an_angler_who_steers_lands_every_fish() {
         assert!((0..CASTS).all(|_| cast(Angling::Steer)));
+    }
+
+    #[test]
+    fn an_angler_who_only_watches_never_lands_a_fish() {
+        assert!((0..CASTS).all(|_| !cast(Angling::Watch)));
     }
 
     #[test]

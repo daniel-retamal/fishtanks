@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 - 2026-10-04
+
+- **Twins swim apart.** When a double splits in two, the new fish heads off the other way instead of shadowing its parent.
+- **The octopus has its own tentacles back**: three, swaying together, in its own colour.
+- **`cyclops`**: a new mutation that leaves a fish or a cow with a single eye. `revert` gives the others back.
+- **A swallowed fish loses its tail.** A fish that engulfs another is drawn head, body, body, head, with no tail stuck inside it.
+- **The wiki grew a dex.** Every fish, unfish, cow and mutation now has its own entry: what it looks like, an animated picture of what makes it special, and its numbers. Fishing is shown step by step.
+
 ## 1.2.0 - 2026-10-03
 
 - **A wiki.** Every fish, tank, item and mechanic, how to fish, how to wire botfish, and a step-by-step calculator: [github.com/daniel-retamal/fishtanks/wiki](https://github.com/daniel-retamal/fishtanks/wiki).

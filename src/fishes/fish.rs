@@ -84,6 +84,7 @@ const HUE_SHIFT_SECS: f32 = 3.0;
 const FEET_ROW_COUNT: usize = 1;
 const STONES: [char; 3] = ['o', 'O', '0'];
 pub const ENGULF_WINDOW_SECS: f32 = 10.0;
+const MIN_TWIN_DRIFT: f32 = 0.5;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Direction {
@@ -259,10 +260,9 @@ fn init_body_fields(
 
 impl Fish {
     pub fn new(species: FishSpecies, name: String, x: f32, y: f32, rng: &mut impl RngExt) -> Self {
-        let size_cat = if species.config().auto_mutate {
-            SizeCategory::M
-        } else {
-            roll_size_category(rng)
+        let size_cat = match species.born_sizes() {
+            [only] => *only,
+            _ => roll_size_category(rng),
         };
         let fields = init_body_fields(species, size_cat, rng);
         let botfish_state = programmable_state(species);
@@ -950,6 +950,23 @@ impl Fish {
         }
     }
 
+    pub fn shed_reserved_growths(&mut self) {
+        let reserved: Vec<Band> = [Band::Top, Band::Bottom]
+            .into_iter()
+            .filter(|&band| self.reserves(band))
+            .collect();
+        let Some(extension) = self
+            .mutant
+            .as_mut()
+            .and_then(|mutant| mutant.body_extension.as_mut())
+        else {
+            return;
+        };
+        for band in reserved {
+            extension.set(band, None);
+        }
+    }
+
     pub fn reserves(&self, band: Band) -> bool {
         if self.zoomie() == Zoomie::Glide {
             return true;
@@ -1147,11 +1164,39 @@ impl Fish {
         let (cells, span) = half.line_cells();
         let lead = half.lead();
         let last = cells.len().saturating_sub(1);
+        let tail = half.plain_tail_len();
         let (lo, hi) = match facing {
-            Direction::Left => (0, span.map_or(last, |(_, hi)| hi) + lead),
-            Direction::Right => (span.map_or(0, |(lo, _)| lo), last + lead),
+            Direction::Left => (
+                0,
+                span.map_or(last.saturating_sub(tail), |(_, hi)| hi) + lead,
+            ),
+            Direction::Right => (span.map_or(tail.min(last), |(lo, _)| lo), last + lead),
         };
         (half.line_sprite(), lo, hi)
+    }
+
+    fn plain_tail_len(&self) -> usize {
+        if self.mutant.is_some() || self.unfish_state.is_some() || self.botfish_state.is_some() {
+            return 0;
+        }
+        self.standard_body_chars(&self.species.config().body)
+            .map_or(0, |body_chars| {
+                tail_chars(body_chars, self.facing, self.sway.phase).len()
+            })
+    }
+
+    fn standard_body_chars(&self, body: &BodyTemplate) -> Option<BodyChars> {
+        match *body {
+            BodyTemplate::Standard(body_chars) => Some(body_chars),
+            BodyTemplate::Alternating(even_body_chars, odd_body_chars) => {
+                Some(if self.pattern_seed.is_multiple_of(2) {
+                    even_body_chars
+                } else {
+                    odd_body_chars
+                })
+            }
+            BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => None,
+        }
     }
 
     fn fused_line_sprite(&self, left: &Fish, right: &Fish) -> LineSprite {
@@ -1178,15 +1223,9 @@ impl Fish {
 
     fn build_chars(&self, body: &BodyTemplate) -> Vec<char> {
         match *body {
-            BodyTemplate::Standard(body_chars) => self.build_standard_chars(body_chars),
-            BodyTemplate::Alternating(even_body_chars, odd_body_chars) => {
-                let body_chars = if self.pattern_seed.is_multiple_of(2) {
-                    even_body_chars
-                } else {
-                    odd_body_chars
-                };
-                self.build_standard_chars(body_chars)
-            }
+            BodyTemplate::Standard(_) | BodyTemplate::Alternating(..) => self
+                .standard_body_chars(body)
+                .map_or_else(Vec::new, |body_chars| self.build_standard_chars(body_chars)),
             BodyTemplate::Fixed { left, right } => {
                 let variants = match self.facing {
                     Direction::Left => left,
@@ -2677,6 +2716,17 @@ impl Fish {
             Direction::Right => Direction::Left,
         };
         self.velocity.dx = -self.velocity.dx;
+    }
+
+    pub fn swim_away_from(&mut self, twin: &Fish) {
+        if self.facing == twin.facing {
+            self.flip();
+        }
+        let away = match self.facing {
+            Direction::Left => -1.0,
+            Direction::Right => 1.0,
+        };
+        self.velocity.dx = self.velocity.dx.abs().max(self.speed * MIN_TWIN_DRIFT) * away;
     }
 }
 

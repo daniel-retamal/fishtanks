@@ -314,6 +314,14 @@ impl FishingState {
         matches!(&self.phase, FishPhase::Catch(c) if c.biting)
     }
 
+    pub fn is_green_at(&self, pos: f32) -> bool {
+        (pos - 0.5).abs() * 2.0 <= self.safe_zone
+    }
+
+    pub fn in_the_green(&self) -> bool {
+        self.is_green_at(self.fish_pos)
+    }
+
     fn start_reeling(&mut self) {
         self.phase = FishPhase::Reel;
     }
@@ -1039,7 +1047,7 @@ fn draw_control_bar(buf: &mut Buffer, x: u16, y: u16, inner_w: u16, state: &Fish
     let indicator_col = (state.fish_pos * movable as f32) as u16;
     let control_color = if state.captured {
         LIGHT_YELLOW
-    } else if (state.fish_pos - 0.5).abs() * 2.0 > state.safe_zone {
+    } else if !state.in_the_green() {
         DANGER_CONTROL
     } else {
         SAFE_CONTROL

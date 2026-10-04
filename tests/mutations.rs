@@ -3,8 +3,9 @@ use fishtank::entities::cow::{CowVariant, cow_hydra_capacity, cow_sprite};
 use fishtank::fishes::fish::Fish;
 use fishtank::fishes::species::FishSpecies;
 use fishtank::fishes::unfish::{BALL_HEIGHT, SKULL_HEIGHT, UnfishKind};
+use fishtank::settings::Settings;
 use fishtank::sprite::{BodyExtension, ExtensionVariant, mirror_char};
-use fishtank::tank::{Tank, TankKind};
+use fishtank::tank::{Sky, Tank, TankKind};
 
 const STRAWBERRY_SELL_BONUS_PCT: u32 = 25;
 
@@ -2099,4 +2100,56 @@ fn cytokinesis_clears_fused_components() {
         );
         assert_eq!(f.ability_components().len(), 1, "each half is one entity");
     }
+}
+
+const TWIN_SPLITS: usize = 20;
+const WIDE_TAIL_JOINT: &str = "><";
+
+#[test]
+fn a_split_twin_swims_away_from_its_parent() {
+    for _ in 0..TWIN_SPLITS {
+        let mut tank = make_tank();
+        let mut rng = rng();
+        tank.spawn_fish(FishSpecies::Koi, "Castor".to_string(), &mut rng);
+        assert!(tank.apply_named_mutation("Castor", "telophase"));
+        assert!(tank.apply_named_mutation("Castor", "cytokinesis"));
+        let [parent, twin] = &tank.fish[..] else {
+            panic!("the double split in two");
+        };
+        assert_ne!(parent.facing, twin.facing, "the twins face apart");
+        assert!(
+            twin.velocity.dx * parent.velocity.dx <= 0.0,
+            "the twins swim apart"
+        );
+    }
+}
+
+#[test]
+fn an_engulfed_pair_shows_two_heads_and_no_tail_between_them() {
+    let mut tank = make_tank();
+    let mut rng = rng();
+    for name in ["Jonah", "Minnow"] {
+        let mut fish = Fish::new(FishSpecies::Merluza, name.to_string(), 30.0, 8.0, &mut rng);
+        fish.frozen = true;
+        tank.place_fish(fish, name.to_string(), &mut rng);
+        let placed = tank.fish.last_mut().expect("placed");
+        placed.position.x = 30.0;
+        placed.position.y = 8.0;
+    }
+    assert!(tank.apply_named_mutation("Jonah", "engulfment"));
+    tank.tick(&Settings::default(), 0, Sky::default());
+    assert_eq!(tank.fish.len(), 1, "Jonah swallowed Minnow");
+    let sprite = tank.fish[0].line_sprite();
+    let body: String = sprite.rows[sprite.body_row]
+        .iter()
+        .map(|&(c, _)| c)
+        .collect();
+    assert!(
+        body.starts_with('<') && body.ends_with('>'),
+        "two heads: {body}"
+    );
+    assert!(
+        !body.contains(WIDE_TAIL_JOINT),
+        "no tail inside the body: {body}"
+    );
 }
