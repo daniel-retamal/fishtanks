@@ -7,10 +7,12 @@ use crate::app::{App, Launch, SaveFile};
 use crate::economy::Money;
 use crate::ledger::Flow;
 
+mod angler;
 mod reel;
 mod screenplay;
 mod stage;
 
+pub use angler::{Angler, Angling};
 pub use reel::{Arm, Flaw, Glyph, Reel, Still, TerminalCell};
 pub use screenplay::{Cue, CueError, Screenplay};
 pub use stage::{PLAY_EXTENSION, TerminalSize, play_name, plays_in, review, stage};
@@ -143,13 +145,32 @@ impl Tui {
     }
 
     pub fn snap(&mut self, label: &str) -> &mut Self {
+        self.record_frame(label);
+        self.write_reel()
+    }
+
+    pub fn record_frame(&mut self, label: &str) -> &mut Self {
         self.draw();
         self.reel
             .push(Still::of(label, self.terminal.backend().buffer()));
+        self
+    }
+
+    pub fn write_reel(&mut self) -> &mut Self {
         if let Some((dir, name)) = &self.film {
             self.reel.save(dir, name).expect("the reel is writable");
         }
         self
+    }
+
+    pub fn record(&mut self, ticks: usize, every: usize, label: &str) -> &mut Self {
+        for tick in 0..ticks {
+            if tick % every.max(1) == 0 {
+                self.record_frame(&format!("{label} {tick:04}"));
+            }
+            self.tick_n(1);
+        }
+        self.write_reel()
     }
 
     pub fn try_select(&mut self, label: &str) -> Result<(), String> {

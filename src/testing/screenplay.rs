@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crossterm::event::KeyCode;
 
-use super::Tui;
+use super::{Angler, Angling, Tui};
 use crate::ui::input_action::key_code;
 
 const NOTE_PREFIX: char = '#';
@@ -15,17 +15,33 @@ const QUOTE: char = '"';
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Cue {
-    Size { cols: u16, rows: u16 },
+    Size {
+        cols: u16,
+        rows: u16,
+    },
     Clear,
     Run(String),
     Type(String),
-    Press { key: KeyCode, times: usize },
+    Press {
+        key: KeyCode,
+        times: usize,
+    },
     Release(KeyCode),
     Tick(usize),
     Snap(String),
     Select(String),
     Expect(String),
     Absent(String),
+    Record {
+        ticks: usize,
+        every: usize,
+        label: String,
+    },
+    Angle {
+        style: Angling,
+        every: usize,
+        label: String,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -254,8 +270,10 @@ impl Cue {
             "select" => required(rest, "select needs a row label").map(Cue::Select),
             "expect" => required(rest, "expect needs text").map(Cue::Expect),
             "absent" => required(rest, "absent needs text").map(Cue::Absent),
+            "record" => parse_record(rest),
+            "angle" => parse_angle(rest),
             other => Err(format!(
-                "unknown cue {other:?} (size, clear, run, type, key, release, tick, snap, select, expect, absent, include)"
+                "unknown cue {other:?} (size, clear, run, type, key, release, tick, snap, select, expect, absent, record, angle, include)"
             )),
         }
     }
@@ -301,6 +319,20 @@ impl Cue {
                     return Err(format!("expected {needle:?} to be absent"));
                 }
             }
+            Cue::Record {
+                ticks,
+                every,
+                label,
+            } => {
+                tui.record(*ticks, *every, label);
+            }
+            Cue::Angle {
+                style,
+                every,
+                label,
+            } => {
+                Angler::new(*style, *every, label).cast(tui)?;
+            }
         }
         Ok(())
     }
@@ -343,6 +375,31 @@ fn parse_key(rest: &str) -> Result<Cue, String> {
     };
     let key = key_code(name).ok_or_else(|| format!("unknown key {name:?}"))?;
     Ok(Cue::Press { key, times })
+}
+
+fn parse_record(rest: &str) -> Result<Cue, String> {
+    let mut parts = rest.splitn(3, char::is_whitespace);
+    let (Some(ticks), Some(every), Some(label)) = (parts.next(), parts.next(), parts.next()) else {
+        return Err("record needs <ticks> <every> <label>".to_string());
+    };
+    Ok(Cue::Record {
+        ticks: parse_count(ticks)?,
+        every: parse_count(every)?,
+        label: label.trim().to_string(),
+    })
+}
+
+fn parse_angle(rest: &str) -> Result<Cue, String> {
+    let mut parts = rest.splitn(3, char::is_whitespace);
+    let (Some(style), Some(every), Some(label)) = (parts.next(), parts.next(), parts.next()) else {
+        return Err("angle needs steer|hold <every> <label>".to_string());
+    };
+    let style = Angling::parse(style).ok_or_else(|| format!("{style:?} is not steer or hold"))?;
+    Ok(Cue::Angle {
+        style,
+        every: parse_count(every)?,
+        label: label.trim().to_string(),
+    })
 }
 
 fn parse_release(rest: &str) -> Result<Cue, String> {
@@ -395,6 +452,43 @@ mod tests {
                 Cue::Absent("too big".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn record_and_angle_parse_their_counts_and_labels() {
+        let play = Screenplay::parse("record 90 3 the engulfment\nangle steer 2 a steady reel")
+            .expect("parses");
+        let cues: Vec<Cue> = play.beats.into_iter().map(|beat| beat.cue).collect();
+        assert_eq!(
+            cues,
+            vec![
+                Cue::Record {
+                    ticks: 90,
+                    every: 3,
+                    label: "the engulfment".to_string()
+                },
+                Cue::Angle {
+                    style: Angling::Steer,
+                    every: 2,
+                    label: "a steady reel".to_string()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn record_films_one_still_every_few_ticks() {
+        let play = Screenplay::parse("record 9 3 water").expect("parses");
+        let mut tui = Tui::new();
+        play.perform(&mut tui).expect("performs");
+        assert_eq!(tui.reel().stills().len(), 3);
+    }
+
+    #[test]
+    fn an_angler_needs_the_fishing_window_open() {
+        let play = Screenplay::parse("angle steer 1 nothing").expect("parses");
+        let error = play.perform(&mut Tui::new()).expect_err("refuses");
+        assert!(error.message.contains("/fish"), "{error}");
     }
 
     #[test]
