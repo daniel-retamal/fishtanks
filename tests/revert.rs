@@ -284,3 +284,30 @@ fn any_history_reverts_down_to_its_fusions_without_breaking_the_body() {
         }
     }
 }
+
+#[test]
+fn a_cyclops_cow_has_one_eye_and_revert_gives_the_other_back() {
+    let mut cow = Cow::new(
+        "Polyphemus".to_string(),
+        CowVariant::Brown,
+        10.0,
+        10.0,
+        &mut rand::rng(),
+    );
+    let born = cow.eye_count();
+    assert!(born > 1, "a cow is born with two eyes");
+    mutate(&mut cow, &[Mutation::Cyclops]);
+    assert_eq!(cow.eye_count(), 1);
+    assert!(
+        !cow.supports_now(Mutation::Cyclops),
+        "one eye is as few as it gets"
+    );
+    assert_eq!(revert(&mut cow, &mut rand::rng()), Some(Mutation::Cyclops));
+    assert_eq!(cow.eye_count(), born);
+}
+
+#[test]
+fn a_fish_with_one_eye_is_never_offered_cyclops() {
+    let fish = salmon();
+    assert!(!fish.supports_now(Mutation::Cyclops));
+}
