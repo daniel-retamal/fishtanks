@@ -198,6 +198,13 @@ impl FishSpecies {
             .collect()
     }
 
+    pub fn born_sizes(self) -> &'static [SizeCategory] {
+        if self.config().auto_mutate {
+            return &[SizeCategory::M];
+        }
+        &SizeCategory::ALL
+    }
+
     pub fn buy_price(self) -> u32 {
         self.config().rarity.fish_buy_price()
     }

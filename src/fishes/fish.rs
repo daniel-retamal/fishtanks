@@ -260,10 +260,9 @@ fn init_body_fields(
 
 impl Fish {
     pub fn new(species: FishSpecies, name: String, x: f32, y: f32, rng: &mut impl RngExt) -> Self {
-        let size_cat = if species.config().auto_mutate {
-            SizeCategory::M
-        } else {
-            roll_size_category(rng)
+        let size_cat = match species.born_sizes() {
+            [only] => *only,
+            _ => roll_size_category(rng),
         };
         let fields = init_body_fields(species, size_cat, rng);
         let botfish_state = programmable_state(species);
