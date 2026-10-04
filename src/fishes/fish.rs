@@ -1147,11 +1147,39 @@ impl Fish {
         let (cells, span) = half.line_cells();
         let lead = half.lead();
         let last = cells.len().saturating_sub(1);
+        let tail = half.plain_tail_len();
         let (lo, hi) = match facing {
-            Direction::Left => (0, span.map_or(last, |(_, hi)| hi) + lead),
-            Direction::Right => (span.map_or(0, |(lo, _)| lo), last + lead),
+            Direction::Left => (
+                0,
+                span.map_or(last.saturating_sub(tail), |(_, hi)| hi) + lead,
+            ),
+            Direction::Right => (span.map_or(tail.min(last), |(lo, _)| lo), last + lead),
         };
         (half.line_sprite(), lo, hi)
+    }
+
+    fn plain_tail_len(&self) -> usize {
+        if self.mutant.is_some() || self.unfish_state.is_some() || self.botfish_state.is_some() {
+            return 0;
+        }
+        self.standard_body_chars(&self.species.config().body)
+            .map_or(0, |body_chars| {
+                tail_chars(body_chars, self.facing, self.sway.phase).len()
+            })
+    }
+
+    fn standard_body_chars(&self, body: &BodyTemplate) -> Option<BodyChars> {
+        match *body {
+            BodyTemplate::Standard(body_chars) => Some(body_chars),
+            BodyTemplate::Alternating(even_body_chars, odd_body_chars) => {
+                Some(if self.pattern_seed.is_multiple_of(2) {
+                    even_body_chars
+                } else {
+                    odd_body_chars
+                })
+            }
+            BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => None,
+        }
     }
 
     fn fused_line_sprite(&self, left: &Fish, right: &Fish) -> LineSprite {
@@ -1178,15 +1206,9 @@ impl Fish {
 
     fn build_chars(&self, body: &BodyTemplate) -> Vec<char> {
         match *body {
-            BodyTemplate::Standard(body_chars) => self.build_standard_chars(body_chars),
-            BodyTemplate::Alternating(even_body_chars, odd_body_chars) => {
-                let body_chars = if self.pattern_seed.is_multiple_of(2) {
-                    even_body_chars
-                } else {
-                    odd_body_chars
-                };
-                self.build_standard_chars(body_chars)
-            }
+            BodyTemplate::Standard(_) | BodyTemplate::Alternating(..) => self
+                .standard_body_chars(body)
+                .map_or_else(Vec::new, |body_chars| self.build_standard_chars(body_chars)),
             BodyTemplate::Fixed { left, right } => {
                 let variants = match self.facing {
                     Direction::Left => left,
