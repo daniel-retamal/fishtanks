@@ -25,7 +25,6 @@ const FIRST_INSTANCE: u32 = 1;
 const PRINT_WAFERS_PER_FISH: u32 = 1;
 const ETCH_WAFERS_PER_FISH: u32 = 2;
 const FABRICATORS_PER_RUN: u32 = 1;
-const PLACEMENT_ROWS: f32 = 1.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Fabrication {
@@ -418,18 +417,7 @@ impl Tank {
             .into_iter()
             .map(|printed| hatch(printed, rng))
             .collect();
-        let board_w = board
-            .iter()
-            .map(|(fish, offset)| offset.x + fish.display_width as f32)
-            .fold(0.0, f32::max);
-        let board_h = board
-            .iter()
-            .map(|(_, offset)| offset.y + PLACEMENT_ROWS)
-            .fold(0.0, f32::max);
-        let origin = Position {
-            x: random_start(rng, self.width as f32 - board_w),
-            y: random_start(rng, self.height as f32 - board_h),
-        };
+        let origin = landing_spot(&board, self.width, self.height, rng);
         let (width, height) = (self.width, self.height);
         for (mut fish, offset) in board {
             fish.position = Position {
@@ -444,11 +432,35 @@ impl Tank {
     }
 }
 
-fn random_start(rng: &mut impl RngExt, slack: f32) -> f32 {
-    if slack <= 0.0 {
-        return 0.0;
+fn landing_spot(
+    board: &[(Fish, Position)],
+    width: u16,
+    height: u16,
+    rng: &mut impl RngExt,
+) -> Position {
+    let fits = board.iter().fold(
+        (f32::MIN, f32::MAX, f32::MIN, f32::MAX),
+        |(lo_x, hi_x, lo_y, hi_y), (fish, offset)| {
+            let (min_x, max_x, min_y, max_y) = fish.position_bounds(width, height);
+            (
+                lo_x.max(min_x - offset.x),
+                hi_x.min(max_x - offset.x),
+                lo_y.max(min_y - offset.y),
+                hi_y.min(max_y - offset.y),
+            )
+        },
+    );
+    Position {
+        x: random_between(rng, fits.0, fits.1),
+        y: random_between(rng, fits.2, fits.3),
     }
-    rng.random_range(0.0..=slack)
+}
+
+fn random_between(rng: &mut impl RngExt, low: f32, high: f32) -> f32 {
+    if high <= low {
+        return low.max(0.0);
+    }
+    rng.random_range(low..=high)
 }
 
 fn hatch(printed: BlueprintFish, rng: &mut impl RngExt) -> (Fish, Position) {

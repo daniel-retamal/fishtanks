@@ -2651,7 +2651,11 @@ impl Fish {
         }
     }
 
-    fn position_bounds(&self, tank_width: u16, tank_height: u16) -> (f32, f32, f32, f32) {
+    pub(crate) fn position_bounds(
+        &self,
+        tank_width: u16,
+        tank_height: u16,
+    ) -> (f32, f32, f32, f32) {
         let (top_margin, bottom_margin) = self.sprite_y_margins();
         (
             0.0,
