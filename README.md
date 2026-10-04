@@ -17,6 +17,8 @@
     &nbsp;·&nbsp;
     <a href="#playing">Playing</a>
     &nbsp;·&nbsp;
+    <a href="https://github.com/daniel-retamal/fishtanks/wiki">Wiki</a>
+    &nbsp;·&nbsp;
     <a href="CONTRIBUTING.md">Contributing</a>
   </p>
 
@@ -76,7 +78,13 @@ fishtanks
 
 ### Updating
 
-`fishtanks` tells you when a newer version is out. Run your install line again, or `brew update && brew upgrade fishtanks` if you used Homebrew. Your game carries over.
+`fishtanks` tells you when a newer version is out. Then type:
+
+```sh
+fishtanks update
+```
+
+It fetches the new version and swaps it in (with Homebrew it gives you the `brew` line to run instead). Your game carries over.
 
 ### What you need
 
@@ -102,13 +110,27 @@ The bar at the bottom takes commands. Type `/`, press `Tab` to complete, `↑` a
 
 Anything you type that is not a command is said out loud. Most of the time nobody is listening.
 
+### Fishing
+
+Fishing is where money comes from, and the one thing that takes practice.
+
+<img src="https://raw.githubusercontent.com/daniel-retamal/fishtanks/main/.github/assets/fishing.gif" alt="A whole cast: the wait, the bite, the fight and the catch, with the keys held shown underneath" width="700" />
+
+1. Type `/fish`, then **wait**. Touching `↓` before the bite scares the fish away.
+2. When the tip of the rod dips, **press `↓` once**. You have half a second.
+3. **Steer** with `←` and `→`: push the fish back toward the middle, before it reaches the red.
+4. **Reel** by holding `↓`, but only while the block on the track is **green**. Let go when it turns red. Holding `↓` and nothing else never lands a fish.
+5. When the yellow bar is full, the fish is yours. Name it and press `Enter`.
+
+Your first fish fight gently until you land three in a row. The [wiki](https://github.com/daniel-retamal/fishtanks/wiki/Fishing) has the long version.
+
 ### Getting started
 
-You begin with a Fishtank, three fishes, $50 and a bag of food. Fishing is where money comes from, so `/fish` early and often. Sell what you do not want to keep, feed the ones you do, and save up for a second tank. Every tank is a new set of rules, not just more room.
+You begin with a Fishtank, three fishes, $50 and a bag of food. Fishing is where money comes from, so `/fish` early and often. Sell what you do not want to keep, feed the ones you do, and save up for a second tank. Every tank is a new set of rules, not just more room. The [wiki](https://github.com/daniel-retamal/fishtanks/wiki) explains every fish, tank and mechanic.
 
 ### What is down there
 
-- **Twenty-odd species.** Commons you can buy anywhere, rares that swim a little strangely, and legendaries that live in exactly one kind of tank and are never for sale.
+- **Eighty-odd species.** Commons you can buy anywhere, rares that swim a little strangely, and legendaries that live in exactly one kind of tank and are never for sale.
 - **Tanks with their own rules.** A graveyard that remembers your dead. A desert whose nights bring visitors. A candy tank. Some tanks are never sold at all: the sea gives you something, and you grow them from it.
 - **Mutation.** Radiation, milk and time change fishes. Sometimes two fishes become one.
 - **Life after death.** A fish that dies goes somewhere. Where depends on the mark it carried.

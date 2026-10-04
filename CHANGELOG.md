@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 - 2026-10-03
+
+- **A wiki.** Every fish, tank, item and mechanic, how to fish, how to wire botfish, and a step-by-step calculator: [github.com/daniel-retamal/fishtanks/wiki](https://github.com/daniel-retamal/fishtanks/wiki).
+- **Fishing lessons.** Until you land three fish in a row, every fish fights at its calmest. Lose one and the count starts again; after three, fishing is the real thing.
+- **Thirty-three new Rares.** Snails and slugs that crawl the glass, a hermit crab that swaps shells, a moray that slips through the walls, a boxfish that bounces like an old screensaver, an octopus that inks and wanders off, parrots that echo you, a shy fish that hides when you type, and more. Every one does something.
+- **Twenty-eight new Commons**, told apart by their looks alone: Chilean fish, aquarium fish and a few invented ones. One wild fish in eight is still a Rare, however many species there are.
+- **How fed is a fish?** `/index`, `/show` and the shop's Sell page now say: a percentage while food still pays, `Full` when it no longer does. A fish burps when its last pellet fills it. Chocolate Milk, candy and a Candyfish's touch now pay past full.
+- **Mutations, reworked.** Fins, feet, spikes, wings and tentacles each take a row above or below the body. New growths: lures, bills, fins, the moon. `revert` undoes one earlier mutation exactly. A fish is only offered mutations that would show. `bubblecolor` is now `wakecolor`, and colours whatever a fish leaves behind.
+- `fishtanks update` is in the README, where it always should have been.
+
 ## 1.1.0 - 2026-10-02
 
 - **Hold on to your junk.** Something happens once you have a hundred.
