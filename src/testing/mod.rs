@@ -24,6 +24,7 @@ pub const LAB_STAKE: Money = 40_000;
 const SELECTION_MARKER: char = '>';
 const COVERED_CELL: &str = " ";
 const SELECT_MAX_STEPS: usize = 256;
+const TYPING_LABEL: &str = "typing";
 
 pub struct Tui {
     pub app: App,
@@ -161,6 +162,15 @@ impl Tui {
             self.reel.save(dir, name).expect("the reel is writable");
         }
         self
+    }
+
+    pub fn typewrite(&mut self, text: &str, ticks: usize) -> &mut Self {
+        for ch in text.chars() {
+            self.key(KeyCode::Char(ch));
+            self.record_frame(&format!("{TYPING_LABEL} {ch}"));
+            self.tick_n(ticks);
+        }
+        self.write_reel()
     }
 
     pub fn record(&mut self, ticks: usize, every: usize, label: &str) -> &mut Self {

@@ -15,6 +15,7 @@ Cues, one per line (# starts a note):
   clear                  empty the current tank of fish, cows and food
   run <command line>     type a line into the command bar and press ENTER
   type <text>            type text into whatever has focus
+  typewrite <k> <text>   type text one letter at a time, k ticks apart, filming each letter
   key <name> [times]     press a key: enter esc tab backtab backspace delete
                          up down left right home end pageup pagedown space, or one character
   tick <n>               advance the simulation n ticks
