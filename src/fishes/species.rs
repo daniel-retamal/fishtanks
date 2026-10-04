@@ -1833,7 +1833,6 @@ impl FishSpecies {
                 config.zoomie = Zoomie::Ink;
                 config.skin = Skin::Cycle(Cycle::OnClock);
                 config.habit = Some(Habit::Escape);
-                config.born_with = &[Mutation::Tentacles];
                 config
             }
             Glassfish => {

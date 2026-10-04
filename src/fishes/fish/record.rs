@@ -145,7 +145,7 @@ impl From<FishRecord> for Fish {
             }
             facing = placement.facing;
         }
-        Self {
+        let mut fish = Self {
             name: record.name,
             position,
             velocity,
@@ -183,7 +183,9 @@ impl From<FishRecord> for Fish {
             direction_timer: rng.random_range(DIRECTION_TIMER_MIN..DIRECTION_TIMER_MAX),
             zoomie_timer: rng.random_range(ZOOMIE_INITIAL_TIMER_MIN..ZOOMIE_INITIAL_TIMER_MAX),
             zoomed_secs: 0.0,
-        }
+        };
+        fish.shed_reserved_growths();
+        fish
     }
 }
 

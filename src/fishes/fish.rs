@@ -950,6 +950,23 @@ impl Fish {
         }
     }
 
+    pub fn shed_reserved_growths(&mut self) {
+        let reserved: Vec<Band> = [Band::Top, Band::Bottom]
+            .into_iter()
+            .filter(|&band| self.reserves(band))
+            .collect();
+        let Some(extension) = self
+            .mutant
+            .as_mut()
+            .and_then(|mutant| mutant.body_extension.as_mut())
+        else {
+            return;
+        };
+        for band in reserved {
+            extension.set(band, None);
+        }
+    }
+
     pub fn reserves(&self, band: Band) -> bool {
         if self.zoomie() == Zoomie::Glide {
             return true;

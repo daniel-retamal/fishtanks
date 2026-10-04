@@ -8,8 +8,11 @@ use fishtank::app::{
 use fishtank::economy::Money;
 use fishtank::entities::plant::SWAY_AMOUNT;
 use fishtank::fishes::fish::Fish;
+use fishtank::fishes::mutations::{Mutation, apply_mutation_to_fish};
+use fishtank::fishes::species::FishSpecies;
 use fishtank::ledger::Flow;
 use fishtank::loot::{ConsumableKind, MilkVariant, StockItem};
+use fishtank::sprite::{Band, ExtensionVariant};
 use fishtank::tank::{FEED_PORTION, TankKind};
 use fishtank::testing::{DEFAULT_COLS, DEFAULT_ROWS, Tui};
 use fishtank::vault::{self, Loaded, Vault, VaultError};
@@ -459,4 +462,28 @@ fn the_first_save_file_ever_written_still_loads() {
     assert!(fish(&app, "Q").frozen);
     assert_eq!(held(&app, ConsumableKind::Milk(MilkVariant::Strawberry)), 2);
     assert!(app.graveyard.iter().any(|dead| dead.name == "Adam"));
+}
+
+#[test]
+fn an_octopus_saved_with_birthmark_tentacles_loads_with_only_its_own() {
+    let mut app = App::launch(Launch::Debug);
+    app.tanks[0].spawn_fish(
+        FishSpecies::Octopusfish,
+        "Inky".to_string(),
+        &mut rand::rng(),
+    );
+    let inky = app.tanks[0]
+        .fish
+        .iter_mut()
+        .find(|fish| fish.name == "Inky")
+        .expect("Inky swims");
+    apply_mutation_to_fish(inky, Mutation::BodyColor, &mut rand::rng());
+    inky.mutant
+        .as_mut()
+        .expect("a recoloured fish has a mutant body")
+        .body_extension
+        .get_or_insert_with(Default::default)
+        .set(Band::Bottom, Some(ExtensionVariant::Tentacle));
+    let back = reopened(&app);
+    assert_eq!(fish(&back, "Inky").body_extension().bottom, None);
 }
