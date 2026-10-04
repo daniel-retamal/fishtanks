@@ -84,6 +84,7 @@ const HUE_SHIFT_SECS: f32 = 3.0;
 const FEET_ROW_COUNT: usize = 1;
 const STONES: [char; 3] = ['o', 'O', '0'];
 pub const ENGULF_WINDOW_SECS: f32 = 10.0;
+const MIN_TWIN_DRIFT: f32 = 0.5;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Direction {
@@ -2699,6 +2700,17 @@ impl Fish {
             Direction::Right => Direction::Left,
         };
         self.velocity.dx = -self.velocity.dx;
+    }
+
+    pub fn swim_away_from(&mut self, twin: &Fish) {
+        if self.facing == twin.facing {
+            self.flip();
+        }
+        let away = match self.facing {
+            Direction::Left => -1.0,
+            Direction::Right => 1.0,
+        };
+        self.velocity.dx = self.velocity.dx.abs().max(self.speed * MIN_TWIN_DRIFT) * away;
     }
 }
 

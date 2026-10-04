@@ -431,9 +431,14 @@ impl Tank {
             restore_from_snapshot(c1.fish_snapshot().unwrap(), spawn_x, spawn_y, c1.weight_g);
         child.name = c1.name.clone();
         child.mutations = Some(Box::new(MutationRecord::child_of(parent_count, &c0.name)));
-        self.admit(child, c1.name.clone());
-        self.fish[idx].record_mut().partners.push(c1.name);
+        self.admit_twin(idx, child, c1.name);
         true
+    }
+
+    fn admit_twin(&mut self, idx: usize, mut twin: Fish, name: String) {
+        twin.swim_away_from(&self.fish[idx]);
+        self.admit(twin, name.clone());
+        self.fish[idx].record_mut().partners.push(name);
     }
 
     fn split_standard_fish(&mut self, idx: usize) {
@@ -552,8 +557,7 @@ impl Tank {
             parent_count,
             &parent_name,
         )));
-        self.admit(new_fish, new_name.clone());
-        self.fish[idx].record_mut().partners.push(new_name);
+        self.admit_twin(idx, new_fish, new_name);
     }
 
     fn split_fixed_fish(&mut self, idx: usize) {
@@ -608,8 +612,7 @@ impl Tank {
         if printed && let Some(twin) = new_fish.script_mut() {
             twin.mark_printed();
         }
-        self.admit(new_fish, new_name.clone());
-        self.fish[idx].record_mut().partners.push(new_name);
+        self.admit_twin(idx, new_fish, new_name);
     }
 
     fn split_worm(&mut self, idx: usize) {
@@ -695,8 +698,7 @@ impl Tank {
             parent_count,
             &parent_name,
         )));
-        self.admit(new_fish, new_name.clone());
-        self.fish[idx].record_mut().partners.push(new_name);
+        self.admit_twin(idx, new_fish, new_name);
     }
 
     fn try_split_engulfment_cow(&mut self, idx: usize) -> bool {

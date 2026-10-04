@@ -2102,7 +2102,27 @@ fn cytokinesis_clears_fused_components() {
     }
 }
 
+const TWIN_SPLITS: usize = 20;
 const WIDE_TAIL_JOINT: &str = "><";
+
+#[test]
+fn a_split_twin_swims_away_from_its_parent() {
+    for _ in 0..TWIN_SPLITS {
+        let mut tank = make_tank();
+        let mut rng = rng();
+        tank.spawn_fish(FishSpecies::Koi, "Castor".to_string(), &mut rng);
+        assert!(tank.apply_named_mutation("Castor", "telophase"));
+        assert!(tank.apply_named_mutation("Castor", "cytokinesis"));
+        let [parent, twin] = &tank.fish[..] else {
+            panic!("the double split in two");
+        };
+        assert_ne!(parent.facing, twin.facing, "the twins face apart");
+        assert!(
+            twin.velocity.dx * parent.velocity.dx <= 0.0,
+            "the twins swim apart"
+        );
+    }
+}
 
 #[test]
 fn an_engulfed_pair_shows_two_heads_and_no_tail_between_them() {
