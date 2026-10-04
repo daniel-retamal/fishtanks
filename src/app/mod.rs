@@ -52,6 +52,7 @@ mod cheats;
 mod console;
 mod heaven;
 mod input;
+mod lessons;
 mod money;
 mod news;
 mod persistence;
@@ -60,6 +61,7 @@ mod snapshot;
 mod zen;
 
 pub use cheats::Launch;
+pub use lessons::{LESSON_STREAK, Lessons};
 pub use snapshot::{
     FIRST_FISH, FIRST_TANK_NAME, SAVE_VERSION, STARTING_CASH, STARTING_FOOD, SaveFile,
 };
@@ -138,6 +140,7 @@ pub struct App {
     persistence: Option<Persistence>,
     zen: bool,
     newer_release: bool,
+    lessons: Lessons,
 }
 
 impl Default for App {
@@ -337,12 +340,14 @@ impl App {
     }
 
     fn set_overlay(&mut self, overlay: Overlay) {
+        self.leave_the_water();
         self.leave_console();
         self.held_keys.let_go();
         self.active_overlay = Some(overlay);
     }
 
     fn close_overlay(&mut self) {
+        self.leave_the_water();
         self.leave_console();
         self.held_keys.let_go();
         self.active_overlay = None;

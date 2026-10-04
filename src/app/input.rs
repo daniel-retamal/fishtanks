@@ -2770,6 +2770,7 @@ impl App {
                 state.no_escape = no_escape || self.cheats.no_escape;
                 state.no_fight = no_fight;
                 state.forced_temper = temper;
+                state.lesson = self.lessons.learning();
                 self.set_overlay(Overlay::Fishing(state));
                 if no_fight {
                     self.hook_the_catch();

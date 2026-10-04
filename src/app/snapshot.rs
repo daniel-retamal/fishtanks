@@ -19,7 +19,7 @@ use crate::util::sample_exponential;
 use crate::vault::CryptSeal;
 use crate::void_ritual::{self, VoidRitualState};
 
-use super::{App, GraceBuff, Overlay, TERMINAL_HEIGHT_DEFAULT, TERMINAL_WIDTH_DEFAULT};
+use super::{App, GraceBuff, Lessons, Overlay, TERMINAL_HEIGHT_DEFAULT, TERMINAL_WIDTH_DEFAULT};
 
 pub const SAVE_VERSION: u32 = 2;
 pub const STARTING_CASH: Money = 50;
@@ -62,6 +62,8 @@ pub struct SaveFile {
     nothing_stacks: u32,
     day_clock: DayClock,
     catch: Option<PendingCatch>,
+    #[serde(default)]
+    lessons: Lessons,
 }
 
 impl SaveFile {
@@ -95,6 +97,7 @@ impl SaveFile {
             nothing_stacks: 0,
             day_clock: DayClock::new(),
             catch: None,
+            lessons: Lessons::default(),
         }
     }
 
@@ -172,6 +175,7 @@ impl App {
             persistence: _,
             zen: _,
             newer_release: _,
+            lessons,
         } = self;
         let food_in_the_water: u32 = tanks.iter().map(TankRecord::food_in_the_water).sum();
         let catch = match active_overlay {
@@ -209,6 +213,7 @@ impl App {
             nothing_stacks: *nothing_stacks,
             day_clock: day_clock.clone(),
             catch,
+            lessons: *lessons,
         }
     }
 
@@ -252,6 +257,7 @@ impl App {
             persistence: None,
             zen: false,
             newer_release: false,
+            lessons: save.lessons,
         };
         app.hang_the_souls();
         if let Some(catch) = save.catch {

@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use crossterm::event::{Event, KeyCode};
+use fishtank::app::LESSON_STREAK;
 use fishtank::testing::Tui;
-use fishtank::ui::fishing_overlay::Temper;
+use fishtank::ui::fishing_overlay::{LESSON_PACE, Temper};
 
 const CAST_TICKS: usize = 30 * 90;
 const CASTS: usize = 6;
@@ -180,7 +181,11 @@ fn card_shown(tui: &mut Tui) -> bool {
 }
 
 fn reel_like_a_player(tui: &mut Tui, hand: &mut Hand, style: Style) -> bool {
-    hand.run(tui, "/fish --legendary");
+    cast_like_a_player(tui, hand, style, "/fish --legendary")
+}
+
+fn cast_like_a_player(tui: &mut Tui, hand: &mut Hand, style: Style, line: &str) -> bool {
+    hand.run(tui, line);
     for _ in 0..CAST_TICKS {
         let Some(state) = tui.app.fishing_state() else {
             hand.let_go(tui);
@@ -427,4 +432,58 @@ fn a_player_cannot_choose_how_a_fish_fights() {
     let mut tui = Tui::as_player(80, 24);
     tui.run("/fish --legendary");
     assert!(tui.app.fishing_state().is_none(), "a debug flag is refused");
+}
+
+#[test]
+fn a_new_player_fights_the_calmest_fish_until_three_are_landed_in_a_row() {
+    let mut tui = Tui::as_player(80, 24);
+    let mut hand = Hand::new(Emulator::Windows, WINDOWS_CADENCE);
+    let mut casts = 0;
+    while tui.app.lessons().learning() {
+        let streak = tui.app.lessons().streak();
+        hand.run(&mut tui, "/fish");
+        tui.key(KeyCode::Esc);
+        assert_eq!(
+            tui.app.lessons().streak(),
+            streak,
+            "a cast that hooked nothing is no lesson"
+        );
+        casts += 1;
+        assert!(casts <= CASTS, "the lessons never ended");
+        if cast_like_a_player(&mut tui, &mut hand, Style::ReelWhileSteering, "/fish") {
+            tui.type_text(&format!("Lesson {casts}"));
+            tui.key(KeyCode::Enter);
+        }
+    }
+    assert_eq!(tui.app.lessons().streak(), LESSON_STREAK);
+}
+
+#[test]
+fn a_fish_let_go_in_the_middle_of_a_lesson_starts_the_streak_again() {
+    let mut tui = Tui::new();
+    tui.clear_tank();
+    let mut hand = Hand::new(Emulator::Windows, WINDOWS_CADENCE);
+    assert!(cast_like_a_player(
+        &mut tui,
+        &mut hand,
+        Style::ReelWhileSteering,
+        "/fish"
+    ));
+    tui.type_text("First");
+    tui.key(KeyCode::Enter);
+    assert_eq!(tui.app.lessons().streak(), 1);
+
+    hook_a_fish(&mut tui);
+    let state = tui.app.fishing_state().expect("the fish is hooked");
+    assert_eq!(
+        state.pace(),
+        LESSON_PACE,
+        "a lesson fights at the calmest pace"
+    );
+    tui.key(KeyCode::Esc);
+    assert_eq!(
+        tui.app.lessons().streak(),
+        0,
+        "giving up a fight is losing it"
+    );
 }
