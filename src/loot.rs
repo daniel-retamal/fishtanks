@@ -119,6 +119,7 @@ const HONEY_MILK_DESCRIPTION: &str = "A land flowing with milk and honey, subscr
 const MATCHA_MILK_NAME: &str = "Matcha Milk";
 const MATCHA_MILK_DESCRIPTION: &str = "Stone-ground, shade-grown reflex concentrate. It saw the bite before the bite saw you. Better fishing";
 const CHOCOLATE_MILK_NAME: &str = "Chocolate Milk";
+const CHOCOLATE_WEIGHT_BONUS_G: u32 = 5000;
 const CHOCOLATE_MILK_DESCRIPTION: &str = "Hyper-dense lipid-maximizing slurry. Overrides the baseline biological density caps for absolute mass extraction. Numbers must go up. Increase fish's weight";
 const STRAWBERRY_MILK_NAME: &str = "Strawberry Milk";
 const STRAWBERRY_MILK_DESCRIPTION: &str = "Imbues the organism with a Cursed Economic Paradigm (CEP). Compounding artificial market inflation through pastel-tier commodification. Bump sell price";
@@ -129,7 +130,7 @@ const ALIEN_MILK_DESCRIPTION: &str = "Cellular-restructuring xeno-pathway fluid 
 const IRRADIATED_MILK_NAME: &str = "Irradiated Milk";
 const IRRADIATED_MILK_DESCRIPTION: &str = "Rage against the carcase. Entfesselt Sein Fleisch. Let the self dissolve, for a brief moment, in the unnverving experience of letting go. Random mutations";
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub enum MilkVariant {
     Plain,
     Blueberry,
@@ -210,6 +211,20 @@ impl MilkVariant {
             | MilkVariant::Irradiated => None,
         }
     }
+
+    pub fn weight_gain_g(self) -> u32 {
+        match self {
+            MilkVariant::Chocolate => CHOCOLATE_WEIGHT_BONUS_G,
+            MilkVariant::Plain
+            | MilkVariant::Blueberry
+            | MilkVariant::Honey
+            | MilkVariant::Matcha
+            | MilkVariant::Strawberry
+            | MilkVariant::Vanilla
+            | MilkVariant::Alien
+            | MilkVariant::Irradiated => 0,
+        }
+    }
 }
 
 const COFFEE_NAME: &str = "Coffee";
@@ -288,7 +303,7 @@ impl NameTarget {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub enum ConsumableKind {
     Coffee,
     Bait,
@@ -1041,7 +1056,7 @@ impl ItemKind {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub enum StockItem {
     Consumable(ConsumableKind),
     Junk,
@@ -1127,35 +1142,51 @@ impl LootKind {
 
 #[derive(Clone, Copy)]
 enum PoolSlot {
-    Species(FishSpecies),
+    School(Rarity),
     Cash,
     Food,
     Junk,
     Consumable(ConsumableKind),
 }
 
+const WILD_FISH_WEIGHT: u32 = 832;
+const RARE_SHARE_PER_MILLE: u32 = 125;
+const PER_MILLE: u32 = 1000;
+
+pub fn school_weight(rarity: Rarity) -> u32 {
+    let rare = WILD_FISH_WEIGHT * RARE_SHARE_PER_MILLE / PER_MILLE;
+    match rarity {
+        Rarity::Common => WILD_FISH_WEIGHT - rare,
+        Rarity::Rare => rare,
+        Rarity::Legendary => Rarity::Legendary.catch_weight(),
+    }
+}
+
 pub struct LootPool {
     slots: Vec<(u32, PoolSlot)>,
+    schools: Vec<(Rarity, Vec<FishSpecies>)>,
     devils_luck: u32,
 }
 
 impl LootPool {
     pub fn default_pool() -> Self {
-        let mut slots: Vec<(u32, PoolSlot)> = FishSpecies::all_wild()
-            .iter()
-            .map(|&s| (s.config().rarity.catch_weight(), PoolSlot::Species(s)))
-            .collect();
         let common = Rarity::Common.catch_weight();
         let sundry = SUNDRY_SLOTS * common;
-        slots.push((CASH_SLOTS * common, PoolSlot::Cash));
-        slots.push((FOOD_SLOTS * common, PoolSlot::Food));
-        slots.push((sundry, PoolSlot::Junk));
-        slots.push((sundry, PoolSlot::Consumable(ConsumableKind::Coffee)));
-        slots.push((sundry, PoolSlot::Consumable(ConsumableKind::Bait)));
         let mut pool = Self {
-            slots,
+            slots: Vec::new(),
+            schools: Vec::new(),
             devils_luck: 0,
         };
+        for &species in FishSpecies::all_wild() {
+            pool.join_school(species);
+        }
+        pool.slots.push((CASH_SLOTS * common, PoolSlot::Cash));
+        pool.slots.push((FOOD_SLOTS * common, PoolSlot::Food));
+        pool.slots.push((sundry, PoolSlot::Junk));
+        pool.slots
+            .push((sundry, PoolSlot::Consumable(ConsumableKind::Coffee)));
+        pool.slots
+            .push((sundry, PoolSlot::Consumable(ConsumableKind::Bait)));
         for seed in ConsumableKind::seeds() {
             pool.push_consumable(seed);
         }
@@ -1164,7 +1195,7 @@ impl LootPool {
 
     pub fn with_native(mut self, kind: TankKind) -> Self {
         for species in FishSpecies::native_to(kind) {
-            self = self.with_species(species);
+            self.join_school(species);
         }
         if kind.config().robotics_loot {
             self = self.with_robotics();
@@ -1172,12 +1203,29 @@ impl LootPool {
         self
     }
 
-    fn with_species(mut self, species: FishSpecies) -> Self {
-        self.slots.push((
-            species.config().rarity.catch_weight(),
-            PoolSlot::Species(species),
-        ));
-        self
+    fn join_school(&mut self, species: FishSpecies) {
+        let rarity = species.config().rarity;
+        if let Some((_, members)) = self.schools.iter_mut().find(|(r, _)| *r == rarity) {
+            members.push(species);
+            return;
+        }
+        self.schools.push((rarity, vec![species]));
+        self.slots
+            .push((school_weight(rarity), PoolSlot::School(rarity)));
+    }
+
+    fn school(&self, rarity: Rarity) -> &[FishSpecies] {
+        self.schools
+            .iter()
+            .find(|(r, _)| *r == rarity)
+            .map_or(&[], |(_, members)| members.as_slice())
+    }
+
+    pub fn species(&self) -> Vec<FishSpecies> {
+        self.schools
+            .iter()
+            .flat_map(|(_, members)| members.iter().copied())
+            .collect()
     }
 
     fn push_consumable(&mut self, kind: ConsumableKind) {
@@ -1202,7 +1250,7 @@ impl LootPool {
         let mult = 1u32 + stacks;
         for (w, slot) in &mut self.slots {
             let legendary = match slot {
-                PoolSlot::Species(s) => s.config().rarity == Rarity::Legendary,
+                PoolSlot::School(rarity) => *rarity == Rarity::Legendary,
                 PoolSlot::Consumable(kind) => kind.rarity() == Rarity::Legendary,
                 _ => false,
             };
@@ -1214,13 +1262,24 @@ impl LootPool {
     }
 
     pub fn keeping_species(mut self, keep: impl Fn(FishSpecies) -> bool) -> Self {
-        self.slots
-            .retain(|&(_, slot)| !matches!(slot, PoolSlot::Species(species) if !keep(species)));
+        for (_, members) in &mut self.schools {
+            members.retain(|&species| keep(species));
+        }
+        let empty: Vec<Rarity> = self
+            .schools
+            .iter()
+            .filter(|(_, members)| members.is_empty())
+            .map(|(rarity, _)| *rarity)
+            .collect();
+        self.schools.retain(|(_, members)| !members.is_empty());
+        self.slots.retain(
+            |(_, slot)| !matches!(slot, PoolSlot::School(rarity) if empty.contains(rarity)),
+        );
         self
     }
 
     pub fn offers_fish(&self) -> bool {
-        self.species_weights().next().is_some()
+        self.school_weights().next().is_some()
     }
 
     pub fn without(mut self, withheld: &[ConsumableKind]) -> Self {
@@ -1231,16 +1290,24 @@ impl LootPool {
     }
 
     pub fn roll_species(&self, rng: &mut impl RngExt) -> Option<FishSpecies> {
-        let table: Vec<(u32, FishSpecies)> = self.species_weights().collect();
+        let table: Vec<(u32, Rarity)> = self.school_weights().collect();
         if table.is_empty() {
             return None;
         }
-        Some(roll_weighted(&table, rng))
+        self.school_member(roll_weighted(&table, rng), rng)
     }
 
-    fn species_weights(&self) -> impl Iterator<Item = (u32, FishSpecies)> + '_ {
+    fn school_member(&self, rarity: Rarity, rng: &mut impl RngExt) -> Option<FishSpecies> {
+        let members = self.school(rarity);
+        if members.is_empty() {
+            return None;
+        }
+        Some(members[rng.random_range(0..members.len())])
+    }
+
+    fn school_weights(&self) -> impl Iterator<Item = (u32, Rarity)> + '_ {
         self.slots.iter().filter_map(|&(weight, slot)| match slot {
-            PoolSlot::Species(species) => Some((weight, species)),
+            PoolSlot::School(rarity) => Some((weight, rarity)),
             _ => None,
         })
     }
@@ -1252,7 +1319,7 @@ impl LootPool {
         let mult = 1u32 + stacks;
         for (w, slot) in &mut self.slots {
             let boostable = match slot {
-                PoolSlot::Species(s) => s.config().rarity != Rarity::Common,
+                PoolSlot::School(rarity) => *rarity != Rarity::Common,
                 PoolSlot::Consumable(kind) => kind.rarity() != Rarity::Common,
                 _ => false,
             };
@@ -1295,7 +1362,10 @@ impl LootPool {
         for (w, slot) in &self.slots {
             if v < *w {
                 return match slot {
-                    PoolSlot::Species(s) => LootKind::Fish(*s),
+                    PoolSlot::School(rarity) => match self.school_member(*rarity, rng) {
+                        Some(species) => LootKind::Fish(species),
+                        None => LootKind::Item(ItemKind::Junk(JunkSprite::new(rng))),
+                    },
                     PoolSlot::Cash => LootKind::Cash(roll_cash_with_luck(rng, self.devils_luck)),
                     PoolSlot::Food => {
                         LootKind::Food(rng.random_range(FOOD_AMOUNT_MIN..=FOOD_AMOUNT_MAX))
@@ -1320,16 +1390,15 @@ pub enum Companion {
 
 impl Companion {
     pub fn roll(kind: TankKind, rng: &mut impl RngExt) -> Self {
-        let mut table: Vec<(u32, Companion)> = LootPool::default_pool()
-            .with_native(kind)
-            .species_weights()
-            .map(|(weight, species)| (weight, Companion::Fish(species)))
+        let pool = LootPool::default_pool().with_native(kind);
+        let mut table: Vec<(u32, Option<Rarity>)> = pool
+            .school_weights()
+            .map(|(weight, rarity)| (weight, Some(rarity)))
             .collect();
-        table.push((
-            COMPANION_COW_RARITY.catch_weight(),
-            Companion::Cow(CowVariant::random(rng)),
-        ));
+        table.push((COMPANION_COW_RARITY.catch_weight(), None));
         roll_weighted(&table, rng)
+            .and_then(|rarity| pool.school_member(rarity, rng))
+            .map_or_else(|| Companion::Cow(CowVariant::random(rng)), Companion::Fish)
     }
 }
 
@@ -1437,13 +1506,7 @@ mod tests {
     }
 
     fn species_in(pool: &LootPool) -> Vec<FishSpecies> {
-        pool.slots
-            .iter()
-            .filter_map(|(_, slot)| match slot {
-                PoolSlot::Species(species) => Some(*species),
-                _ => None,
-            })
-            .collect()
+        pool.species()
     }
 
     #[test]
@@ -1452,7 +1515,11 @@ mod tests {
             let pool = LootPool::default_pool().with_native(kind);
             let mut expected = FishSpecies::all_wild().to_vec();
             expected.extend(FishSpecies::native_to(kind));
-            assert_eq!(species_in(&pool), expected, "{}", kind.display_name());
+            let mut caught = species_in(&pool);
+            let by_name = |species: &FishSpecies| FishSpecies::display_name(*species);
+            caught.sort_by_key(by_name);
+            expected.sort_by_key(by_name);
+            assert_eq!(caught, expected, "{}", kind.display_name());
             let drops_parts = pool
                 .slots
                 .iter()
@@ -1587,7 +1654,7 @@ mod tests {
     fn non_fish_loot_is_a_third_of_a_wild_cast() {
         let pool = LootPool::default_pool();
         let total: u32 = pool.slots.iter().map(|(weight, _)| weight).sum();
-        let fish: u32 = pool.species_weights().map(|(weight, _)| weight).sum();
+        let fish: u32 = pool.school_weights().map(|(weight, _)| weight).sum();
         let share = f64::from(total - fish) / f64::from(total);
         assert!(
             (share - STARDEW_NON_FISH_SHARE).abs() < SHARE_TOLERANCE,

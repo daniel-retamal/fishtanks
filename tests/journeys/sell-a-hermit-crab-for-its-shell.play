@@ -1,0 +1,23 @@
+# JOURNEY · a hermit crab is sold with its shell left behind: one Junk lands in the bag.
+# A new game holds no items, so the inventory opens only once the shell is in it.
+
+clear
+include scenes/start-with-a-stake.play
+include scenes/buy-a-fish.play Crabfish Pagu
+run /shop
+key down
+key enter
+expect Pagu (Crabfish)
+select Pagu (Crabfish)
+key enter
+expect Sell Pagu for $
+key enter
+absent Pagu (Crabfish)
+key esc
+key esc
+absent Sell
+run /inventory
+expect Junk
+snap the crab's shell is in the bag
+key esc
+absent Junk

@@ -5,8 +5,14 @@ use crate::colors::{
     BLUE, CYAN, GREEN, LIGHT_BLUE, LIGHT_CYAN, LIGHT_GREEN, LIGHT_MAGENTA, LIGHT_RED, LIGHT_YELLOW,
     MAGENTA, ORANGE, RED, TEAL, YELLOW,
 };
-use crate::fishes::fish::Fish;
+use crate::economy::{Money, grouped};
+use crate::fishes::fish::{Fed, Fish};
 use crate::fishes::species::{Fortune, Sin};
+use crate::ui::table::{INFINITY, NOTHING};
+
+pub const FED_HEADER: &str = "Fed";
+pub const WORTH_HEADER: &str = "Worth";
+const FULL: &str = "Full";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FieldKind {
@@ -131,6 +137,27 @@ pub fn format_weight(g: u32) -> String {
         format!("{:.1}kg", g as f32 / 1000.0)
     } else {
         format!("{}g", g)
+    }
+}
+
+pub fn format_money(amount: Money) -> String {
+    format!("${}", grouped(u128::from(amount)))
+}
+
+pub fn format_fed(fed: Fed) -> String {
+    match fed {
+        Fed::Growing(percent) => format!("{percent}%"),
+        Fed::Full => FULL.to_string(),
+        Fed::Boundless => INFINITY.to_string(),
+        Fed::Worthless => NOTHING.to_string(),
+    }
+}
+
+pub fn format_worth(fish: &Fish) -> String {
+    let worth = format_money(fish.sell_value());
+    match fish.worth_when_full() {
+        Some(full) => format!("{worth} ({} when full)", format_money(full)),
+        None => worth,
     }
 }
 
@@ -395,7 +422,8 @@ pub fn gen_field_value(
             Some(quote) => plain(quote),
             None => {
                 let count = rng.random_range(2..=8u32);
-                plain((0..count).map(|_| "glub").collect::<Vec<_>>().join(" "))
+                let voice = fish.species.config().flavour.voice;
+                plain((0..count).map(|_| voice).collect::<Vec<_>>().join(" "))
             }
         },
 

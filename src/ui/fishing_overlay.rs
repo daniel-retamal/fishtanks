@@ -164,6 +164,7 @@ const TEMPERAMENT: Temperament = Temperament {
 
 const NORMAL_PACE: RangeInclusive<f32> = 0.75..=0.99;
 const LEGENDARY_PACE: RangeInclusive<f32> = 1.00..=1.10;
+pub const LESSON_PACE: f32 = *NORMAL_PACE.start();
 
 impl Temper {
     pub fn legendary_chance(rarity: Rarity) -> f64 {
@@ -182,6 +183,10 @@ impl Temper {
             Temper::Normal => NORMAL_PACE,
             Temper::Legendary => LEGENDARY_PACE,
         }
+    }
+
+    fn roll_pace(self, rng: &mut impl RngExt) -> f32 {
+        rng.random_range(self.pace())
     }
 }
 
@@ -252,6 +257,7 @@ pub struct FishingState {
     pub reel_punish_timer: u32,
     pub reel_anim_tick: u32,
     pub forced_temper: Option<Temper>,
+    pub lesson: bool,
     temper: Temper,
     pace: f32,
     resting: bool,
@@ -291,6 +297,7 @@ impl FishingState {
             reel_punish_timer: 0,
             reel_anim_tick: 0,
             forced_temper: None,
+            lesson: false,
             temper: Temper::default(),
             pace: *NORMAL_PACE.end(),
             resting: false,
@@ -312,10 +319,15 @@ impl FishingState {
     }
 
     pub fn hook(&mut self, catch: LootKind) {
-        self.temper = self
-            .forced_temper
-            .unwrap_or_else(|| Temper::roll(catch.rarity(), &mut rand::rng()));
-        self.pace = rand::rng().random_range(self.temper.pace());
+        let mut rng = rand::rng();
+        (self.temper, self.pace) = match self.forced_temper {
+            Some(temper) => (temper, temper.roll_pace(&mut rng)),
+            None if self.lesson => (Temper::Normal, LESSON_PACE),
+            None => {
+                let temper = Temper::roll(catch.rarity(), &mut rng);
+                (temper, temper.roll_pace(&mut rng))
+            }
+        };
         self.resting = true;
         self.hooked = Some(catch);
         self.start_reeling();
@@ -327,6 +339,14 @@ impl FishingState {
 
     pub fn temper(&self) -> Temper {
         self.temper
+    }
+
+    pub fn pace(&self) -> f32 {
+        self.pace
+    }
+
+    pub fn fought(&self) -> Option<bool> {
+        (!self.is_catching()).then_some(self.captured)
     }
 
     fn top_speed(&self) -> f32 {
@@ -1232,6 +1252,7 @@ mod temper_tests {
     const HOLD_ONLY_FIGHTS: usize = 2000;
     const REACTION_STEPS: usize = 8;
     const SKILLED_REACTION_STEPS: usize = 5;
+    const LEARNER_REACTION_STEPS: usize = 6;
     const LOOKAHEAD_STEPS: f32 = 3.0;
     const STEER_DEADBAND: f32 = 0.06;
     const CAREFUL_REEL_ZONE: f32 = 0.32;
@@ -1248,10 +1269,24 @@ mod temper_tests {
     }
 
     fn lands(temper: Temper, angler: Angler, reaction: usize) -> bool {
-        let mut state = FishingState {
-            forced_temper: Some(temper),
+        lands_from(
+            FishingState {
+                forced_temper: Some(temper),
+                ..FishingState::default()
+            },
+            angler,
+            reaction,
+        )
+    }
+
+    fn lesson() -> FishingState {
+        FishingState {
+            lesson: true,
             ..FishingState::default()
-        };
+        }
+    }
+
+    fn lands_from(mut state: FishingState, angler: Angler, reaction: usize) -> bool {
         state.hook(LootKind::Food(1));
         let mut seen: VecDeque<(f32, f32)> = VecDeque::new();
         for _ in 0..FIGHT_STEPS {
@@ -1324,6 +1359,42 @@ mod temper_tests {
             landed(Temper::Legendary) * 10 < FIGHTS,
             "a legendary still scares"
         );
+    }
+
+    #[test]
+    fn a_lesson_fish_fights_like_the_calmest_normal_fish_whatever_was_hooked() {
+        for catch in [
+            LootKind::Food(1),
+            LootKind::Fish(crate::fishes::species::FishSpecies::Cashfish),
+        ] {
+            let mut state = lesson();
+            state.hook(catch);
+            assert_eq!(state.temper(), Temper::Normal);
+            assert_eq!(state.pace(), LESSON_PACE);
+        }
+    }
+
+    #[test]
+    fn holding_down_and_nothing_else_never_lands_a_lesson_fish() {
+        let landed = (0..HOLD_ONLY_FIGHTS)
+            .filter(|_| lands_from(lesson(), Angler::HoldsDown, REACTION_STEPS))
+            .count();
+        assert_eq!(landed, 0);
+    }
+
+    #[test]
+    fn a_lesson_fish_lands_for_an_angler_too_slow_for_a_normal_one() {
+        let lessons = (0..FIGHTS)
+            .filter(|_| lands_from(lesson(), Angler::Steers, LEARNER_REACTION_STEPS))
+            .count();
+        let normal = landed_by(
+            Temper::Normal,
+            Angler::Steers,
+            LEARNER_REACTION_STEPS,
+            FIGHTS,
+        );
+        assert!(lessons * 10 >= FIGHTS * 9, "{lessons}");
+        assert!(normal < lessons, "{normal} normal, {lessons} lessons");
     }
 
     #[test]

@@ -7,10 +7,8 @@ use crate::entities::components::BlinkTimer;
 pub use crate::entities::glistening::GlisteningMode;
 use crate::fishes::fused::FusedComponent;
 use crate::fishes::mutations::Mutation;
-use crate::fishes::species::{
-    EYE_CIRCLE, EYE_CIRCLE_SHUT, EYE_ROUND, EYE_ROUND_SHUT, TAIL_EQUAL, TAIL_WAVE_LEFT,
-    TAIL_WAVE_RIGHT,
-};
+use crate::fishes::revert::Look;
+use crate::fishes::species::{TAIL_EQUAL, TAIL_WAVE_LEFT, TAIL_WAVE_RIGHT, shut_eye};
 use crate::sprite::{BodyExtension, Feet};
 
 const WAVE_THRESHOLD: f32 = 0.8;
@@ -26,12 +24,63 @@ pub enum Circadian {
 }
 
 impl Circadian {
-    pub fn forced_eye_open(self) -> Option<bool> {
+    pub fn asleep(self, daylight: bool) -> bool {
+        self == Circadian::NightOwl && daylight
+    }
+
+    pub fn forced_eye_open(self, daylight: bool) -> Option<bool> {
         match self {
             Circadian::Neutral => None,
-            Circadian::NightOwl => Some(false),
+            Circadian::NightOwl => self.asleep(daylight).then_some(false),
             Circadian::HelpedByGod => Some(true),
         }
+    }
+}
+
+pub const LURE_LEAD: usize = 2;
+pub const BILL_LEAD: usize = 2;
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Adornments {
+    #[serde(default)]
+    pub lure: bool,
+    #[serde(default)]
+    pub bill: bool,
+    #[serde(default)]
+    pub dorsal_fin: bool,
+    #[serde(default)]
+    pub ventral_fin: bool,
+    #[serde(default)]
+    pub lunar: bool,
+    #[serde(default)]
+    pub puff: bool,
+}
+
+impl Adornments {
+    pub fn slot(&mut self, mutation: Mutation) -> Option<&mut bool> {
+        match mutation {
+            Mutation::Lure => Some(&mut self.lure),
+            Mutation::Bill => Some(&mut self.bill),
+            Mutation::DorsalFin => Some(&mut self.dorsal_fin),
+            Mutation::VentralFin => Some(&mut self.ventral_fin),
+            Mutation::Lunar => Some(&mut self.lunar),
+            Mutation::Puff => Some(&mut self.puff),
+            _ => None,
+        }
+    }
+
+    pub fn has(mut self, mutation: Mutation) -> bool {
+        self.slot(mutation).is_some_and(|grown| *grown)
+    }
+
+    pub fn grow(&mut self, mutation: Mutation) {
+        if let Some(grown) = self.slot(mutation) {
+            *grown = true;
+        }
+    }
+
+    pub fn lead(self) -> usize {
+        usize::from(self.lure) * LURE_LEAD + usize::from(self.bill) * BILL_LEAD
     }
 }
 
@@ -40,6 +89,8 @@ pub enum MutantTail {
     Wide,
     Swaying,
     Curly,
+    Narrow,
+    Bare,
 }
 
 impl MutantTail {
@@ -48,11 +99,15 @@ impl MutantTail {
             MutantTail::Wide => 2,
             MutantTail::Swaying => 2,
             MutantTail::Curly => 3,
+            MutantTail::Narrow => 1,
+            MutantTail::Bare => 0,
         }
     }
 
     pub fn chars(self, facing_left: bool, phase: f32) -> Vec<char> {
         match self {
+            MutantTail::Bare => Vec::new(),
+            MutantTail::Narrow => vec![if facing_left { '<' } else { '>' }],
             MutantTail::Wide => vec!['>', '<'],
             MutantTail::Swaying => {
                 let base = if facing_left {
@@ -99,19 +154,11 @@ impl EyeState {
         self.blink.tick(dt);
     }
 
-    pub fn small_char(&self) -> char {
+    pub fn glyph(&self, open: char) -> char {
         if self.blink.is_open {
-            EYE_ROUND
+            open
         } else {
-            EYE_ROUND_SHUT
-        }
-    }
-
-    pub fn big_char(&self) -> char {
-        if self.blink.is_open {
-            EYE_CIRCLE
-        } else {
-            EYE_CIRCLE_SHUT
+            shut_eye(open)
         }
     }
 
@@ -124,24 +171,63 @@ impl EyeState {
     }
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct Mark {
+    pub seed: u64,
+    #[serde(default)]
+    pub mass_g: u32,
+    #[serde(default)]
+    pub bonus_pct: u32,
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct MutationRecord {
     pub count: u32,
     pub history: Vec<String>,
     pub partners: Vec<String>,
+    #[serde(default)]
+    pub marks: Vec<Mark>,
+    #[serde(default)]
+    pub origin: Option<Box<Look>>,
+    #[serde(default)]
+    pub settled: usize,
 }
 
 impl MutationRecord {
     pub fn child_of(parent_count: u32, parent_name: &str) -> Self {
         Self {
             count: parent_count,
-            history: Vec::new(),
             partners: vec![parent_name.to_string()],
+            ..Self::default()
         }
     }
 
     pub fn has(&self, mutation: Mutation) -> bool {
         self.history.iter().any(|token| token == mutation.token())
+    }
+
+    pub fn note(&mut self, mutation: Mutation, mark: Mark) {
+        self.count += 1;
+        self.history.push(mutation.token().to_string());
+        self.marks.push(mark);
+    }
+
+    pub fn is_legacy(&self) -> bool {
+        self.marks.len() != self.history.len()
+            || (self.origin.is_none() && !self.history.is_empty())
+    }
+
+    pub fn settle(&mut self, look: Look) {
+        self.origin = Some(Box::new(look));
+        self.settled = self.history.len();
+    }
+
+    pub fn revertible(&self) -> Vec<usize> {
+        (self.settled.min(self.history.len())..self.history.len())
+            .filter(|&index| {
+                Mutation::parse(&self.history[index]).is_some_and(Mutation::can_be_reverted)
+            })
+            .collect()
     }
 }
 
@@ -161,13 +247,18 @@ pub struct MutantState {
     pub fused: Vec<FusedComponent>,
     pub double_head_eyes: Vec<EyeState>,
     pub hydra_eyes: Vec<EyeState>,
-    pub bubble_color: Option<Color>,
+    #[serde(alias = "bubble_color")]
+    pub wake_color: Option<Color>,
     pub circadian: Circadian,
     pub heterochromia: bool,
     pub ear_count: usize,
     pub ear_color: Option<Color>,
     pub feet: Option<Feet>,
     pub body_extension: Option<BodyExtension>,
+    #[serde(default)]
+    pub adornments: Adornments,
+    #[serde(default)]
+    pub patterned: bool,
 }
 
 impl MutantState {
@@ -187,13 +278,15 @@ impl MutantState {
             fused: Vec::new(),
             double_head_eyes: Vec::new(),
             hydra_eyes: Vec::new(),
-            bubble_color: None,
+            wake_color: None,
             circadian: Circadian::Neutral,
             heterochromia: false,
             ear_count: 0,
             ear_color: None,
             feet: None,
             body_extension: None,
+            adornments: Adornments::default(),
+            patterned: true,
         }
     }
 
@@ -219,13 +312,15 @@ impl MutantState {
             fused: Vec::new(),
             double_head_eyes: Vec::new(),
             hydra_eyes: Vec::new(),
-            bubble_color: None,
+            wake_color: None,
             circadian: Circadian::Neutral,
             heterochromia: false,
             ear_count: 0,
             ear_color: None,
             feet: None,
             body_extension: None,
+            adornments: Adornments::default(),
+            patterned: false,
         }
     }
 
@@ -242,7 +337,7 @@ impl MutantState {
         } else {
             1 + max_eyes + body_size + self.tail_variant.display_width()
         };
-        base + self.ear_count + self.hydra_eyes.len()
+        base + self.ear_count + self.hydra_eyes.len() + self.adornments.lead()
     }
 
     pub fn all_eyes_mut(&mut self) -> impl Iterator<Item = &mut EyeState> {
@@ -254,8 +349,9 @@ impl MutantState {
     }
 
     pub fn randomize_all_eye_colors(&mut self, rng: &mut impl RngExt) {
+        let shared = self.eye_color;
         for e in self.all_eyes_mut() {
-            e.color = Some(random_rgb(rng));
+            e.color = Some(random_rgb_other(rng, &[e.color, shared]));
         }
     }
 
@@ -270,7 +366,7 @@ impl MutantState {
         let mut idx = rng.random_range(0..total);
         for e in self.all_eyes_mut() {
             if idx == 0 {
-                e.color = Some(random_rgb(rng));
+                e.color = Some(random_rgb_other(rng, &[e.color]));
                 return;
             }
             idx -= 1;
@@ -281,8 +377,8 @@ impl MutantState {
         eye.color.or(self.eye_color).unwrap_or(default)
     }
 
-    pub fn tick_eyes(&mut self, dt: f32) {
-        let forced = self.circadian.forced_eye_open();
+    pub fn tick_eyes(&mut self, dt: f32, daylight: bool) {
+        let forced = self.circadian.forced_eye_open(daylight);
         for e in self.all_eyes_mut() {
             e.tick(dt);
             if let Some(open) = forced {
@@ -300,20 +396,30 @@ pub fn pick_eye_counts(body_size: usize, rng: &mut impl RngExt) -> (usize, usize
 }
 
 pub fn random_rgb(rng: &mut impl RngExt) -> Color {
-    const HUES: [(u8, u8, u8); 12] = [
-        (255, 0, 0),
-        (255, 100, 0),
-        (255, 220, 0),
-        (150, 255, 0),
-        (0, 255, 0),
-        (0, 255, 140),
-        (0, 220, 255),
-        (0, 100, 255),
-        (0, 0, 255),
-        (120, 0, 255),
-        (220, 0, 255),
-        (255, 0, 160),
-    ];
     let (r, g, b) = HUES[rng.random_range(0..HUES.len())];
     Color::Rgb(r, g, b)
 }
+
+pub fn random_rgb_other(rng: &mut impl RngExt, worn: &[Option<Color>]) -> Color {
+    let fresh: Vec<Color> = HUES
+        .iter()
+        .map(|&(r, g, b)| Color::Rgb(r, g, b))
+        .filter(|color| !worn.contains(&Some(*color)))
+        .collect();
+    fresh[rng.random_range(0..fresh.len())]
+}
+
+const HUES: [(u8, u8, u8); 12] = [
+    (255, 0, 0),
+    (255, 100, 0),
+    (255, 220, 0),
+    (150, 255, 0),
+    (0, 255, 0),
+    (0, 255, 140),
+    (0, 220, 255),
+    (0, 100, 255),
+    (0, 0, 255),
+    (120, 0, 255),
+    (220, 0, 255),
+    (255, 0, 160),
+];

@@ -11,13 +11,14 @@ use fishtank::{
         fused::FusedComponent,
         mutations::{Mutation, apply_mutation_to_fish},
         parts::{Part, RIG_WAIT_MAX_SECS, RIG_WAIT_MIN_SECS},
+        revert::revert_latest,
         species::{ALL_SPECIES, FishSpecies, SizeCategory, pellets_to_cap},
     },
     ledger::{Direction, Flow},
     loot::{CashValue, ConsumableKind, LootKind, StockItem},
     settings::Settings,
     settings::{DEFAULT_FPS, DEFAULT_STAGES_PER_TICK},
-    tank::{Tank, TankEvent, TankKind},
+    tank::{Sky, Tank, TankEvent, TankKind},
     testing::{Reel, Still, Tui},
     ui::{
         catch_overlay::{CatchOverlay, CatchState},
@@ -478,9 +479,15 @@ fn sizeincrease_grows_a_fish_by_one_segment_of_its_mass() {
         "a Mutantfish's mass is its worth"
     );
 
-    let before = fish.weight_g;
-    apply_mutation_to_fish(&mut fish, Mutation::SizeDecrease, &mut rng);
-    assert_eq!(fish.weight_g, before, "growth never runs backwards");
+    let eaten = 250;
+    fish.weight_g += eaten;
+    assert!(revert_latest(&mut fish, Mutation::SizeIncrease));
+    assert_eq!(fish.body_size as u32, body);
+    assert_eq!(
+        fish.weight_g,
+        6_000 + eaten,
+        "reverting the growth takes back its segment, never what the fish ate"
+    );
 }
 
 #[test]
@@ -708,7 +715,7 @@ fn a_four_stack_fish_engulfing_a_three_stack_one_carries_seven_and_every_gram() 
     assert!(tank.apply_named_mutation("Big", "engulfment"));
     let settings = Settings::default();
     for _ in 0..3 {
-        tank.tick(&settings, 0);
+        tank.tick(&settings, 0, Sky::default());
     }
     assert_eq!(tank.fish.len(), 1, "one swallowed the other");
     let fused = &tank.fish[0];
@@ -729,7 +736,7 @@ fn engulfing_again_and_again_never_caps_the_stacks() {
         tank.fish.last_mut().expect("placed").position = spot;
         let host = tank.fish[0].name.clone();
         assert!(tank.apply_named_mutation(&host, "engulfment"));
-        tank.tick(&settings, 0);
+        tank.tick(&settings, 0, Sky::default());
         assert_eq!(tank.fish.len(), 1, "meal {meal} was swallowed");
         tank.apply_named_mutation(&tank.fish[0].name.clone(), "endocytosis");
     }
@@ -754,7 +761,7 @@ fn a_split_child_is_its_parents_species() {
 fn a_holyfish_blesses_once_for_every_holyfish_it_carries() {
     let mut tank = pen(vec![stacked(FishSpecies::Holyfish, 3, "Saint", 1_000)]);
     tank.fish[0].blessing_timer = 0.0;
-    let events = tank.tick(&Settings::default(), 0);
+    let events = tank.tick(&Settings::default(), 0, Sky::default());
     let blessings = events
         .iter()
         .filter(|event| matches!(event, TankEvent::Blessing))
@@ -828,7 +835,7 @@ fn the_first_auto_mutation_is_timed_from_the_mutant_count() {
         ..Settings::default()
     };
     let mutated = (0..MUTANT_WATCH_SECS).position(|_| {
-        tank.tick(&settings, 0);
+        tank.tick(&settings, 0, Sky::default());
         history(&tank) != before
     });
     assert!(

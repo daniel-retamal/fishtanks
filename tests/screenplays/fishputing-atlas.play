@@ -141,11 +141,11 @@ key esc
 run /program "Twin"
 expect ├── Assay Scale
 expect ├── Shoal Counter
-expect (1/25)
+expect (1/26)
 snap Panel · two configurable parts get one rule each, and the panel knows it overflows
-key down 24
+key down 25
 expect 8            >
-expect (25/25)
+expect (26/26)
 snap Panel · scrolled to script line 8 — nothing is typed blind
 key esc
 run /program "Module"

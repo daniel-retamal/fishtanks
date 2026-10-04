@@ -72,6 +72,9 @@ impl TankRecord {
             candy_tick: _,
             candy_scan: _,
             milk_clock: _,
+            sky: _,
+            trails: _,
+            inks: _,
         } = tank;
         let cargo = ufos
             .iter()

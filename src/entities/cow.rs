@@ -4,7 +4,10 @@ use std::f32::consts::TAU;
 use rand::RngExt;
 use ratatui::style::Color;
 
-use crate::colors::{AMBER, BROWN, DARK_GRAY, LIGHT_GREEN, LIGHT_YELLOW, NAVY, OLIVE, PINK, WHITE};
+use crate::colors::{
+    AMBER, AMBER_DARK, BROWN, DARK_GRAY, GOLD_BRIGHT, LIGHT_GREEN, LIGHT_YELLOW, NAVY, OLIVE, PINK,
+    WHITE,
+};
 use crate::entities::components::{Position, SwayState, tick_sway};
 use crate::entities::speech::SpeechBubble;
 use crate::fishes::fused::FusedComponent;
@@ -12,7 +15,10 @@ use crate::fishes::mutant::{Circadian, EyeState, MutantState, MutantTail, Mutati
 use crate::fishes::mutations::{
     MutantBacked, Mutatable, Mutation, MutationOutcome, apply_mutant_mutation,
 };
+use crate::fishes::revert::Look;
 use crate::loot::MilkVariant;
+use crate::sprite::{Band, BodyExtension};
+use crate::tank::Sky;
 
 mod record;
 
@@ -145,6 +151,7 @@ pub struct Cow {
     pub speech: Option<SpeechBubble>,
     pub display_width: usize,
     pub engulf_timer: f32,
+    pub sky: Sky,
 }
 
 impl Cow {
@@ -171,18 +178,31 @@ impl Cow {
             speech: None,
             display_width: 0,
             engulf_timer: 0.0,
+            sky: Sky::default(),
         };
         cow.display_width = cow_display_width(&cow);
         cow
     }
 
-    pub fn tick(&mut self, dt: f32) {
+    pub fn tick(&mut self, dt: f32, sky: Sky) {
+        self.sky = sky;
         if self.engulf_timer > 0.0 {
             self.engulf_timer = (self.engulf_timer - dt).max(0.0);
         }
         tick_sway(&mut self.sway, self.sway_speed);
-        self.mutant.tick_eyes(dt);
+        self.mutant.tick_eyes(dt, sky.daylight);
         SpeechBubble::fade(&mut self.speech, dt);
+    }
+
+    pub fn is_asleep(&self) -> bool {
+        self.mutant.circadian.asleep(self.sky.daylight)
+    }
+
+    pub fn lead(&self) -> usize {
+        if self.mutant.is_double && self.mutant.backwards {
+            return 0;
+        }
+        self.mutant.adornments.lead()
     }
 
     pub fn say(&mut self, text: String) {
@@ -198,10 +218,6 @@ impl Cow {
 
     pub fn torso_width(&self) -> usize {
         COW_BASE_TORSO + self.body_length
-    }
-
-    pub fn bubble_color(&self) -> Color {
-        self.mutant.bubble_color.unwrap_or(WHITE)
     }
 
     pub fn eye_count(&self) -> usize {
@@ -248,9 +264,7 @@ impl Cow {
 
 const COW_CAPS: &[Mutation] = &[
     Mutation::SizeIncrease,
-    Mutation::SizeDecrease,
     Mutation::EyeIncrease,
-    Mutation::EyeDecrease,
     Mutation::ColorPatch,
     Mutation::EyeColor,
     Mutation::GlistenFast,
@@ -258,9 +272,7 @@ const COW_CAPS: &[Mutation] = &[
     Mutation::GlistenMode,
     Mutation::GlistenColor,
     Mutation::GlistenEnable,
-    Mutation::GlistenDisable,
     Mutation::BodyColor,
-    Mutation::MouthVariant,
     Mutation::Telophase,
     Mutation::BackwardsTelophase,
     Mutation::Cytokinesis,
@@ -268,13 +280,14 @@ const COW_CAPS: &[Mutation] = &[
     Mutation::Engulfment,
     Mutation::Alienation,
     Mutation::Strawberry,
-    Mutation::BubbleColor,
     Mutation::NightOwl,
     Mutation::HelpedByGod,
     Mutation::Heterochromia,
     Mutation::Hydra,
-    Mutation::BodyExtension,
-    Mutation::DecreaseExtension,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Lure,
+    Mutation::Revert,
 ];
 
 const COW_HYDRA_HEAD_W: usize = 4;
@@ -347,9 +360,24 @@ impl Mutatable for Cow {
     fn apply_one(&mut self, mutation: Mutation, rng: &mut impl RngExt) -> MutationOutcome {
         apply_mutant_mutation(self, mutation, rng)
     }
+    fn record(&self) -> Option<&MutationRecord> {
+        self.mutations.as_deref()
+    }
     fn record_mut(&mut self) -> &mut MutationRecord {
         self.mutations
             .get_or_insert_with(|| Box::new(MutationRecord::default()))
+    }
+    fn look(&self) -> Look {
+        Cow::look(self)
+    }
+    fn wear(&mut self, look: &Look) {
+        Cow::wear(self, look);
+    }
+    fn refresh_width(&mut self) {
+        self.recompute_display_width();
+    }
+    fn shows_eye_colour(&self) -> bool {
+        self.mutant.glistening_color.is_none()
     }
     fn circadian(&self) -> Circadian {
         self.mutant.circadian
@@ -363,8 +391,11 @@ impl Mutatable for Cow {
     fn hydra_max(&self) -> usize {
         cow_hydra_capacity(self)
     }
-    fn has_bodyextension(&self) -> bool {
-        self.mutant.body_extension.is_some()
+    fn extension(&self) -> BodyExtension {
+        self.mutant.body_extension.unwrap_or_default()
+    }
+    fn reserves(&self, band: Band) -> bool {
+        band == Band::Bottom
     }
 }
 
@@ -409,8 +440,8 @@ impl MutantBacked for Cow {
     fn arm_engulf(&mut self) {
         self.engulf_timer = crate::fishes::fish::ENGULF_WINDOW_SECS;
     }
-    fn color_patch_range(&self) -> usize {
-        cow_paintable_cell_count(self)
+    fn color_patch_range(&self) -> std::ops::Range<usize> {
+        0..cow_paintable_cell_count(self).max(1)
     }
     fn hydra_capacity(&self) -> usize {
         cow_hydra_capacity(self)
@@ -429,7 +460,7 @@ pub fn cow_display_width(cow: &Cow) -> usize {
     let torso = cow.torso_width();
     let head_eye_render = cow_head_render_count(cow);
     let head_w = (head_eye_render.max(2)) + 2;
-    if cow.mutant.is_double && cow.mutant.backwards {
+    let body = if cow.mutant.is_double && cow.mutant.backwards {
         2 * COW_TAIL_W + torso
     } else if cow.mutant.is_double {
         let right_head_w = (cow.mutant.double_head_eyes.len().max(1)) + 2;
@@ -439,7 +470,40 @@ pub fn cow_display_width(cow: &Cow) -> usize {
         let row3_w = head_w + torso + tail;
         let row2_w = head_w + 1 + torso;
         row3_w.max(row2_w)
+    };
+    body + cow.lead()
+}
+
+const COW_LURE: char = 'º';
+const COW_LURE_STALK: char = ',';
+const COW_LURE_GLOW_DAY: Color = AMBER_DARK;
+const COW_LURE_GLOW_NIGHT: Color = GOLD_BRIGHT;
+
+pub fn cow_sprite(cow: &Cow) -> Vec<Vec<(char, Color)>> {
+    let mut rows = cow_body_sprite(cow);
+    let lead = cow.lead();
+    if lead == 0 {
+        return rows;
     }
+    for row in &mut rows {
+        row.splice(
+            0..0,
+            std::iter::repeat_n((COW_TRANSPARENT, cow.color), lead),
+        );
+    }
+    let head_row = cow.sprite_top_offset() as usize + 1;
+    let glow = if cow.sky.daylight {
+        COW_LURE_GLOW_DAY
+    } else {
+        COW_LURE_GLOW_NIGHT
+    };
+    if let Some(row) = rows.get_mut(head_row) {
+        row[0] = (COW_LURE, glow);
+    }
+    if let Some(row) = rows.get_mut(head_row - 1) {
+        row[1] = (COW_LURE_STALK, cow.color);
+    }
+    rows
 }
 
 fn cow_head_render_count(cow: &Cow) -> usize {
@@ -447,7 +511,7 @@ fn cow_head_render_count(cow: &Cow) -> usize {
     eyes.clamp(2, COW_HEAD_CAP)
 }
 
-pub fn cow_sprite(cow: &Cow) -> Vec<Vec<(char, Color)>> {
+fn cow_body_sprite(cow: &Cow) -> Vec<Vec<(char, Color)>> {
     let body = cow.color;
     let eye_color = cow.mutant.eye_color.unwrap_or(DARK_GRAY);
     let patch_color = cow.variant.patches_color();

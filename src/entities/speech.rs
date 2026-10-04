@@ -1,4 +1,4 @@
-const SPEECH_BUBBLE_TTL: f32 = 6.0;
+pub const SPEECH_BUBBLE_TTL: f32 = 6.0;
 
 #[derive(Clone)]
 pub struct SpeechBubble {

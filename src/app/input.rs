@@ -10,7 +10,7 @@ use crate::{
     economy::{self, Money, Sellable},
     entities::food,
     fishes::botfish::{BotfishState, DueCast, DueLine, Tackle},
-    fishes::fish::Fish,
+    fishes::fish::{Fed, Fish},
     fishes::parts::{RIG_WAIT_MAX_SECS, RIG_WAIT_MIN_SECS},
     fishes::species::FishSpecies,
     ledger::Flow,
@@ -18,8 +18,8 @@ use crate::{
     names,
     settings::{FPS_MAX, FPS_MIN, STAGES_PER_TICK_MAX, STAGES_PER_TICK_MIN},
     tank::{
-        Blueprint, FEED_PORTION, Fabrication, FabricationQuote, FabricationRefusal, Selector,
-        StageBudget, Tank, TankKind, Workshop, WorldSignal, WorldView,
+        Blueprint, FEED_PORTION, FRESH_SPEECH, Fabrication, FabricationQuote, FabricationRefusal,
+        Selector, StageBudget, Tank, TankKind, Workshop, WorldSignal, WorldView,
     },
     ui::{
         circuit_overlay::{CircuitFish, CircuitState},
@@ -95,9 +95,15 @@ impl App {
         }
         if self.in_zen() {
             self.wake_from_zen(&event);
+            if !self.in_zen() {
+                self.tanks[self.current_tank].startle();
+            }
             return;
         }
         let is_key_press = matches!(&event, Event::Key(k) if k.kind == KeyEventKind::Press);
+        if is_key_press {
+            self.tanks[self.current_tank].startle();
+        }
         if self.void_ritual.is_blocking() {
             self.handle_void_ritual_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Catch(_))) {
@@ -642,6 +648,9 @@ impl App {
                     fish_name: fish.name.clone(),
                     species_display: fish.species.display_name().to_string(),
                     tank_name: tank.name.clone(),
+                    fed: target
+                        .fattens()
+                        .then(|| crate::ui::fields::format_fed(fish.fed())),
                     tank_idx: ti,
                     fish_idx: fi,
                 });
@@ -777,6 +786,7 @@ impl App {
                                     fish_name: e.fish_name.clone(),
                                     species_display: e.species_display.clone(),
                                     tank_name: e.tank_name.clone(),
+                                    fed: e.fed.clone(),
                                     tank_idx: e.tank_idx,
                                     fish_idx: e.fish_idx,
                                 })
@@ -1466,7 +1476,7 @@ impl App {
                                         }
                                     }
                                     if let Some(fish) = sold {
-                                        self.bury(fish);
+                                        self.part_with(fish);
                                     }
                                 }
                                 SellEntry::Junk { .. } => {
@@ -1554,14 +1564,14 @@ impl App {
     }
 
     pub(super) fn build_sell_menu_state(&self) -> Option<SellMenuState> {
-        let fish: Vec<(String, FishSpecies, Money)> = self
+        let fish: Vec<(String, FishSpecies, Money, Fed)> = self
             .tanks
             .iter()
             .flat_map(|t| {
                 t.fish
                     .iter()
                     .filter(|f| f.is_sellable())
-                    .map(|f| (f.name.clone(), f.species, f.sell_value()))
+                    .map(|f| (f.name.clone(), f.species, f.sell_value(), f.fed()))
             })
             .collect();
         let sellable_tanks = self.sellable_tanks_with_price();
@@ -2159,17 +2169,17 @@ impl App {
             return false;
         }
         let tank_idx = self.current_tank;
-        if let Some(name) = speaker {
+        if let Some(name) = speaker.as_ref() {
             let Some(fish) = self.tanks[tank_idx]
                 .fish
                 .iter_mut()
-                .find(|fish| fish.name == name)
+                .find(|fish| &fish.name == name)
             else {
                 return false;
             };
             fish.say(text.clone());
         }
-        self.trigger_botfish(&text, Some(tank_idx));
+        self.spread_speech(&text, Some(tank_idx), FRESH_SPEECH, speaker.as_deref());
         true
     }
 
@@ -2355,6 +2365,16 @@ impl App {
     }
 
     pub(super) fn trigger_botfish(&mut self, speech: &str, only_tank: Option<usize>) {
+        self.spread_speech(speech, only_tank, FRESH_SPEECH, None);
+    }
+
+    pub(super) fn spread_speech(
+        &mut self,
+        speech: &str,
+        only_tank: Option<usize>,
+        strength: f32,
+        speaker: Option<&str>,
+    ) {
         if speech.is_empty() {
             return;
         }
@@ -2367,6 +2387,7 @@ impl App {
                     bot.hear(speech);
                 }
             }
+            tank.hear(speech, strength, speaker);
         }
     }
 
@@ -2749,6 +2770,7 @@ impl App {
                 state.no_escape = no_escape || self.cheats.no_escape;
                 state.no_fight = no_fight;
                 state.forced_temper = temper;
+                state.lesson = self.lessons.learning();
                 self.set_overlay(Overlay::Fishing(state));
                 if no_fight {
                     self.hook_the_catch();
@@ -3006,9 +3028,16 @@ impl App {
         let Some((fish, price)) = sold else {
             return false;
         };
-        self.bury(fish);
+        self.part_with(fish);
         self.earn(price, Flow::FishSales);
         true
+    }
+
+    fn part_with(&mut self, fish: Fish) {
+        for keepsake in fish.keepsakes() {
+            self.stock_up(keepsake, 1);
+        }
+        self.bury(fish);
     }
 
     fn sell_tank_by_name(&mut self, name: &str) -> bool {

@@ -1,7 +1,7 @@
 use crate::colors::DARK_GRAY;
 use crate::entities::cow::{Cow, cow_default_sway_speed, cow_display_width};
 use crate::fishes::fish::{Fish, compute_display_width};
-use crate::fishes::mutations::native_eyes;
+use crate::fishes::mutations::{grow_birthmarks, native_eyes};
 use crate::fishes::species::{BodyTemplate, FishSpecies};
 
 pub trait Restorable {
@@ -29,6 +29,7 @@ impl Restorable for Fish {
             .as_ref()
             .map(|mutant| mutant.display_width(self.body_size))
             .unwrap_or_else(|| compute_display_width(self.species, self.body_size));
+        grow_birthmarks(self, &mut rand::rng());
     }
 }
 

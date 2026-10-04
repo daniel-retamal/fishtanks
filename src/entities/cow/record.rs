@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::{Cow, CowVariant};
 use crate::entities::components::{Position, SwayState};
 use crate::fishes::mutant::{MutantState, MutationRecord};
+use crate::tank::Sky;
 
 #[derive(Serialize, Deserialize)]
 pub struct CowRecord {
@@ -36,6 +37,7 @@ impl From<Cow> for CowRecord {
             speech: _,
             display_width,
             engulf_timer,
+            sky: _,
         } = cow;
         Self {
             name,
@@ -68,6 +70,7 @@ impl From<CowRecord> for Cow {
             speech: None,
             display_width: record.display_width,
             engulf_timer: record.engulf_timer,
+            sky: Sky::default(),
         }
     }
 }

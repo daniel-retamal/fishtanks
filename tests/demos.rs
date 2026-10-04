@@ -11,6 +11,7 @@ use fishtank::{
     },
     ledger::{Direction, Flow},
     loot::{ConsumableKind, StockItem},
+    sprite::TRANSPARENT,
     tank::FEED_PORTION,
     testing::Tui,
     ui::fishing_overlay::Temper,
@@ -1503,4 +1504,103 @@ fn the_normal_legendary_and_pearl_demo_runs_keystroke_for_keystroke() {
     tui.snap("the pearl grew Heaven and Ann was waiting for it");
     tui.run("/give golden pearl");
     assert_eq!(tui.app.inventory.get(&StockItem::GOLDEN_PEARL), None);
+}
+
+fn rare<'a>(tui: &'a Tui, name: &str) -> &'a fishtank::fishes::fish::Fish {
+    tank_fish(tui, name)
+}
+
+#[test]
+fn the_rare_shoal_demo_runs_keystroke_for_keystroke() {
+    let mut tui = Tui::new();
+    tui.film(Path::new(REEL_DIR), "rare-shoal-demo");
+    tui.clear_tank();
+
+    tui.run("/give snailfish \"Shelly\"");
+    tui.tick_n(30 * 20);
+    let shelly = rare(&tui, "Shelly");
+    let crawl = shelly.habits.crawl.expect("the snail settled on the glass");
+    tui.snap(&format!("1 · Shelly holds the {:?} glass", crawl.side));
+    assert!(
+        !tui.app.tanks[tui.app.current_tank].trails.is_empty(),
+        "it leaves a slime trail"
+    );
+
+    tui.run("/give lanternfish \"Lamp\"");
+    tui.tick_n(2);
+    let lamp = rare(&tui, "Lamp").line_sprite();
+    let body: String = lamp.rows[lamp.body_row]
+        .iter()
+        .filter(|&&(c, _)| c != TRANSPARENT)
+        .map(|&(c, _)| c)
+        .collect();
+    assert!(
+        body.starts_with("º<") || body.ends_with(">º"),
+        "the anglerfish hangs its lure in front of its mouth: {body}"
+    );
+    tui.snap("2 · Lamp's lure, gold at night");
+
+    tui.run("/give parrotfish \"Polly\"");
+    tui.run("/give parrotfish \"Pepe\"");
+    tui.type_text("hola");
+    tui.key(KeyCode::Enter);
+    let mut echoed = false;
+    for _ in 0..(30 * 6) {
+        tui.tick_n(1);
+        echoed |= ["Polly", "Pepe"].iter().any(|name| {
+            rare(&tui, name)
+                .speech
+                .as_ref()
+                .is_some_and(|speech| speech.text == "hola")
+        });
+    }
+    assert!(echoed, "a parrot repeats what you typed");
+    tui.snap("3 · the parrots echo hola back and forth");
+
+    tui.run("/give shyfish \"Tim\"");
+    tui.tick_n(2);
+    tui.key(KeyCode::Char('x'));
+    assert!(
+        rare(&tui, "Tim").habits.hiding > 0.0,
+        "a key press sends Tim to the wall"
+    );
+    tui.key(KeyCode::Backspace);
+    tui.tick_n(30 * 2);
+    tui.snap("4 · Tim hides by the glass with its eyes shut");
+    tui.run("/zen");
+    tui.tick_n(2);
+    assert!(
+        rare(&tui, "Tim").sky.calm,
+        "zen is calm water, and Tim comes out"
+    );
+    tui.snap("4 · in /zen Tim opens its eyes and blushes");
+    tui.key(KeyCode::Esc);
+
+    tui.run("/give crabfish \"Pagu\"");
+    let junk = tui.app.stock_of(StockItem::Junk);
+    tui.run("/sell fish \"Pagu\"");
+    assert_eq!(
+        tui.app.stock_of(StockItem::Junk),
+        junk + 1,
+        "Pagu left its shell"
+    );
+    tui.run("/inventory");
+    tui.screen().expect_find("Junk");
+    tui.snap("5 · the hermit crab's shell is in the bag");
+    tui.key(KeyCode::Esc);
+
+    tui.run("/give boxfish \"DVD\"");
+    let hue = rare(&tui, "DVD").habits.hue;
+    let mut bounced = false;
+    for _ in 0..(30 * 60) {
+        tui.tick_n(1);
+        if rare(&tui, "DVD").habits.hue != hue {
+            bounced = true;
+            break;
+        }
+    }
+    assert!(bounced, "the box changes colour on the wall it bounced off");
+    tui.snap("6 · DVD changed colour at the wall");
+
+    assert_no_broken_borders(&tui);
 }

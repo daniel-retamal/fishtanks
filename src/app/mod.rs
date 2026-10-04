@@ -52,6 +52,7 @@ mod cheats;
 mod console;
 mod heaven;
 mod input;
+mod lessons;
 mod money;
 mod news;
 mod persistence;
@@ -60,6 +61,7 @@ mod snapshot;
 mod zen;
 
 pub use cheats::Launch;
+pub use lessons::{LESSON_STREAK, Lessons};
 pub use snapshot::{
     FIRST_FISH, FIRST_TANK_NAME, SAVE_VERSION, STARTING_CASH, STARTING_FOOD, SaveFile,
 };
@@ -138,6 +140,7 @@ pub struct App {
     persistence: Option<Persistence>,
     zen: bool,
     newer_release: bool,
+    lessons: Lessons,
 }
 
 impl Default for App {
@@ -337,12 +340,14 @@ impl App {
     }
 
     fn set_overlay(&mut self, overlay: Overlay) {
+        self.leave_the_water();
         self.leave_console();
         self.held_keys.let_go();
         self.active_overlay = Some(overlay);
     }
 
     fn close_overlay(&mut self) {
+        self.leave_the_water();
         self.leave_console();
         self.held_keys.let_go();
         self.active_overlay = None;
@@ -778,8 +783,9 @@ impl App {
         }
 
         let coffee = self.coffee_stacks();
+        let sky = self.day_clock.sky(self.zen);
         for i in 0..self.tanks.len() {
-            let events = self.tanks[i].tick(&self.settings, coffee);
+            let events = self.tanks[i].tick(&self.settings, coffee, sky);
             let star_cash = std::mem::take(&mut self.tanks[i].pending_star_cash);
             self.earn(star_cash, Flow::Cashfish);
             for part in std::mem::take(&mut self.tanks[i].pending_loose_parts) {
@@ -796,8 +802,15 @@ impl App {
                     TankEvent::Blessing => {
                         self.perform_blessing(i);
                     }
-                    TankEvent::PhantomCrossTank { fish_name } => {
-                        self.handle_phantom_cross_tank(i, &fish_name);
+                    TankEvent::Wander { fish_name } => {
+                        self.handle_wander(i, &fish_name);
+                    }
+                    TankEvent::Echo {
+                        speaker,
+                        text,
+                        strength,
+                    } => {
+                        self.spread_speech(&text, Some(i), strength, Some(&speaker));
                     }
                     TankEvent::UfoTimerFired => {
                         self.handle_ufo_timer_fired(i);
@@ -1358,7 +1371,7 @@ impl App {
         self.found_tank(tank)
     }
 
-    fn handle_phantom_cross_tank(&mut self, source_idx: usize, fish_name: &str) {
+    fn handle_wander(&mut self, source_idx: usize, fish_name: &str) {
         let Some(pos) = self.tanks[source_idx]
             .fish
             .iter()

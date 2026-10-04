@@ -346,7 +346,7 @@ static REFLEX_ARC_CONFIG: [ConfigSpec; REFLEX_ARC_KEYS.len()] = KeyLine::config(
 
 const SHOAL_COUNTER_PINS: &[PinSpec] = &[COUNT_PIN, FULL_PIN, EMPTY_PIN, OVER_PIN, UNDER_PIN];
 const TIDAL_CLOCK_PINS: &[PinSpec] = &[TIME_PIN, NIGHT_PIN, DAWN_PIN];
-const ASSAY_SCALE_PINS: &[PinSpec] = &[WEIGHT_PIN, VALUE_PIN, OVER_PIN, UNDER_PIN];
+const ASSAY_SCALE_PINS: &[PinSpec] = &[WEIGHT_PIN, VALUE_PIN, OVER_PIN, UNDER_PIN, FULL_PIN];
 const LEDGER_NERVE_PINS: &[PinSpec] = &[CASH_PIN, TANK_VALUE_PIN, OVER_PIN, BROKE_PIN];
 const GEIGER_COIL_PINS: &[PinSpec] = &[RADS_PIN, HOT_PIN, MUTATED_PIN];
 const STARTLE_NERVE_PINS: &[PinSpec] = &[DEATH_PIN, BIRTH_PIN, SALE_PIN, CATCH_PIN, ABDUCTION_PIN];
@@ -958,6 +958,7 @@ fn read_assay(config: &PartConfig, world: &WorldView, readings: &mut PinReadings
         readings.set(&VALUE_PIN, 0);
         readings.flag(&OVER_PIN, false);
         readings.flag(&UNDER_PIN, false);
+        readings.flag(&FULL_PIN, false);
         return;
     };
     let measured = if config.text(&MEASURE_CONFIG) == WEIGHT_MEASURE {
@@ -970,6 +971,7 @@ fn read_assay(config: &PartConfig, world: &WorldView, readings: &mut PinReadings
     readings.set(&VALUE_PIN, fish.value);
     readings.flag(&OVER_PIN, measured > threshold);
     readings.flag(&UNDER_PIN, measured < threshold);
+    readings.flag(&FULL_PIN, fish.full);
 }
 
 fn read_ledger(config: &PartConfig, world: &WorldView, readings: &mut PinReadings) {
@@ -1372,6 +1374,7 @@ mod tests {
                     species,
                     weight_g,
                     value,
+                    full: false,
                 })
                 .collect(),
             TANK_CAPACITY,
@@ -1532,6 +1535,32 @@ mod tests {
             "the richest fish weighs 100g, which is under 400"
         );
         assert!(!high(&readings, "over"));
+    }
+
+    #[test]
+    fn the_assay_scale_says_full_when_its_fish_will_eat_no_more() {
+        let mut world = shoal();
+        assert!(!high(
+            &read(Part::AssayScale, &PartConfig::new(), &world),
+            "full"
+        ));
+        world = WorldView::new(
+            world
+                .shoal()
+                .iter()
+                .cloned()
+                .map(|fish| SensedFish { full: true, ..fish })
+                .collect(),
+            TANK_CAPACITY,
+            PURSE,
+            0,
+            0,
+            BTreeSet::new(),
+        );
+        assert!(high(
+            &read(Part::AssayScale, &PartConfig::new(), &world),
+            "full"
+        ));
     }
 
     #[test]

@@ -73,7 +73,7 @@ impl ShowState {
         all: bool,
         rng: &mut impl RngExt,
     ) -> Self {
-        let mut display_fish = fish.clone();
+        let mut display_fish = fish.portrait();
         display_fish.facing = Direction::Right;
 
         let mut show_fields: Vec<ShowField> = vec![
@@ -90,6 +90,16 @@ impl ShowState {
             ShowField {
                 label: "Weight",
                 value: fields::format_weight(fish.weight_g),
+                swatch: None,
+            },
+            ShowField {
+                label: fields::WORTH_HEADER,
+                value: fields::format_worth(fish),
+                swatch: None,
+            },
+            ShowField {
+                label: fields::FED_HEADER,
+                value: fields::format_fed(fish.fed()),
                 swatch: None,
             },
             ShowField {

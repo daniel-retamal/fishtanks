@@ -27,6 +27,7 @@ mod background;
 mod blueprint;
 mod channels;
 mod fabric;
+mod habits;
 mod mothership;
 mod mutations;
 mod netlist;
@@ -42,6 +43,10 @@ pub use blueprint::{
 };
 pub use channels::{ChannelRegistry, Wires};
 pub use fabric::StageBudget;
+pub use habits::{
+    BLIND_SMELL_RADIUS, ECHO_FADE, FLASH_SECS, FRESH_SPEECH, INK_COLOR, InkBlot, TRAIL_GLYPH,
+    TrailMark,
+};
 pub use mothership::{
     ALIEN_INK, ALIEN_NAME_WORDS_MAX, ALIEN_NAME_WORDS_MIN, ALIEN_SOUNDS, ALIEN_TONGUE, alien_name,
     speech_ink,
@@ -50,16 +55,28 @@ pub use netlist::{Netlist, Settling};
 pub use record::TankRecord;
 pub use relay::{Link, Transmission};
 pub use world::{
-    DAWN_HOUR, DAY_LENGTH_SECS, DUSK_HOUR, DayClock, HOUR_SECS, HOURS_PER_DAY, RAD_TANK_RADS,
-    Selector, SensedFish, Superlative, WorldSignal, WorldView,
+    DAWN_HOUR, DAY_LENGTH_SECS, DUSK_HOUR, DayClock, FULL_MOON, HOUR_SECS, HOURS_PER_DAY,
+    LUNAR_MONTH_DAYS, RAD_TANK_RADS, Selector, SensedFish, Sky, Superlative, WorldSignal,
+    WorldView,
 };
 
 pub enum TankEvent {
-    PhantomCrossTank { fish_name: String },
+    Wander {
+        fish_name: String,
+    },
+    Echo {
+        speaker: String,
+        text: String,
+        strength: f32,
+    },
     Blessing,
     UfoTimerFired,
-    UfoLockFish { fish_name: String },
-    UfoTakeFish { fish_name: String },
+    UfoLockFish {
+        fish_name: String,
+    },
+    UfoTakeFish {
+        fish_name: String,
+    },
     UfoReleaseFish(Box<Fish>),
     UfoReleaseCow(Box<Cow>),
     UfoFinished,
@@ -533,6 +550,9 @@ pub struct Tank {
     pub(super) candy_tick: u32,
     candy_scan: Metronome,
     milk_clock: Metronome,
+    pub sky: Sky,
+    pub trails: Vec<TrailMark>,
+    pub inks: Vec<InkBlot>,
 }
 
 impl Tank {
@@ -576,6 +596,9 @@ impl Tank {
             candy_tick: 0,
             candy_scan: Metronome::default(),
             milk_clock: Metronome::default(),
+            sky: Sky::default(),
+            trails: Vec::new(),
+            inks: Vec::new(),
         }
     }
 
@@ -642,6 +665,12 @@ impl Tank {
         self.background.clear_grave_name(name);
     }
 
+    pub fn water_color(&self) -> Color {
+        self.background
+            .bubble_color_override()
+            .unwrap_or(self.kind.config().bubble_color)
+    }
+
     pub fn candy_man_sway(&self) -> i32 {
         man_sway_offset(self.candy_tick)
     }
@@ -670,6 +699,7 @@ impl Tank {
             return;
         }
         self.mark_for_devil(&mut fish);
+        fish.habits = Box::default();
         self.used_names.insert(name);
         self.fish.push(fish);
         self.signal(WorldSignal::Birth);
@@ -787,9 +817,13 @@ impl Tank {
         true
     }
 
-    pub fn tick(&mut self, settings: &Settings, coffee: u32) -> Vec<TankEvent> {
+    pub fn tick(&mut self, settings: &Settings, coffee: u32, sky: Sky) -> Vec<TankEvent> {
         let dt = 1.0 / settings.fps;
         let mut rng = rand::rng();
+        self.sky = sky;
+        for fish in &mut self.fish {
+            fish.sky = sky;
+        }
 
         self.background.tick(dt, &mut rng, self.width, self.height);
         for food in &mut self.food {
@@ -829,7 +863,8 @@ impl Tank {
         if self.kind.config().spawns_unfish {
             self.tick_void_spawn(dt, &mut rng);
         }
-        let mut events = self.tick_phantoms(dt, &mut rng);
+        let mut events = self.tick_habits(dt);
+        events.extend(self.tick_phantoms(dt, &mut rng));
         events.extend(self.tick_blessings(dt));
         self.tick_ufo_timer(dt, &mut rng, &mut events);
         self.tick_calls_home(dt, &mut rng, &mut events);
@@ -964,8 +999,9 @@ impl Tank {
     }
 
     fn tick_cows(&mut self, dt: f32) {
+        let sky = self.sky;
         for cow in &mut self.cows {
-            cow.tick(dt);
+            cow.tick(dt, sky);
         }
     }
 }

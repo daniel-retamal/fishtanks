@@ -12,7 +12,7 @@ use crate::consumable::{ActiveConsumable, ActiveMilkStatus, Buff, Measure};
 use crate::economy::Money;
 use crate::names::to_roman;
 use crate::ui::hint_bar::HintBar;
-use crate::ui::table::{ellipsize, visual_width};
+use crate::ui::table::{INFINITY, ellipsize, visual_width};
 
 const RULE_ROWS: u16 = 2;
 const EDITOR_ROWS: u16 = 1;
@@ -32,7 +32,6 @@ const NAME_KEPT_W: usize = 16;
 const TINY_FOOD: &str = "•";
 const TINY_FISH: &str = "><>";
 const WORD_JOINER: char = '-';
-const INFINITY: &str = "∞";
 const ONE_CAST: &str = "cast";
 const MANY_CASTS: &str = "casts";
 const TINY_CASTS: &str = "c";

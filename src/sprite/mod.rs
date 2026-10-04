@@ -1,4 +1,3 @@
-use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
@@ -23,12 +22,12 @@ const TENTACLE_LEAN_RIGHT: char = ')';
 const TENTACLE_LEAN_LEFT: char = '(';
 const SPIKE_GLYPH: char = '¦';
 const WING_LEFT_GLYPH: char = '/';
-const TENTACLE_STRIDE: usize = 3;
+const TENTACLE_STRIDE: usize = 2;
+const TENTACLE_ROWS: usize = 2;
 const TENTACLE_WAVE_SPREAD: f32 = 0.5;
 const TENTACLE_SWAY_AMOUNT: f32 = 2.0;
 const TENTACLE_PHASE_STEP: f32 = 1.3;
 const TENTACLE_RELAX_HEIGHT: usize = 3;
-const STRAND_PRIME: u64 = 0x9E37_79B9_7F4A_7C15;
 
 pub type Cell = (char, Color);
 pub type Grid = Vec<Vec<Cell>>;
@@ -45,7 +44,17 @@ pub struct Feet {
     pub color: Option<Color>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Band {
+    Top,
+    Bottom,
+}
+
+impl Band {
+    pub const BOTH: [Band; 2] = [Band::Top, Band::Bottom];
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum ExtensionVariant {
     Tentacle,
     Spike,
@@ -53,11 +62,17 @@ pub enum ExtensionVariant {
 }
 
 impl ExtensionVariant {
-    pub fn start_length(self) -> usize {
+    pub fn rows(self) -> usize {
         match self {
-            ExtensionVariant::Tentacle => 2,
-            ExtensionVariant::Spike => 1,
-            ExtensionVariant::Wing => 1,
+            ExtensionVariant::Tentacle => TENTACLE_ROWS,
+            ExtensionVariant::Spike | ExtensionVariant::Wing => 1,
+        }
+    }
+
+    pub fn bands(self) -> &'static [Band] {
+        match self {
+            ExtensionVariant::Tentacle => &[Band::Bottom],
+            ExtensionVariant::Spike | ExtensionVariant::Wing => &Band::BOTH,
         }
     }
 
@@ -66,11 +81,76 @@ impl ExtensionVariant {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(from = "ExtensionRecord")]
 pub struct BodyExtension {
-    pub variant: ExtensionVariant,
-    pub length: usize,
-    pub seed: u64,
+    pub top: Option<ExtensionVariant>,
+    pub bottom: Option<ExtensionVariant>,
+}
+
+impl BodyExtension {
+    pub fn on(self, band: Band) -> Option<ExtensionVariant> {
+        match band {
+            Band::Top => self.top,
+            Band::Bottom => self.bottom,
+        }
+    }
+
+    pub fn set(&mut self, band: Band, variant: Option<ExtensionVariant>) {
+        match band {
+            Band::Top => self.top = variant,
+            Band::Bottom => self.bottom = variant,
+        }
+    }
+
+    pub fn rows(self, band: Band) -> usize {
+        self.on(band).map_or(0, ExtensionVariant::rows)
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.top.is_none() && self.bottom.is_none()
+    }
+}
+
+#[derive(Clone, Copy, Default, Deserialize)]
+enum LegacyVariant {
+    #[default]
+    Absent,
+    Tentacle,
+    Spike,
+    Wing,
+}
+
+#[derive(Deserialize)]
+struct ExtensionRecord {
+    #[serde(default)]
+    top: Option<ExtensionVariant>,
+    #[serde(default)]
+    bottom: Option<ExtensionVariant>,
+    #[serde(default)]
+    variant: LegacyVariant,
+}
+
+impl From<ExtensionRecord> for BodyExtension {
+    fn from(record: ExtensionRecord) -> Self {
+        let legacy = match record.variant {
+            LegacyVariant::Absent => None,
+            LegacyVariant::Tentacle => Some(ExtensionVariant::Tentacle),
+            LegacyVariant::Spike => Some(ExtensionVariant::Spike),
+            LegacyVariant::Wing => Some(ExtensionVariant::Wing),
+        };
+        let Some(variant) = legacy else {
+            return BodyExtension {
+                top: record.top,
+                bottom: record.bottom,
+            };
+        };
+        let mut extension = BodyExtension::default();
+        for &band in variant.bands() {
+            extension.set(band, Some(variant));
+        }
+        extension
+    }
 }
 
 pub fn painted_span(body: &[Cell]) -> Option<(usize, usize)> {
@@ -79,7 +159,10 @@ pub fn painted_span(body: &[Cell]) -> Option<(usize, usize)> {
     let last = body.iter().rposition(|&(c, _)| painted(c)).unwrap();
     let lo = first + APPENDAGE_EDGE_INSET;
     let hi = last.saturating_sub(APPENDAGE_EDGE_INSET);
-    if hi < lo { None } else { Some((lo, hi)) }
+    if hi < lo {
+        return Some((first, last));
+    }
+    Some((lo, hi))
 }
 
 fn wing_glyph(facing_left: bool, top: bool) -> char {
@@ -89,26 +172,6 @@ fn wing_glyph(facing_left: bool, top: bool) -> char {
         mirror_char(WING_LEFT_GLYPH)
     };
     if top { base } else { mirror_char(base) }
-}
-
-fn strand_key(col: usize, top: bool) -> u64 {
-    ((col as u64) << 1) | top as u64
-}
-
-fn strand_length(seed: u64, key: u64, max_len: usize) -> usize {
-    if max_len <= 1 {
-        return max_len;
-    }
-    let mut rng = SmallRng::seed_from_u64(seed ^ key.wrapping_mul(STRAND_PRIME));
-    let mut len = 1;
-    while len < max_len && rng.random::<bool>() {
-        len += 1;
-    }
-    len
-}
-
-fn strand_reaches(ext: BodyExtension, col: usize, top: bool, depth: usize) -> bool {
-    depth < strand_length(ext.seed, strand_key(col, top), ext.length)
 }
 
 fn tentacle_glyph(offset: i32) -> char {
@@ -123,16 +186,16 @@ fn tentacle_glyph(offset: i32) -> char {
 
 #[derive(Clone, Copy)]
 pub struct PosedExtension {
-    pub ext: BodyExtension,
+    pub variant: ExtensionVariant,
     pub facing_left: bool,
     pub phase: f32,
     pub max_tentacles: Option<usize>,
 }
 
 impl PosedExtension {
-    pub fn row(self, body: &[Cell], span: (usize, usize), depth: usize, top: bool) -> Vec<Cell> {
+    pub fn row(self, body: &[Cell], span: (usize, usize), depth: usize, band: Band) -> Vec<Cell> {
         let PosedExtension {
-            ext,
+            variant,
             facing_left,
             phase,
             max_tentacles,
@@ -143,7 +206,7 @@ impl PosedExtension {
             return row;
         }
         let color_at = |col: usize| body[col].1;
-        match ext.variant {
+        match variant {
             ExtensionVariant::Tentacle => {
                 let region = hi - lo + 1;
                 let mut count = region.div_ceil(TENTACLE_STRIDE);
@@ -152,21 +215,14 @@ impl PosedExtension {
                 }
                 for (strand, slot) in even_indices(region, count).into_iter().enumerate() {
                     let anchor = lo + slot;
-                    if !strand_reaches(ext, anchor, top, depth) {
-                        continue;
-                    }
                     let strand_phase = phase + strand as f32 * TENTACLE_PHASE_STEP;
-                    let offset = if ext.length <= 1 {
-                        0
-                    } else {
-                        sway_x_offset(
-                            strand_phase,
-                            depth,
-                            ext.length.max(TENTACLE_RELAX_HEIGHT),
-                            TENTACLE_WAVE_SPREAD,
-                            TENTACLE_SWAY_AMOUNT,
-                        )
-                    };
+                    let offset = sway_x_offset(
+                        strand_phase,
+                        depth,
+                        TENTACLE_RELAX_HEIGHT,
+                        TENTACLE_WAVE_SPREAD,
+                        TENTACLE_SWAY_AMOUNT,
+                    );
                     let col = anchor as i32 + offset;
                     if col >= 0 && (col as usize) < row.len() {
                         row[col as usize] = (tentacle_glyph(offset), color_at(anchor));
@@ -175,18 +231,13 @@ impl PosedExtension {
             }
             ExtensionVariant::Spike => {
                 for (col, cell) in row.iter_mut().enumerate().take(hi + 1).skip(lo) {
-                    if strand_reaches(ext, col, top, depth) {
-                        *cell = (SPIKE_GLYPH, body[col].1);
-                    }
+                    *cell = (SPIKE_GLYPH, body[col].1);
                 }
             }
             ExtensionVariant::Wing => {
-                let glyph = wing_glyph(facing_left, top);
+                let glyph = wing_glyph(facing_left, band == Band::Top);
                 let dir: i32 = if facing_left { 1 } else { -1 };
                 for col in lo..=hi {
-                    if !strand_reaches(ext, col, top, depth) {
-                        continue;
-                    }
                     let drawn = col as i32 + dir * depth as i32;
                     if drawn >= 0 && (drawn as usize) < row.len() {
                         row[drawn as usize] = (glyph, color_at(col));
@@ -195,6 +246,15 @@ impl PosedExtension {
             }
         }
         row
+    }
+
+    pub fn rows(self, body: &[Cell], span: (usize, usize), band: Band) -> Vec<Vec<Cell>> {
+        let depths = 0..self.variant.rows();
+        let mut rows: Vec<Vec<Cell>> = depths.map(|d| self.row(body, span, d, band)).collect();
+        if band == Band::Top {
+            rows.reverse();
+        }
+        rows
     }
 }
 
@@ -217,6 +277,7 @@ pub fn feet_row(body: &[Cell], span: (usize, usize), feet: Feet) -> Vec<Cell> {
         FeetStyle::Caret => {
             let pairs = (region + 1) / FOOT_CARET_UNIT;
             if pairs == 0 {
+                row[lo] = (FOOT_CARET, color_at(lo));
                 return row;
             }
             let used = pairs * FOOT_CARET_UNIT - 1;

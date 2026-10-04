@@ -22,6 +22,11 @@ Cues, one per line (# starts a note):
   select <label>         press down until the row reads `> <label>` (downward only)
   expect <text>          fail unless the text is on screen
   absent <text>          fail if the text is on screen
+  record <n> <k> <label> advance n ticks, filming a still every k ticks (for a GIF)
+  angle steer|hold <k> <label>
+                         play the open /fish window to its end like a player: steer
+                         against the fish and reel on green, or hold down and nothing
+                         else; a still every k ticks (0 films nothing)
   include <scene> [args] perform another play in place, path relative to this file;
                          $1..$9 in the scene are its arguments (quote one with spaces)
 

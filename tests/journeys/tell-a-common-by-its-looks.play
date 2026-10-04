@@ -1,0 +1,18 @@
+# JOURNEY · a Common is told apart by its looks: a Bitfish bought in the shop is written in binary,
+# its bits flipping as it sways, so the stills show it and the expects read its name.
+
+clear
+include scenes/start-with-a-stake.play
+include scenes/buy-a-fish.play Bitfish Byte
+run /index
+expect Byte
+expect Bitfish
+snap the bitfish in the index
+key esc
+absent Byte
+run /show "Byte"
+expect FishResource#show
+expect Bitfish
+snap the bitfish's show card, written in bits
+key esc
+absent FishResource#show
