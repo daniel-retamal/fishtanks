@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 - 2026-10-04
+
+- **Twins swim apart.** When a double splits in two, the new fish heads off the other way instead of shadowing its parent.
+- **A swallowed fish loses its tail.** A fish that engulfs another is drawn head, body, body, head, with no tail stuck inside it.
+- **The wiki grew a dex.** Every fish, unfish and mutation now has its own entry with its sprite, an animated picture and its numbers, and fishing is shown step by step in GIFs.
+
 ## 1.2.0 - 2026-10-03
 
 - **A wiki.** Every fish, tank, item and mechanic, how to fish, how to wire botfish, and a step-by-step calculator: [github.com/daniel-retamal/fishtanks/wiki](https://github.com/daniel-retamal/fishtanks/wiki).
