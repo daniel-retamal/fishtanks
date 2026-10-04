@@ -5,35 +5,41 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use fishtank::entities::cow::{Cow, CowVariant};
-use fishtank::fishes::fish::{Direction, Fish, compute_display_width};
+use fishtank::fishes::fish::{Direction, Fish, FishState, compute_display_width};
 use fishtank::fishes::mutations::{Mutatable, Mutation, apply_mutation_to_fish};
 use fishtank::fishes::species::{
-    ALL_SPECIES, FishSpecies, Habit, Habitat, Locomotion, SizeCategory, Skin, SpeciesConfig, Zoomie,
+    ALL_SPECIES, FishSpecies, Habit, Habitat, Locomotion, SizeCategory, SpeciesConfig, Zoomie,
 };
 use fishtank::fishes::unfish::{UnfishKind, is_multi_row};
 use fishtank::settings::{DEFAULT_FPS, Settings};
+use fishtank::sprite::TRANSPARENT;
 use fishtank::tank::{Sky, Tank, TankBackground, TankKind};
 use fishtank::testing::{Reel, Still};
 use fishtank::ui::tank_view::TankView;
 use fishtank::ui::{draw_fish_centred, fish_art_height, render_fish_sprite};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Color;
 use ratatui::widgets::Widget;
 use unicode_width::UnicodeWidthChar;
 
 const USAGE: &str = "usage: cargo run --example dex -- <out-dir>
 
 Films the wiki's dex: every fish species a player can meet, every unfish, every cow and every
-mutation, each as a reel of its own (<out>/reels/<slug>.html). A fish whose gift only shows in
-motion or in company swims in a small pond; every other one is animated in place, the way /index
-draws it. Writes <out>/dex.tsv (a header row, then one row per entry) and a palette swatch reel for
-every fish (swatch-<slug>), and the Mutations page's engulfment scene (scene-engulfment).";
+mutation, each as a reel of its own (<out>/reels/<slug>.html). Every fish is animated in place,
+the way /index draws it, showing its gift (a puff, wings, a flash); only a bouncer, and the
+Phantom's teleport, move about a bubble-free box. Cows graze in a small pond. Writes
+<out>/dex.tsv (a header row, then one row per entry) and the Mutations page's engulfment scene
+(scene-engulfment).";
 const PAD_X: u16 = 2;
 const PAD_Y: u16 = 1;
 const GAP: u16 = 3;
 const FILM_EVERY: usize = 2;
-const PORTRAIT_TICKS: usize = 90;
+const PORTRAIT_TICKS: usize = 120;
+const GIFT_TICKS: usize = 30;
+const BLINK_TICKS: usize = 30 * 10;
+const FLASH_SECS: f32 = 1.0;
+const GLIDE_SECS: f32 = 1.0;
 const BEFORE_TICKS: usize = 40;
 const AFTER_TICKS: usize = 70;
 const MUTANT_STEP_TICKS: usize = 30;
@@ -56,7 +62,6 @@ const SCENE_AFTER_TICKS: usize = 120;
 const SCENE_LIMIT_TICKS: usize = 30 * 60;
 const SUBJECT: FishSpecies = FishSpecies::Goldfish;
 const PREY: FishSpecies = FishSpecies::Salmon;
-const COMPANION: FishSpecies = FishSpecies::Goldfish;
 const ENGULFER: FishSpecies = FishSpecies::Salmon;
 const ENGULFED: FishSpecies = FishSpecies::Tang;
 const SUBJECT_NAME: &str = "Darwin";
@@ -64,9 +69,8 @@ const PREY_NAME: &str = "Minnow";
 const SIZE_ROLLS: usize = 200;
 const SPOT_X: f32 = 12.0;
 const SPOT_Y: f32 = 4.0;
-const SWATCH: &str = "██";
 const TSV: &str = "dex.tsv";
-const FIELDS: &str = "kind\tslug\tname\trarity\tslow\tfast\tshort\tlong\tlight\theavy\tcheap\tdear\tprice\thome\tpattern\tmoves\tzoomie\thabit\tskin\tborn\tsprite";
+const FIELDS: &str = "kind\tslug\tname\trarity\tslow\tfast\tshort\tlong\tlight\theavy\tcheap\tdear\tprice\thome\tpattern\tmoves\tzoomie\thabit\tskin\tborn\tpalette\tsprite";
 const NOTHING: &str = "-";
 const ROW_BREAK: &str = "\\n";
 const HIDDEN: [FishSpecies; 2] = [FishSpecies::Cheatfish, FishSpecies::Junkfish];
@@ -105,39 +109,39 @@ impl Shot {
 
 struct Canvas {
     width: u16,
-    above: u16,
-    below: u16,
+    half: u16,
+    tall: Option<u16>,
 }
 
 impl Canvas {
     fn fitting(frames: &[Vec<Fish>]) -> Self {
         let mut canvas = Canvas {
             width: 1,
-            above: 0,
-            below: 0,
+            half: PAD_Y,
+            tall: None,
         };
         for frame in frames {
             canvas.width = canvas.width.max(row_width(frame));
             for fish in frame {
+                if is_multi(fish) {
+                    let height = fish_art_height(fish, 1);
+                    canvas.tall = Some(canvas.tall.map_or(height, |tall| tall.max(height)));
+                    continue;
+                }
                 let (above, below) = rows_around_body(fish);
-                canvas.above = canvas.above.max(above);
-                canvas.below = canvas.below.max(below);
+                canvas.half = canvas.half.max(above).max(below);
             }
         }
         canvas
     }
 
     fn area(&self) -> Rect {
-        Rect::new(
-            0,
-            0,
-            self.width + 2 * PAD_X,
-            self.above + 1 + self.below + 2 * PAD_Y,
-        )
+        let height = self.tall.map_or(2 * self.half + 1, |tall| tall + 2 * PAD_Y);
+        Rect::new(0, 0, self.width + 2 * PAD_X, height)
     }
 
     fn body_y(&self) -> u16 {
-        PAD_Y + self.above
+        self.half
     }
 
     fn draw(&self, frame: &[Fish]) -> Buffer {
@@ -162,13 +166,18 @@ impl Canvas {
 }
 
 fn rows_around_body(fish: &Fish) -> (u16, u16) {
-    if is_multi(fish) {
-        let height = fish_art_height(fish, 1);
-        return (height / 2, height - height / 2);
-    }
     let sprite = fish.line_sprite();
-    let above = sprite.body_row as u16;
-    let below = sprite.rows.len().saturating_sub(sprite.body_row + 1) as u16;
+    let painted: Vec<usize> = sprite
+        .rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.iter().any(|&(ch, _)| ch != TRANSPARENT && ch != ' '))
+        .map(|(index, _)| index)
+        .collect();
+    let first = painted.first().copied().unwrap_or(sprite.body_row);
+    let last = painted.last().copied().unwrap_or(sprite.body_row);
+    let above = sprite.body_row.saturating_sub(first) as u16;
+    let below = last.saturating_sub(sprite.body_row) as u16;
     (above, below)
 }
 
@@ -253,18 +262,6 @@ fn sprite_text(fish: &Fish) -> String {
         .join(ROW_BREAK)
 }
 
-fn swatch(slug: &str, palette: &[Color]) -> Shot {
-    let width = palette.len() as u16 * (SWATCH.chars().count() as u16 + 1);
-    let mut buffer = Buffer::empty(Rect::new(0, 0, width.max(1), 1));
-    for (index, &color) in palette.iter().enumerate() {
-        let x = index as u16 * (SWATCH.chars().count() as u16 + 1);
-        buffer.set_string(x, 0, SWATCH, Style::default().fg(color));
-    }
-    let mut shot = Shot::new(format!("swatch-{slug}"));
-    shot.push(&buffer);
-    shot
-}
-
 fn length_range(species: FishSpecies, config: &SpeciesConfig) -> (usize, usize) {
     let widths: Vec<usize> = species
         .born_sizes()
@@ -345,6 +342,12 @@ fn species_row(species: FishSpecies, fish: &Fish) -> String {
         } else {
             born.join(",")
         },
+        config
+            .palette
+            .iter()
+            .map(|color| format!("{color:?}"))
+            .collect::<Vec<_>>()
+            .join(";"),
         sprite_text(fish),
     ]
     .join("\t")
@@ -363,14 +366,14 @@ fn unfish_row(kind: UnfishKind, fish: &Fish) -> String {
         fish.display_width.to_string(),
         fish.display_width.to_string(),
     ];
-    row.extend((0..12).map(|_| NOTHING.to_string()));
+    row.extend((0..13).map(|_| NOTHING.to_string()));
     row.push(sprite_text(fish));
     row.join("\t")
 }
 
 fn bare_row(kind: &str, slug: &str, name: &str) -> String {
     let mut row = vec![kind.to_string(), slug.to_string(), name.to_string()];
-    row.extend((0..18).map(|_| NOTHING.to_string()));
+    row.extend((0..19).map(|_| NOTHING.to_string()));
     row.join("\t")
 }
 
@@ -379,13 +382,13 @@ enum Cue {
     Calm,
     Zoomie,
     Teleport,
-    Blink,
 }
 
 struct Pond {
     tank: Tank,
     sky: Sky,
     cue: Cue,
+    only_sprinkles: bool,
 }
 
 impl Pond {
@@ -403,6 +406,19 @@ impl Pond {
             tank,
             sky,
             cue: Cue::Calm,
+            only_sprinkles: false,
+        }
+    }
+
+    fn without_bubbles(mut self) -> Self {
+        self.only_sprinkles = true;
+        self
+    }
+
+    fn step(&mut self, settings: &Settings) {
+        self.tank.tick(settings, 0, self.sky);
+        if self.only_sprinkles {
+            self.tank.bubbles.retain(|bubble| !bubble.poppable);
         }
     }
 
@@ -443,7 +459,6 @@ impl Pond {
             Cue::Calm => true,
             Cue::Zoomie => subject.is_zooming() || subject.is_puffed(),
             Cue::Teleport => (subject.position.x - last_x).abs() > TELEPORT_CELLS,
-            Cue::Blink => subject.is_invisible(),
         }
     }
 
@@ -458,13 +473,13 @@ impl Pond {
         let settings = Settings::default();
         let mut shot = Shot::new(slug);
         for _ in 0..POND_WARMUP_TICKS {
-            self.tank.tick(&settings, 0, self.sky);
+            self.step(&settings);
         }
         let mut lead: Vec<Buffer> = Vec::new();
         let mut filming: Option<usize> = None;
         for tick in 0..POND_LOOKOUT_TICKS {
             let last_x = self.tank.fish.first().map_or(0.0, |fish| fish.position.x);
-            self.tank.tick(&settings, 0, self.sky);
+            self.step(&settings);
             let buffer = self.frame();
             if filming.is_none() && self.cued(last_x) {
                 filming = Some(tick);
@@ -493,61 +508,51 @@ impl Pond {
     }
 }
 
-fn shows_in_motion(config: &SpeciesConfig) -> bool {
-    config.locomotion != Locomotion::Swim
-        || !matches!(config.zoomie, Zoomie::Burst | Zoomie::None)
-        || config.habit.is_some()
-        || matches!(config.skin, Skin::Cycle(_) | Skin::Camouflage)
-        || config.trail.is_some()
-        || config.born_with.contains(&Mutation::Puff)
-}
-
 fn shines_at_night(config: &SpeciesConfig) -> bool {
     config.born_with.contains(&Mutation::Lure) || config.habit == Some(Habit::Twinkle)
 }
 
-fn company(species: FishSpecies, habit: Option<Habit>) -> Vec<FishSpecies> {
-    match habit {
-        Some(Habit::Sync) => vec![species, species],
-        Some(Habit::Pair | Habit::Duel | Habit::ShellSwap) => vec![species],
-        Some(Habit::Chase) => vec![COMPANION, COMPANION],
-        Some(Habit::Shadow) => vec![COMPANION],
-        _ => Vec::new(),
-    }
+fn box_shot(species: FishSpecies, slug: &str) -> Shot {
+    let config = species.config();
+    Pond::new(TankKind::Base, BOX_POND, shines_at_night(&config))
+        .with_species(species, config.name)
+        .without_bubbles()
+        .film(slug)
 }
 
-fn pond_shot(species: FishSpecies, slug: &str) -> Shot {
-    let config = species.config();
-    let size = if config.locomotion == Locomotion::Bounce {
-        BOX_POND
-    } else {
-        POND
-    };
-    let special_zoomie = !matches!(config.zoomie, Zoomie::Burst | Zoomie::None);
-    let cue = if special_zoomie || config.born_with.contains(&Mutation::Puff) {
-        Cue::Zoomie
-    } else {
-        Cue::Calm
-    };
-    let mut pond = Pond::new(TankKind::Base, size, shines_at_night(&config))
-        .with_species(species, config.name)
-        .waiting_for(cue);
-    for (index, other) in company(species, config.habit).into_iter().enumerate() {
-        pond = pond.with_species(other, &format!("{}{index}", other.display_name()));
+fn show_gift(fish: &mut Fish, config: &SpeciesConfig, showing: bool) {
+    if config.born_with.contains(&Mutation::Puff) {
+        fish.habits.puffed = if showing { PUFF_SECS } else { 0.0 };
     }
-    pond.film(slug)
+    if config.habit == Some(Habit::Sync) {
+        fish.habits.lit = if showing { FLASH_SECS } else { 0.0 };
+    }
+    if config.zoomie == Zoomie::Glide {
+        fish.state = if showing {
+            FishState::Zoomie {
+                time_remaining: GLIDE_SECS,
+                total_duration: GLIDE_SECS,
+                will_turn: false,
+                has_turned: false,
+            }
+        } else {
+            FishState::Idle
+        };
+    }
 }
 
 fn portrait_shot(species: FishSpecies, fish: &Fish, slug: &str) -> Shot {
-    let auto = species.config().auto_mutate;
+    let config = species.config();
+    let auto = config.auto_mutate;
     let ticks = if auto {
         MUTANT_STEP_TICKS * MUTANT_STEPS
     } else {
         PORTRAIT_TICKS
     };
     let mut fish = fish.clone();
-    fish.sky.daylight = !shines_at_night(&species.config());
+    fish.sky.daylight = !shines_at_night(&config);
     shoot(slug, vec![(vec![fish], ticks)], |fishes, _, tick| {
+        show_gift(&mut fishes[0], &config, (tick / GIFT_TICKS) % 2 == 1);
         if !auto || tick == 0 || tick % MUTANT_STEP_TICKS != 0 {
             return;
         }
@@ -563,9 +568,8 @@ fn portrait_shot(species: FishSpecies, fish: &Fish, slug: &str) -> Shot {
 fn species_shot(species: FishSpecies, rng: &mut impl rand::RngExt) -> (Shot, Fish) {
     let fish = posed(&Fish::new_for_display(species, rng), Direction::Left);
     let slug = format!("fish-{}", slug_of(species.display_name()));
-    let config = species.config();
-    let shot = if shows_in_motion(&config) {
-        pond_shot(species, &slug)
+    let shot = if species.config().locomotion == Locomotion::Bounce {
+        box_shot(species, &slug)
     } else {
         portrait_shot(species, &fish, &slug)
     };
@@ -575,23 +579,42 @@ fn species_shot(species: FishSpecies, rng: &mut impl rand::RngExt) -> (Shot, Fis
 fn unfish_shot(kind: UnfishKind, rng: &mut impl rand::RngExt) -> (Shot, Fish) {
     let fish = Fish::new_unfish(kind, String::new(), 0.0, 0.0, rng);
     let slug = format!("unfish-{}", slug_of(&format!("{kind:?}")));
-    let cue = match kind {
-        UnfishKind::Phantom => Some(Cue::Teleport),
-        UnfishKind::Blinker => Some(Cue::Blink),
-        _ => None,
-    };
-    let shot = match cue {
-        Some(cue) => Pond::new(TankKind::Base, POND, false)
+    let shot = match kind {
+        UnfishKind::Phantom => Pond::new(TankKind::Base, BOX_POND, false)
             .with_fish(Fish::new_unfish(kind, format!("{kind:?}"), 0.0, 0.0, rng))
-            .waiting_for(cue)
+            .without_bubbles()
+            .waiting_for(Cue::Teleport)
             .film(&slug),
-        None => shoot(
+        UnfishKind::Blinker => shoot(
+            &slug,
+            vec![(vec![just_before_a_blink(&fish)], BLINK_TICKS)],
+            |_, _, _| {},
+        ),
+        _ => shoot(
             &slug,
             vec![(vec![posed(&fish, Direction::Left)], PORTRAIT_TICKS)],
             |_, _, _| {},
         ),
     };
     (shot, posed(&fish, Direction::Left))
+}
+
+fn just_before_a_blink(fish: &Fish) -> Fish {
+    let mut history = vec![posed(fish, Direction::Left)];
+    for _ in 0..POND_LOOKOUT_TICKS {
+        let mut next = history[history.len() - 1].clone();
+        animate(std::slice::from_mut(&mut next));
+        let blinked = next.is_invisible();
+        history.push(next);
+        if blinked {
+            let lead = history.len().saturating_sub(POND_LEAD_TICKS + 1);
+            return history.swap_remove(lead);
+        }
+        if history.len() > POND_LEAD_TICKS + 1 {
+            history.remove(0);
+        }
+    }
+    history.swap_remove(0)
 }
 
 fn cow_shot(variant: CowVariant, kind: TankKind, slug: &str) -> Shot {
@@ -789,10 +812,6 @@ fn main() -> ExitCode {
         let (shot, fish) = species_shot(species, &mut rng);
         let _ = writeln!(tsv, "{}", species_row(species, &fish));
         shots.push(shot);
-        shots.push(swatch(
-            &slug_of(species.display_name()),
-            species.config().palette,
-        ));
     }
     for kind in UNFISH {
         let (shot, fish) = unfish_shot(kind, &mut rng);
