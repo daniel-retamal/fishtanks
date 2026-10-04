@@ -410,9 +410,10 @@ fn parse_record(rest: &str) -> Result<Cue, String> {
 fn parse_angle(rest: &str) -> Result<Cue, String> {
     let mut parts = rest.splitn(3, char::is_whitespace);
     let (Some(style), Some(every), Some(label)) = (parts.next(), parts.next(), parts.next()) else {
-        return Err("angle needs steer|hold <every> <label>".to_string());
+        return Err("angle needs steer|hold|watch <every> <label>".to_string());
     };
-    let style = Angling::parse(style).ok_or_else(|| format!("{style:?} is not steer or hold"))?;
+    let style =
+        Angling::parse(style).ok_or_else(|| format!("{style:?} is not steer, hold or watch"))?;
     Ok(Cue::Angle {
         style,
         every: parse_count(every)?,

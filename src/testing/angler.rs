@@ -15,11 +15,13 @@ const RIGHT: usize = 2;
 const ROD_KEYS: [KeyCode; 3] = [KeyCode::Down, KeyCode::Left, KeyCode::Right];
 const KEY_NAMES: [&str; 3] = ["down", "left", "right"];
 const KEYS_TAG: &str = "keys=";
+const BITE_TAG: &str = "bite=";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Angling {
     Steer,
     Hold,
+    Watch,
 }
 
 impl Angling {
@@ -27,6 +29,7 @@ impl Angling {
         match word.to_ascii_lowercase().as_str() {
             "steer" => Some(Angling::Steer),
             "hold" => Some(Angling::Hold),
+            "watch" => Some(Angling::Watch),
             _ => None,
         }
     }
@@ -95,7 +98,16 @@ impl Angler {
             }
             tui.tick_n(1);
             if self.every > 0 && tick % self.every == 0 {
-                tui.record_frame(&format!("{} {tick:04} {}", self.label, self.keys()));
+                let biting = tui
+                    .app
+                    .fishing_state()
+                    .is_some_and(|state| state.is_biting());
+                tui.record_frame(&format!(
+                    "{} {tick:04} {} {BITE_TAG}{}",
+                    self.label,
+                    self.keys(),
+                    u8::from(biting)
+                ));
             }
         }
         Err(format!("the cast outlasted {CAST_LIMIT_TICKS} ticks"))
@@ -105,6 +117,9 @@ impl Angler {
         let Some(state) = tui.app.fishing_state() else {
             return [false; 3];
         };
+        if self.style == Angling::Watch {
+            return [false; 3];
+        }
         if state.is_catching() {
             return [self.bite_seen >= BITE_REACTION_TICKS, false, false];
         }
@@ -177,6 +192,11 @@ mod tests {
     #[test]
     fn an_angler_who_steers_lands_every_fish() {
         assert!((0..CASTS).all(|_| cast(Angling::Steer)));
+    }
+
+    #[test]
+    fn an_angler_who_only_watches_never_lands_a_fish() {
+        assert!((0..CASTS).all(|_| !cast(Angling::Watch)));
     }
 
     #[test]
