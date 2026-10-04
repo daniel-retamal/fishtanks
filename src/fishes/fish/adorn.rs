@@ -412,7 +412,7 @@ impl Fish {
     }
 
     pub(super) fn keeps_eyes_shut(&self) -> bool {
-        if self.abduction_lock || self.is_asleep() {
+        if self.abduction_lock || self.is_asleep() || self.is_sated() {
             return true;
         }
         match self.habit() {

@@ -10,7 +10,7 @@ use crate::{
     economy::{self, Money, Sellable},
     entities::food,
     fishes::botfish::{BotfishState, DueCast, DueLine, Tackle},
-    fishes::fish::Fish,
+    fishes::fish::{Fed, Fish},
     fishes::parts::{RIG_WAIT_MAX_SECS, RIG_WAIT_MIN_SECS},
     fishes::species::FishSpecies,
     ledger::Flow,
@@ -648,6 +648,9 @@ impl App {
                     fish_name: fish.name.clone(),
                     species_display: fish.species.display_name().to_string(),
                     tank_name: tank.name.clone(),
+                    fed: target
+                        .fattens()
+                        .then(|| crate::ui::fields::format_fed(fish.fed())),
                     tank_idx: ti,
                     fish_idx: fi,
                 });
@@ -783,6 +786,7 @@ impl App {
                                     fish_name: e.fish_name.clone(),
                                     species_display: e.species_display.clone(),
                                     tank_name: e.tank_name.clone(),
+                                    fed: e.fed.clone(),
                                     tank_idx: e.tank_idx,
                                     fish_idx: e.fish_idx,
                                 })
@@ -1560,14 +1564,14 @@ impl App {
     }
 
     pub(super) fn build_sell_menu_state(&self) -> Option<SellMenuState> {
-        let fish: Vec<(String, FishSpecies, Money)> = self
+        let fish: Vec<(String, FishSpecies, Money, Fed)> = self
             .tanks
             .iter()
             .flat_map(|t| {
                 t.fish
                     .iter()
                     .filter(|f| f.is_sellable())
-                    .map(|f| (f.name.clone(), f.species, f.sell_value()))
+                    .map(|f| (f.name.clone(), f.species, f.sell_value(), f.fed()))
             })
             .collect();
         let sellable_tanks = self.sellable_tanks_with_price();

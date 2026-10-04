@@ -7,6 +7,7 @@ use ratatui::{
 
 use crate::colors::{BLACK, STEEL, WHITE};
 use crate::consumable::ConsumeTarget;
+use crate::ui::fields::FED_HEADER;
 use crate::ui::{
     grid::{self, Grid, HEADER_ROWS, HeaderStyle},
     hint_bar::HintBar,
@@ -20,13 +21,20 @@ pub struct ConsumePickerEntry {
     pub fish_name: String,
     pub species_display: String,
     pub tank_name: String,
+    pub fed: Option<String>,
     pub tank_idx: usize,
     pub fish_idx: usize,
 }
 
 impl ConsumePickerEntry {
-    fn cells(&self) -> [&str; 3] {
-        [&self.fish_name, &self.species_display, &self.tank_name]
+    fn cells(&self) -> Vec<&str> {
+        let mut cells = vec![
+            self.fish_name.as_str(),
+            &self.species_display,
+            &self.tank_name,
+        ];
+        cells.extend(self.fed.as_deref());
+        cells
     }
 }
 
@@ -73,6 +81,14 @@ impl ConsumePickerState {
         &self.label
     }
 
+    fn headers(&self) -> Vec<&'static str> {
+        let mut headers = HEADERS.to_vec();
+        if self.target.fattens() {
+            headers.push(FED_HEADER);
+        }
+        headers
+    }
+
     pub fn scroll_up(&mut self) {
         self.selected = self.selected.saturating_sub(1);
     }
@@ -116,10 +132,11 @@ impl Widget for ConsumePickerOverlay<'_> {
     fn render(self, _area: Rect, buf: &mut Buffer) {
         let state = self.state;
         let n = state.entries.len();
-        let columns: Vec<FlexItem> = (0..HEADERS.len())
+        let headers = state.headers();
+        let columns: Vec<FlexItem> = (0..headers.len())
             .map(|column| {
                 grid::text_column(
-                    HEADERS[column],
+                    headers[column],
                     state
                         .entries
                         .iter()
@@ -152,7 +169,7 @@ impl Widget for ConsumePickerOverlay<'_> {
                     .bg(BACKGROUND),
                 rule: Style::default().fg(WHITE).bg(BACKGROUND),
             };
-            grid::draw_header(buf, &grid, modal.rect, y, &HEADERS, &style);
+            grid::draw_header(buf, &grid, modal.rect, y, &headers, &style);
         }
 
         let shown = state

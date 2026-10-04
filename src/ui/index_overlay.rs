@@ -41,6 +41,8 @@ enum FixedColumn {
     Species,
     Display,
     Weight,
+    Worth,
+    Fed,
     Fishtank,
     Status,
 }
@@ -52,6 +54,8 @@ impl FixedColumn {
             FixedColumn::Species => "Species",
             FixedColumn::Display => "Display",
             FixedColumn::Weight => "Weight",
+            FixedColumn::Worth => fields::WORTH_HEADER,
+            FixedColumn::Fed => fields::FED_HEADER,
             FixedColumn::Fishtank => "Fishtank",
             FixedColumn::Status => "Status",
         }
@@ -70,6 +74,8 @@ pub struct FishSnapshot {
     art: LineSprite,
     display_width: usize,
     weight_g: u32,
+    worth: String,
+    fed: String,
     tank_name: Option<String>,
     display_height: u16,
     is_unfish: bool,
@@ -138,6 +144,14 @@ impl IndexState {
                     species_name: f.species.display_name(),
                     display_width: f.display_width,
                     weight_g: f.weight_g,
+                    worth: dead.map_or_else(
+                        || fields::format_money(f.sell_value()),
+                        |_| table::NOTHING.to_string(),
+                    ),
+                    fed: dead.map_or_else(
+                        || fields::format_fed(f.fed()),
+                        |_| table::NOTHING.to_string(),
+                    ),
                     tank_name: Some(tank_name.to_string()),
                     display_height: row_height(f, &art),
                     is_unfish: f.unfish_state.is_some(),
@@ -194,6 +208,8 @@ impl IndexState {
             FixedColumn::Species,
             FixedColumn::Display,
             FixedColumn::Weight,
+            FixedColumn::Worth,
+            FixedColumn::Fed,
         ]);
         if show_tank_col {
             fixed.push(FixedColumn::Fishtank);
@@ -505,6 +521,8 @@ fn draw_data_row(
             Some(FixedColumn::Weight) => {
                 grid::put(buf, cell, &fields::format_weight(snap.weight_g), text)
             }
+            Some(FixedColumn::Worth) => grid::put_money(buf, cell, &snap.worth, text),
+            Some(FixedColumn::Fed) => grid::put(buf, cell, &snap.fed, text),
             Some(FixedColumn::Fishtank) => {
                 grid::put(buf, cell, snap.tank_name.as_deref().unwrap_or(""), text)
             }
@@ -556,6 +574,8 @@ fn fixed_cell_width(column: FixedColumn, snapshot: &FishSnapshot) -> usize {
         FixedColumn::Species => table::visual_width(snapshot.species_name),
         FixedColumn::Display => snapshot.display_width,
         FixedColumn::Weight => fields::format_weight(snapshot.weight_g).len(),
+        FixedColumn::Worth => table::visual_width(&snapshot.worth),
+        FixedColumn::Fed => table::visual_width(&snapshot.fed),
         FixedColumn::Fishtank => snapshot.tank_name.as_deref().map_or(0, table::visual_width),
         FixedColumn::Status => table::visual_width(snapshot.status()),
     }

@@ -25,7 +25,6 @@ use crate::colors::{PINK, WHITE};
 use crate::consumable::{COFFEE_SPEED_MULT, COFFEE_SWAY_MULT, COFFEE_ZOOMIE_DT_MULT};
 use crate::economy::Money;
 use crate::entities::components::{Position, SwayState, Velocity, tick_sway};
-use crate::entities::food::FOOD_WEIGHT_GAIN_G;
 use crate::entities::glistening::{GlisteningMode, color_for_glisten, derive_glistening_palette};
 use crate::entities::speech::SpeechBubble;
 use crate::loot::{StockItem, junk_cell};
@@ -38,10 +37,12 @@ use crate::tank::Sky;
 use crate::util::even_indices;
 
 mod adorn;
+mod appetite;
 mod locomotion;
 mod record;
 
 pub use adorn::{MOON_DARK, MOON_LIT};
+pub use appetite::{BURP, Fed};
 pub use locomotion::{PUFF_SECS, SHY_HIDING_SECS};
 use record::FishRecord;
 
@@ -573,10 +574,6 @@ impl Fish {
         }
     }
 
-    pub fn is_weight_uncapped(&self) -> bool {
-        self.unfish_state.is_some()
-    }
-
     pub fn wake_color(&self) -> Option<Color> {
         if let Some(us) = self.unfish_state.as_ref() {
             return us.wake_color;
@@ -686,8 +683,12 @@ impl Fish {
         self.worth_at(self.weight_g)
     }
 
+    fn sells_for_nothing(&self) -> bool {
+        !self.is_sellable() || self.script().is_some_and(BotfishState::is_printed)
+    }
+
     fn worth_at(&self, weight_g: u32) -> Money {
-        if !self.is_sellable() || self.script().is_some_and(BotfishState::is_printed) {
+        if self.sells_for_nothing() {
             return 0;
         }
         let base = Money::from(self.species.sell_value(weight_g, self.size_category))
@@ -695,14 +696,6 @@ impl Fish {
                 .species
                 .appraisal(self.size_category, self.pattern_seed);
         base + base * Money::from(self.sell_price_bonus_pct) / PERCENT_WHOLE
-    }
-
-    pub fn earns_from_food(&self) -> bool {
-        self.worth_at(self.weight_g.saturating_add(FOOD_WEIGHT_GAIN_G)) > self.sell_value()
-    }
-
-    pub fn seeks_food(&self) -> bool {
-        self.ability_stacks(FishSpecies::Candyfish) > 0 || self.earns_from_food()
     }
 
     pub fn circadian_state(&self) -> Circadian {
@@ -2098,6 +2091,7 @@ impl Fish {
             &mut habits.puffed,
             &mut habits.lit,
             &mut habits.alert,
+            &mut habits.sated,
             &mut habits.hiding,
             &mut habits.resting,
             &mut habits.rest_clock,

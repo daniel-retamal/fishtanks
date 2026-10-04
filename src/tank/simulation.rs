@@ -223,19 +223,12 @@ impl Tank {
             return;
         }
         self.food[idx].eaten = true;
-        let cat = self.fish[i].size_category;
-        let cap = if self.fish[i].is_weight_uncapped() {
-            0
-        } else {
-            self.fish[i].species.config().weight_cap[cat as usize]
-        };
         let gain = if self.food[idx].is_candy {
             FOOD_WEIGHT_GAIN_G * CANDY_GAIN_MULT
         } else {
             FOOD_WEIGHT_GAIN_G
         };
-        let new_w = self.fish[i].weight_g + gain;
-        self.fish[i].weight_g = if cap == 0 { new_w } else { new_w.min(cap) };
+        self.fish[i].eat(gain);
     }
 
     pub(super) fn assign_food_to_idle_fish(&mut self) {

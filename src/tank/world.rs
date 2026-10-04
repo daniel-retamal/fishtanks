@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{Link, Tank};
 use crate::economy;
 use crate::fishes::botfish::BotfishState;
-use crate::fishes::fish::Fish;
+use crate::fishes::fish::{Fed, Fish};
 use crate::fishes::species::FishSpecies;
 
 pub const HOURS_PER_DAY: u32 = 24;
@@ -120,6 +120,7 @@ pub struct SensedFish {
     pub species: FishSpecies,
     pub weight_g: u32,
     pub value: u32,
+    pub full: bool,
 }
 
 impl SensedFish {
@@ -129,6 +130,7 @@ impl SensedFish {
             species: fish.species,
             weight_g: fish.weight_g,
             value: economy::reading(fish.sell_value()),
+            full: fish.fed() == Fed::Full,
         }
     }
 }
@@ -433,6 +435,7 @@ mod tests {
             species,
             weight_g,
             value,
+            full: false,
         }
     }
 

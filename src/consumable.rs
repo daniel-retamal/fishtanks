@@ -16,7 +16,6 @@ pub const COFFEE_SPEED_MULT: f32 = 0.8;
 pub const COFFEE_SWAY_MULT: f32 = 0.7;
 pub const COFFEE_ZOOMIE_DT_MULT: f32 = 0.3;
 
-const CHOCOLATE_WEIGHT_BONUS_G: u32 = 5000;
 const IRRADIATED_MILK_MUTATIONS_MIN: u32 = 10;
 const IRRADIATED_MILK_MUTATIONS_MAX: u32 = 15;
 
@@ -257,6 +256,13 @@ impl ConsumeTarget {
         }
     }
 
+    pub fn fattens(self) -> bool {
+        match self {
+            ConsumeTarget::Milk(variant) => variant.weight_gain_g() > 0,
+            ConsumeTarget::Part(_) | ConsumeTarget::Etch(_) => false,
+        }
+    }
+
     pub fn accepts(self, fish: &Fish) -> bool {
         if fish.unfish_state.is_some() {
             return false;
@@ -283,7 +289,7 @@ pub fn apply_milk_to_fish(variant: MilkVariant, fish: &mut Fish, rng: &mut impl 
     match variant {
         MilkVariant::Plain | MilkVariant::Blueberry | MilkVariant::Honey | MilkVariant::Matcha => {}
         MilkVariant::Chocolate => {
-            fish.weight_g = fish.weight_g.saturating_add(CHOCOLATE_WEIGHT_BONUS_G);
+            fish.weight_g = fish.weight_g.saturating_add(variant.weight_gain_g());
             apply_mutation_to_fish(fish, Mutation::SizeIncrease, rng);
         }
         MilkVariant::Strawberry => {

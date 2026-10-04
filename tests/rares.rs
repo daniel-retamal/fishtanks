@@ -1110,7 +1110,8 @@ fn kissfish_that_meet_kiss_and_send_up_a_heart() {
     let mut tank = tank_of(TankKind::Base);
     let a = add(&mut tank, FishSpecies::Kissfish, "Romeo");
     let b = add(&mut tank, FishSpecies::Kissfish, "Julieta");
-    for (i, x) in [(a, 20.0), (b, 32.0)] {
+    let lips_apart = 20.0 + tank.fish[a].display_width as f32 + 1.0;
+    for (i, x) in [(a, 20.0), (b, lips_apart)] {
         tank.fish[i].position.x = x;
         tank.fish[i].position.y = 6.0;
         tank.fish[i].velocity.dx = 0.0;

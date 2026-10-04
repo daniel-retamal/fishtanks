@@ -89,6 +89,7 @@ pub struct Habits {
     pub rest_clock: f32,
     pub escape_clock: Option<f32>,
     pub alert: f32,
+    pub sated: f32,
     pub bumped: bool,
     pub mimed: bool,
     pub occupied: Vec<(i32, i32)>,

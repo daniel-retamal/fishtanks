@@ -9,6 +9,7 @@ use unicode_width::UnicodeWidthChar;
 use crate::ui::modal;
 
 pub const NOTHING: &str = "-";
+pub const INFINITY: &str = "∞";
 const TITLE_INSET: u16 = 2;
 const TITLE_MARGIN: u16 = 4;
 

@@ -119,6 +119,7 @@ const HONEY_MILK_DESCRIPTION: &str = "A land flowing with milk and honey, subscr
 const MATCHA_MILK_NAME: &str = "Matcha Milk";
 const MATCHA_MILK_DESCRIPTION: &str = "Stone-ground, shade-grown reflex concentrate. It saw the bite before the bite saw you. Better fishing";
 const CHOCOLATE_MILK_NAME: &str = "Chocolate Milk";
+const CHOCOLATE_WEIGHT_BONUS_G: u32 = 5000;
 const CHOCOLATE_MILK_DESCRIPTION: &str = "Hyper-dense lipid-maximizing slurry. Overrides the baseline biological density caps for absolute mass extraction. Numbers must go up. Increase fish's weight";
 const STRAWBERRY_MILK_NAME: &str = "Strawberry Milk";
 const STRAWBERRY_MILK_DESCRIPTION: &str = "Imbues the organism with a Cursed Economic Paradigm (CEP). Compounding artificial market inflation through pastel-tier commodification. Bump sell price";
@@ -208,6 +209,20 @@ impl MilkVariant {
             | MilkVariant::Vanilla
             | MilkVariant::Alien
             | MilkVariant::Irradiated => None,
+        }
+    }
+
+    pub fn weight_gain_g(self) -> u32 {
+        match self {
+            MilkVariant::Chocolate => CHOCOLATE_WEIGHT_BONUS_G,
+            MilkVariant::Plain
+            | MilkVariant::Blueberry
+            | MilkVariant::Honey
+            | MilkVariant::Matcha
+            | MilkVariant::Strawberry
+            | MilkVariant::Vanilla
+            | MilkVariant::Alien
+            | MilkVariant::Irradiated => 0,
         }
     }
 }

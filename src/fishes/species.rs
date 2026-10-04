@@ -2308,9 +2308,8 @@ impl FishSpecies {
         if weight_cap == 0 || weight_g <= weight_base {
             return sell_base;
         }
-        let frac = (weight_g - weight_base).min(weight_cap - weight_base) as f32
-            / (weight_cap - weight_base) as f32;
-        sell_base + (frac * (sell_cap - sell_base) as f32) as u32
+        let frac = (weight_g - weight_base) as f32 / (weight_cap - weight_base) as f32;
+        sell_base.saturating_add((frac * (sell_cap - sell_base) as f32) as u32)
     }
 
     pub fn mutant_color_for_seed(seed: u64) -> Color {

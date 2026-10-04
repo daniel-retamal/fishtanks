@@ -1,0 +1,25 @@
+# JOURNEY · feeding for money: the player sees how far food has taken each fish (the Fed gauge).
+# A bought fish starts at its catch weight, so it reads 0% until it eats; the sell list shows a Fed
+# column beside the price whenever it holds a fish, and /show says what the fish is worth full.
+
+clear
+include scenes/start-with-a-stake.play
+include scenes/buy-a-fish.play Merluza Ann
+run /shop
+key down
+key enter
+expect Fed
+expect Ann (Merluza)
+expect 0%
+snap the sell list shows how fed every fish is
+key esc
+key esc
+absent Fed
+
+run /feed
+tick 300
+run /show "Ann"
+expect FishResource#show
+snap Ann after a portion of food
+key esc
+absent FishResource#show

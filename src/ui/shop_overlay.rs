@@ -10,7 +10,11 @@ use crate::colors::{DARK_GRAY, WHITE};
 use crate::{
     economy::{Money, grouped},
     entities::food::FOOD_BUY_PRICE,
-    fishes::{fish::Fish, parts::PartTier, species::FishSpecies},
+    fishes::{
+        fish::{Fed, Fish},
+        parts::PartTier,
+        species::FishSpecies,
+    },
     ledger::Flow,
     loot::{
         CIRCUIT_BLUEPRINT_NAME, CIRCUIT_BLUEPRINT_SELL_PRICE, ConsumableKind, JUNK_PER_JUNKFISH,
@@ -18,7 +22,7 @@ use crate::{
     },
     tank::TankKind,
     ui::{
-        draw_fish_centred, fish_art_height,
+        draw_fish_centred, fields, fish_art_height,
         hint_bar::HintBar,
         hints::{
             HINT_BACK, HINT_CANCEL, HINT_CLOSE, HINT_ENTER_ASSEMBLE, HINT_ENTER_BUY,
@@ -403,6 +407,7 @@ pub enum SellEntry {
         name: String,
         species: FishSpecies,
         sell_value: Money,
+        fed: Fed,
     },
     Junk {
         qty: u32,
@@ -460,6 +465,17 @@ impl SellEntry {
 
     pub fn price_label(&self) -> String {
         format!("${}", self.unit_price())
+    }
+
+    pub fn fed(&self) -> Option<Fed> {
+        match self {
+            SellEntry::Fish { fed, .. } => Some(*fed),
+            _ => None,
+        }
+    }
+
+    fn fed_label(&self) -> Option<String> {
+        self.fed().map(fields::format_fed)
     }
 
     pub fn unit_price(&self) -> Money {
@@ -533,7 +549,7 @@ pub struct SellMenuState {
 
 impl SellMenuState {
     pub fn new(
-        tank_fish: &[(String, FishSpecies, Money)],
+        tank_fish: &[(String, FishSpecies, Money, Fed)],
         inventory: &HashMap<StockItem, u32>,
         sellable_tanks: &[(String, u32)],
         blueprint_names: &[String],
@@ -579,10 +595,11 @@ impl SellMenuState {
                 sell_price: *sell_price,
             });
         }
-        items.extend(tank_fish.iter().map(|(n, s, sv)| SellEntry::Fish {
+        items.extend(tank_fish.iter().map(|(n, s, sv, fed)| SellEntry::Fish {
             name: n.clone(),
             species: *s,
             sell_value: *sv,
+            fed: *fed,
         }));
         if items.is_empty() {
             return None;
@@ -594,6 +611,21 @@ impl SellMenuState {
             scroll: Scroll::default(),
             confirm: None,
         })
+    }
+
+    fn has_fish(&self) -> bool {
+        self.items.iter().any(|entry| entry.fed().is_some())
+    }
+
+    fn fed_room(&self) -> u16 {
+        if !self.has_fish() {
+            return 0;
+        }
+        let notes = self.items.iter().filter_map(SellEntry::fed_label);
+        note_width(
+            fields::FED_HEADER,
+            notes.map(|note| table::visual_width(&note)),
+        ) + PRICE_GAP
     }
 
     pub fn scroll_up(&mut self) {
@@ -679,6 +711,7 @@ impl<P> BuyListState<P> {
                 scroll: &self.scroll,
                 cursor_vis,
                 dim,
+                note_header: None,
             },
         );
     }
@@ -824,6 +857,13 @@ impl ShopPage {
             ShopPage::Sell(sm) => COLUMN_HEADER_ROWS + sm.items.len() as u16,
         }
     }
+
+    fn body_w(&self) -> u16 {
+        match self {
+            ShopPage::Sell(sm) => RIGHT_INNER_WIDTH + sm.fed_room(),
+            _ => RIGHT_INNER_WIDTH,
+        }
+    }
 }
 
 pub struct ShopOverlay<'a> {
@@ -884,7 +924,7 @@ impl<'a> ShopOverlay<'a> {
             border: Style::default().fg(fg).bg(BACKGROUND),
             background: BACKGROUND,
             side: (PENGUIN_WIDTH, PENGUIN_HEIGHT),
-            body_w: RIGHT_INNER_WIDTH,
+            body_w: page.body_w(),
             body_min_w: MIN_BODY_WIDTH,
             body_rows: &rows_for,
             hints,
@@ -934,6 +974,7 @@ impl Widget for ShopOverlay<'_> {
                         scroll: &state.category_scroll,
                         cursor_vis,
                         dim,
+                        note_header: None,
                     },
                 );
                 if let Some(popup) = buy_popup {
@@ -960,6 +1001,7 @@ impl Widget for ShopOverlay<'_> {
                         scroll: &state.category_scroll,
                         cursor_vis,
                         dim,
+                        note_header: None,
                     },
                 );
             }
@@ -985,8 +1027,12 @@ impl Widget for ShopOverlay<'_> {
                 let rows: Vec<PricedRow> = sm
                     .items
                     .iter()
-                    .map(|entry| PricedRow::plain(entry.label(), entry.price_label(), true))
+                    .map(|entry| {
+                        PricedRow::plain(entry.label(), entry.price_label(), true)
+                            .noted(entry.fed_label())
+                    })
                     .collect();
+                let note_header = sm.has_fish().then_some(fields::FED_HEADER);
                 draw_priced_list(
                     buf,
                     &panels,
@@ -997,6 +1043,7 @@ impl Widget for ShopOverlay<'_> {
                         scroll: &sm.scroll,
                         cursor_vis,
                         dim,
+                        note_header,
                     },
                 );
                 if let Some(ref confirm) = sm.confirm {
@@ -1012,6 +1059,7 @@ const ITEM_HEADER: &str = "Item";
 
 struct PricedRow {
     label: String,
+    note: Option<String>,
     price: String,
     bright: bool,
 }
@@ -1020,9 +1068,14 @@ impl PricedRow {
     fn plain(label: String, price: String, bright: bool) -> Self {
         Self {
             label,
+            note: None,
             price,
             bright,
         }
+    }
+
+    fn noted(self, note: Option<String>) -> Self {
+        Self { note, ..self }
     }
 }
 
@@ -1032,6 +1085,37 @@ struct ListView<'a> {
     scroll: &'a Scroll,
     cursor_vis: bool,
     dim: bool,
+    note_header: Option<&'static str>,
+}
+
+struct NoteColumn {
+    header: &'static str,
+    x: u16,
+    width: u16,
+}
+
+fn note_width(header: &str, notes: impl Iterator<Item = usize>) -> u16 {
+    notes
+        .chain([table::visual_width(header)])
+        .max()
+        .unwrap_or(0) as u16
+}
+
+impl ListView<'_> {
+    fn note_column(&self, area: Rect) -> Option<NoteColumn> {
+        let header = self.note_header?;
+        let notes = self.rows.iter().filter_map(|row| row.note.as_deref());
+        let width = note_width(header, notes.map(table::visual_width));
+        let x = area.right().saturating_sub(TEXT_PAD + width);
+        Some(NoteColumn { header, x, width })
+    }
+
+    fn price_edge(&self, area: Rect) -> u16 {
+        match self.note_column(area) {
+            Some(note) => note.x.saturating_sub(PRICE_GAP),
+            None => area.right().saturating_sub(TEXT_PAD),
+        }
+    }
 }
 
 pub fn bench_tiers() -> Vec<PartTier> {
@@ -1118,11 +1202,14 @@ fn draw_priced_list(buf: &mut Buffer, panels: &Panels, title: &str, view: &ListV
         .bg(BACKGROUND);
     let prefix_w = table::visual_width(SELECTED_PREFIX) as u16;
     let price_w = table::visual_width(PRICE_HEADER) as u16;
-    let price_x = body.right().saturating_sub(price_w + TEXT_PAD);
+    let price_x = view.price_edge(body).saturating_sub(price_w);
     let title_room = price_x.saturating_sub(body.x + prefix_w + PRICE_GAP) as usize;
     buf.set_stringn(body.x + prefix_w, body.y, title, title_room, bold);
     if price_x > body.x + prefix_w {
         buf.set_stringn(price_x, body.y, PRICE_HEADER, price_w as usize, bold);
+    }
+    if let Some(note) = view.note_column(body) {
+        buf.set_stringn(note.x, body.y, note.header, note.width as usize, bold);
     }
     Rule {
         label: None,
@@ -1174,6 +1261,7 @@ impl Rule<'_> {
 fn draw_rows(buf: &mut Buffer, panels: &Panels, area: Rect, view: &ListView) {
     let n = view.rows.len();
     let heights = vec![1usize; n];
+    let note = view.note_column(area);
     let shown = view
         .scroll
         .follow(&heights, view.selected, area.height as usize);
@@ -1192,14 +1280,18 @@ fn draw_rows(buf: &mut Buffer, panels: &Panels, area: Rect, view: &ListView) {
             UNSELECTED_PREFIX
         };
         let price_w = table::visual_width(&entry.price) as u16;
-        let price_x = area.right().saturating_sub(price_w + TEXT_PAD);
-        let label_room = if price_w == 0 {
+        let price_x = view.price_edge(area).saturating_sub(price_w);
+        let label_room = if price_w == 0 && note.is_none() {
             area.width as usize
         } else {
             price_x.saturating_sub(area.x + PRICE_GAP) as usize
         };
         let label = table::ellipsize(&format!("{prefix}{}", entry.label), label_room);
         buf.set_stringn(area.x, y, &label, label_room, style);
+        if let Some(note) = &note {
+            let text = entry.note.as_deref().unwrap_or(table::NOTHING);
+            buf.set_stringn(note.x, y, text, note.width as usize, style);
+        }
         if price_w > 0 {
             buf.set_stringn(price_x, y, &entry.price, price_w as usize, style);
         }

@@ -93,6 +93,16 @@ impl ShowState {
                 swatch: None,
             },
             ShowField {
+                label: fields::WORTH_HEADER,
+                value: fields::format_worth(fish),
+                swatch: None,
+            },
+            ShowField {
+                label: fields::FED_HEADER,
+                value: fields::format_fed(fish.fed()),
+                swatch: None,
+            },
+            ShowField {
                 label: "Fishtank",
                 value: tank_name.to_string(),
                 swatch: None,
