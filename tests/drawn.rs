@@ -3,7 +3,7 @@ use fishtank::{
     fishes::{
         fish::{Direction, Fish, PUFF_SECS},
         mutations::{Mutatable, Mutation, apply_mutation},
-        species::ALL_SPECIES,
+        species::{ALL_SPECIES, FishSpecies},
         unfish::UnfishKind,
     },
     tank::{FULL_MOON, Sky, Tank, TankBackground, TankKind},
@@ -14,6 +14,7 @@ use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 const TANK_W: u16 = 48;
 const TANK_H: u16 = 20;
 const SPOT: (f32, f32) = (14.0, 10.0);
+const PATCH_SAMPLES: usize = 2000;
 const PHASES: [f32; 2] = [0.0, 1.6];
 const SKIES: [Sky; 2] = [
     Sky {
@@ -259,4 +260,24 @@ fn a_botfish_is_exactly_as_wide_as_it_draws() {
         !bot.supports_now(Mutation::SizeIncrease),
         "its body is a fixed board"
     );
+}
+
+#[test]
+fn a_colour_patch_always_lands_on_a_cell_the_fish_draws() {
+    for _ in 0..PATCH_SAMPLES {
+        let born_with_an_ear = Being::Fish(Fish::new(
+            FishSpecies::Rabbitfish,
+            "Probe".into(),
+            SPOT.0,
+            SPOT.1,
+            &mut rand::rng(),
+        ));
+        let before = born_with_an_ear.frames();
+        let mut patched = born_with_an_ear.clone();
+        patched.mutate(Mutation::ColorPatch);
+        assert!(
+            patched.frames() != before,
+            "a patch fell off the drawn body"
+        );
+    }
 }

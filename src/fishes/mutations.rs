@@ -492,7 +492,8 @@ pub trait MutantBacked {
 
 fn body_cells(mutant: &MutantState, width: usize) -> std::ops::Range<usize> {
     let eyes = mutant.left_eyes.len().max(mutant.right_eyes.len());
-    let end = width.saturating_sub(mutant.adornments.lead()).max(1);
+    let inserted = mutant.adornments.lead() + mutant.ear_count + mutant.hydra_eyes.len();
+    let end = width.saturating_sub(inserted).max(1);
     let start = (MOUTH_CELLS + eyes).min(end - 1);
     start..end
 }

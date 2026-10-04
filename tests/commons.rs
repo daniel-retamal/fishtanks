@@ -129,13 +129,19 @@ fn a_gradient_runs_from_the_first_colour_at_the_mouth_to_the_last_at_the_tail() 
 
 #[test]
 fn a_speckled_fish_is_its_first_colour_flecked_with_the_rest() {
+    let flecks = palette(FishSpecies::Trucha);
+    let mut cells = 0;
+    let mut base = 0;
     for _ in 0..SAMPLES {
         let colors = colors_from_the_head(FishSpecies::Trucha);
-        let flecks = palette(FishSpecies::Trucha);
         assert!(colors.iter().all(|c| flecks.contains(c)));
-        let base = colors.iter().filter(|&&c| c == flecks[0]).count();
-        assert!(base > 0, "{colors:?}");
+        cells += colors.len();
+        base += colors.iter().filter(|&&c| c == flecks[0]).count();
     }
+    assert!(
+        base * 2 > cells,
+        "{base} of {cells} cells are the first colour"
+    );
 }
 
 #[test]
