@@ -109,7 +109,8 @@ impl Shot {
 
 struct Canvas {
     width: u16,
-    half: u16,
+    above: u16,
+    below: u16,
     tall: Option<u16>,
 }
 
@@ -117,7 +118,8 @@ impl Canvas {
     fn fitting(frames: &[Vec<Fish>]) -> Self {
         let mut canvas = Canvas {
             width: 1,
-            half: PAD_Y,
+            above: 0,
+            below: 0,
             tall: None,
         };
         for frame in frames {
@@ -129,19 +131,21 @@ impl Canvas {
                     continue;
                 }
                 let (above, below) = rows_around_body(fish);
-                canvas.half = canvas.half.max(above).max(below);
+                canvas.above = canvas.above.max(above);
+                canvas.below = canvas.below.max(below);
             }
         }
         canvas
     }
 
     fn area(&self) -> Rect {
-        let height = self.tall.map_or(2 * self.half + 1, |tall| tall + 2 * PAD_Y);
+        let art = self.tall.unwrap_or(self.above + 1 + self.below);
+        let height = art + 2 * PAD_Y;
         Rect::new(0, 0, self.width + 2 * PAD_X, height)
     }
 
     fn body_y(&self) -> u16 {
-        self.half
+        PAD_Y + self.above
     }
 
     fn draw(&self, frame: &[Fish]) -> Buffer {
