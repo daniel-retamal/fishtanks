@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use fishtank::entities::cow::{Cow, CowVariant};
 use fishtank::fishes::fish::{Direction, Fish, FishState, compute_display_width};
-use fishtank::fishes::mutations::{Mutatable, Mutation, apply_mutation_to_fish};
+use fishtank::fishes::mutations::{Mutatable, Mutation, apply_mutation, apply_mutation_to_fish};
 use fishtank::fishes::species::{
     ALL_SPECIES, FishSpecies, Habit, Habitat, Locomotion, SizeCategory, SpeciesConfig, Zoomie,
 };
@@ -15,7 +15,7 @@ use fishtank::settings::{DEFAULT_FPS, Settings};
 use fishtank::sprite::TRANSPARENT;
 use fishtank::tank::{Sky, Tank, TankBackground, TankKind};
 use fishtank::testing::{Reel, Still};
-use fishtank::ui::tank_view::TankView;
+use fishtank::ui::tank_view::{TankView, render_cow};
 use fishtank::ui::{draw_fish_centred, fish_art_height, render_fish_sprite};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -28,7 +28,8 @@ const USAGE: &str = "usage: cargo run --example dex -- <out-dir>
 Films the wiki's dex: every fish species a player can meet, every unfish, every cow and every
 mutation, each as a reel of its own (<out>/reels/<slug>.html). Every fish is animated in place,
 the way /index draws it, showing its gift (a puff, wings, a flash); only a bouncer, and the
-Phantom's teleport, move about a bubble-free box. Cows graze in a small pond. Writes
+Phantom's teleport, move about a bubble-free box. A cow stands on the bottom edge of its frame;
+the irradiated one stands in a Radioactivetank, growing a hydra head and mutating. Writes
 <out>/dex.tsv (a header row, then one row per entry) and the Mutations page's engulfment scene
 (scene-engulfment).";
 const PAD_X: u16 = 2;
@@ -48,7 +49,11 @@ const PUFF_TICKS: usize = 20;
 const PUFF_SECS: f32 = 1.0;
 const POND: (u16, u16) = (36, 8);
 const BOX_POND: (u16, u16) = (24, 10);
-const COW_POND: (u16, u16) = (34, 8);
+const COW_PAD: u16 = 3;
+const COW_STAGE: (u16, u16) = (96, 40);
+const COW_SPOT: (f32, f32) = (24.0, 20.0);
+const COW_NAME: &str = "Vaquita";
+const MUTATION_TRIES: usize = 50;
 const POND_WARMUP_TICKS: usize = 30;
 const POND_LOOKOUT_TICKS: usize = 30 * 600;
 const POND_LEAD_TICKS: usize = 30;
@@ -73,6 +78,29 @@ const TSV: &str = "dex.tsv";
 const FIELDS: &str = "kind\tslug\tname\trarity\tslow\tfast\tshort\tlong\tlight\theavy\tcheap\tdear\tprice\thome\tpattern\tmoves\tzoomie\thabit\tskin\tborn\tpalette\tsprite";
 const NOTHING: &str = "-";
 const ROW_BREAK: &str = "\\n";
+const ON_THE_FLOOR: Margin = Margin {
+    top: 2 * PAD_Y,
+    bottom: 0,
+};
+const TRIMMED: [(FishSpecies, Margin); 5] = [
+    (
+        FishSpecies::Pejesapo,
+        Margin {
+            top: PAD_Y,
+            bottom: 0,
+        },
+    ),
+    (
+        FishSpecies::Lanternfish,
+        Margin {
+            top: 0,
+            bottom: PAD_Y,
+        },
+    ),
+    (FishSpecies::Stonefish, ON_THE_FLOOR),
+    (FishSpecies::Crabfish, ON_THE_FLOOR),
+    (FishSpecies::Snailfish, ON_THE_FLOOR),
+];
 const HIDDEN: [FishSpecies; 2] = [FishSpecies::Cheatfish, FishSpecies::Junkfish];
 const UNFISH: [UnfishKind; 7] = [
     UnfishKind::Reversed,
@@ -107,20 +135,42 @@ impl Shot {
     }
 }
 
+#[derive(Clone, Copy)]
+struct Margin {
+    top: u16,
+    bottom: u16,
+}
+
+impl Margin {
+    const EVEN: Margin = Margin {
+        top: PAD_Y,
+        bottom: PAD_Y,
+    };
+
+    fn of(species: FishSpecies) -> Self {
+        TRIMMED
+            .iter()
+            .find(|(trimmed, _)| *trimmed == species)
+            .map_or(Self::EVEN, |&(_, margin)| margin)
+    }
+}
+
 struct Canvas {
     width: u16,
     above: u16,
     below: u16,
     tall: Option<u16>,
+    margin: Margin,
 }
 
 impl Canvas {
-    fn fitting(frames: &[Vec<Fish>]) -> Self {
+    fn fitting(frames: &[Vec<Fish>], margin: Margin) -> Self {
         let mut canvas = Canvas {
             width: 1,
             above: 0,
             below: 0,
             tall: None,
+            margin,
         };
         for frame in frames {
             canvas.width = canvas.width.max(row_width(frame));
@@ -140,12 +190,12 @@ impl Canvas {
 
     fn area(&self) -> Rect {
         let art = self.tall.unwrap_or(self.above + 1 + self.below);
-        let height = art + 2 * PAD_Y;
+        let height = self.margin.top + art + self.margin.bottom;
         Rect::new(0, 0, self.width + 2 * PAD_X, height)
     }
 
     fn body_y(&self) -> u16 {
-        PAD_Y + self.above
+        self.margin.top + self.above
     }
 
     fn draw(&self, frame: &[Fish]) -> Buffer {
@@ -156,7 +206,7 @@ impl Canvas {
             let width = art_width(fish);
             if is_multi(fish) {
                 let height = fish_art_height(fish, 1);
-                let top = area.height.saturating_sub(height) / 2;
+                let top = self.margin.top;
                 let slot = Rect::new(x, top, width, height).intersection(area);
                 draw_fish_centred(&mut buffer, fish, slot, Color::Reset);
             } else if !fish.is_invisible() {
@@ -229,6 +279,7 @@ fn animate(fishes: &mut [Fish]) {
 
 fn shoot(
     slug: &str,
+    margin: Margin,
     scenes: Vec<(Vec<Fish>, usize)>,
     step: impl Fn(&mut [Fish], usize, usize),
 ) -> Shot {
@@ -242,7 +293,7 @@ fn shoot(
             }
         }
     }
-    let canvas = Canvas::fitting(&frames);
+    let canvas = Canvas::fitting(&frames, margin);
     let mut shot = Shot::new(slug);
     for frame in &frames {
         shot.push(&canvas.draw(frame));
@@ -257,7 +308,7 @@ fn slug_of(text: &str) -> String {
 fn sprite_text(fish: &Fish) -> String {
     let at_rest = posed(fish, Direction::Left);
     let frame = vec![at_rest];
-    let buffer = Canvas::fitting(std::slice::from_ref(&frame)).draw(&frame);
+    let buffer = Canvas::fitting(std::slice::from_ref(&frame), Margin::EVEN).draw(&frame);
     let still = Still::of("sprite", &buffer);
     (0..still.height())
         .map(|y| still.row_text(y).trim_end().to_string())
@@ -399,8 +450,10 @@ impl Pond {
     fn new(kind: TankKind, size: (u16, u16), night: bool) -> Self {
         let mut tank = Tank::new("Pond".to_string(), kind, &[]);
         tank.resize(size.0, size.1, &[]);
-        if let TankBackground::Plain { plants } = &mut tank.background {
-            plants.clear();
+        match &mut tank.background {
+            TankBackground::Plain { plants } => plants.clear(),
+            TankBackground::Rad { bg } => bg.barrels.clear(),
+            _ => {}
         }
         let sky = Sky {
             daylight: !night,
@@ -435,19 +488,6 @@ impl Pond {
     fn with_species(self, species: FishSpecies, name: &str) -> Self {
         let fish = Fish::new(species, name.to_string(), 0.0, 0.0, &mut rand::rng());
         self.with_fish(fish)
-    }
-
-    fn with_cow(mut self, variant: CowVariant) -> Self {
-        let floor = self.tank.height as f32 - Cow::sprite_height() as f32;
-        let cow = Cow::new(
-            "Vaquita".to_string(),
-            variant,
-            self.tank.width as f32 / 4.0,
-            floor.max(0.0),
-            &mut rand::rng(),
-        );
-        self.tank.cows.push(cow);
-        self
     }
 
     fn waiting_for(mut self, cue: Cue) -> Self {
@@ -555,18 +595,23 @@ fn portrait_shot(species: FishSpecies, fish: &Fish, slug: &str) -> Shot {
     };
     let mut fish = fish.clone();
     fish.sky.daylight = !shines_at_night(&config);
-    shoot(slug, vec![(vec![fish], ticks)], |fishes, _, tick| {
-        show_gift(&mut fishes[0], &config, (tick / GIFT_TICKS) % 2 == 1);
-        if !auto || tick == 0 || tick % MUTANT_STEP_TICKS != 0 {
-            return;
-        }
-        let mut rng = rand::rng();
-        let subject = &mut fishes[0];
-        if let Some(mutation) = subject.random_mutation_with_room(&mut rng, false) {
-            apply_mutation_to_fish(subject, mutation, &mut rng);
-            subject.refresh_width();
-        }
-    })
+    shoot(
+        slug,
+        Margin::of(species),
+        vec![(vec![fish], ticks)],
+        |fishes, _, tick| {
+            show_gift(&mut fishes[0], &config, (tick / GIFT_TICKS) % 2 == 1);
+            if !auto || tick == 0 || tick % MUTANT_STEP_TICKS != 0 {
+                return;
+            }
+            let mut rng = rand::rng();
+            let subject = &mut fishes[0];
+            if let Some(mutation) = subject.random_mutation_with_room(&mut rng, false) {
+                apply_mutation_to_fish(subject, mutation, &mut rng);
+                subject.refresh_width();
+            }
+        },
+    )
 }
 
 fn species_shot(species: FishSpecies, rng: &mut impl rand::RngExt) -> (Shot, Fish) {
@@ -591,11 +636,13 @@ fn unfish_shot(kind: UnfishKind, rng: &mut impl rand::RngExt) -> (Shot, Fish) {
             .film(&slug),
         UnfishKind::Blinker => shoot(
             &slug,
+            Margin::EVEN,
             vec![(vec![just_before_a_blink(&fish)], BLINK_TICKS)],
             |_, _, _| {},
         ),
         _ => shoot(
             &slug,
+            Margin::EVEN,
             vec![(vec![posed(&fish, Direction::Left)], PORTRAIT_TICKS)],
             |_, _, _| {},
         ),
@@ -621,10 +668,170 @@ fn just_before_a_blink(fish: &Fish) -> Fish {
     history.swap_remove(0)
 }
 
-fn cow_shot(variant: CowVariant, kind: TankKind, slug: &str) -> Shot {
-    Pond::new(kind, COW_POND, false)
-        .with_cow(variant)
-        .film(slug)
+struct Paddock {
+    bounds: Rect,
+}
+
+impl Paddock {
+    fn around(frames: &[Cow]) -> Self {
+        let bounds = frames
+            .iter()
+            .filter_map(|cow| painted_bounds(&on_stage(cow)))
+            .reduce(Rect::union)
+            .expect("a cow paints something");
+        let stage = Rect::new(0, 0, COW_STAGE.0, COW_STAGE.1);
+        let room = Rect::new(
+            bounds.x.saturating_sub(COW_PAD),
+            bounds.y.saturating_sub(COW_PAD),
+            bounds.width + 2 * COW_PAD,
+            bounds.height + COW_PAD,
+        );
+        assert_eq!(stage.intersection(room), room, "the cow fits its stage");
+        Self { bounds }
+    }
+
+    fn area(&self) -> Rect {
+        Rect::new(
+            0,
+            0,
+            self.bounds.width + 2 * COW_PAD,
+            self.bounds.height + COW_PAD,
+        )
+    }
+
+    fn left(&self) -> u16 {
+        self.bounds.x - COW_PAD
+    }
+
+    fn top(&self) -> u16 {
+        self.bounds.y - COW_PAD
+    }
+
+    fn crop(&self, stage: &Buffer) -> Buffer {
+        let area = self.area();
+        let mut buffer = Buffer::empty(area);
+        for y in 0..area.height {
+            for x in 0..area.width {
+                buffer[(x, y)] = stage[(self.left() + x, self.top() + y)].clone();
+            }
+        }
+        buffer
+    }
+
+    fn moved(&self, cow: &Cow) -> Cow {
+        let mut cow = cow.clone();
+        cow.position.x -= f32::from(self.left());
+        cow.position.y -= f32::from(self.top());
+        cow
+    }
+}
+
+fn on_stage(cow: &Cow) -> Buffer {
+    let area = Rect::new(0, 0, COW_STAGE.0, COW_STAGE.1);
+    let mut buffer = Buffer::empty(area);
+    render_cow(cow, area, &mut buffer);
+    buffer
+}
+
+fn painted_bounds(buffer: &Buffer) -> Option<Rect> {
+    let area = buffer.area;
+    let painted: Vec<(u16, u16)> = (0..area.height)
+        .flat_map(|y| (0..area.width).map(move |x| (x, y)))
+        .filter(|&(x, y)| buffer[(x, y)].symbol() != " ")
+        .collect();
+    let left = painted.iter().map(|&(x, _)| x).min()?;
+    let right = painted.iter().map(|&(x, _)| x).max()?;
+    let top = painted.iter().map(|&(_, y)| y).min()?;
+    let bottom = painted.iter().map(|&(_, y)| y).max()?;
+    Some(Rect::new(left, top, right - left + 1, bottom - top + 1))
+}
+
+fn staged_cow(variant: CowVariant) -> Cow {
+    Cow::new(
+        COW_NAME.to_string(),
+        variant,
+        COW_SPOT.0,
+        COW_SPOT.1,
+        &mut rand::rng(),
+    )
+}
+
+fn cow_frames(mut cow: Cow, ticks: usize, step: impl Fn(&mut Cow, usize)) -> Vec<Cow> {
+    let dt = 1.0 / DEFAULT_FPS;
+    let mut frames = Vec::new();
+    for tick in 0..ticks {
+        step(&mut cow, tick);
+        cow.tick(dt, Sky::default());
+        if tick % FILM_EVERY == 0 {
+            frames.push(cow.clone());
+        }
+    }
+    frames
+}
+
+fn cow_shot(variant: CowVariant, slug: &str) -> Shot {
+    let frames = cow_frames(staged_cow(variant), PORTRAIT_TICKS, |_, _| {});
+    let paddock = Paddock::around(&frames);
+    let mut shot = Shot::new(slug);
+    for cow in &frames {
+        shot.push(&paddock.crop(&on_stage(cow)));
+    }
+    shot
+}
+
+fn shows_hydra(cow: &Cow) -> bool {
+    cow.hydra_count().min(cow.hydra_max()) > 0
+}
+
+fn mutate_keeping_hydra(cow: &mut Cow) {
+    let mut rng = rand::rng();
+    if !shows_hydra(cow) {
+        apply_mutation(cow, Mutation::Hydra, &mut rng);
+        cow.refresh_width();
+        assert!(shows_hydra(cow), "the irradiated cow grows a hydra head");
+        return;
+    }
+    for _ in 0..MUTATION_TRIES {
+        let Some(mutation) = cow.random_mutation_with_room(&mut rng, false) else {
+            return;
+        };
+        let mut trial = cow.clone();
+        apply_mutation(&mut trial, mutation, &mut rng);
+        trial.refresh_width();
+        if shows_hydra(&trial) {
+            *cow = trial;
+            return;
+        }
+    }
+}
+
+fn irradiated_cow_shot(slug: &str) -> Shot {
+    let frames = cow_frames(
+        staged_cow(CowVariant::Brown),
+        MUTANT_STEP_TICKS * MUTANT_STEPS,
+        |cow, tick| {
+            if tick > 0 && tick % MUTANT_STEP_TICKS == 0 {
+                mutate_keeping_hydra(cow);
+            }
+        },
+    );
+    let paddock = Paddock::around(&frames);
+    let area = paddock.area();
+    let mut pond = Pond::new(TankKind::Rad, (area.width, area.height), false);
+    let settings = Settings::default();
+    for _ in 0..POND_WARMUP_TICKS {
+        pond.step(&settings);
+    }
+    let mut shot = Shot::new(slug);
+    for cow in &frames {
+        for _ in 0..FILM_EVERY {
+            pond.step(&settings);
+        }
+        pond.tank.cows = vec![paddock.moved(cow)];
+        shot.push(&pond.frame());
+        pond.tank.cows.clear();
+    }
+    shot
 }
 
 struct Stage {
@@ -731,6 +938,7 @@ fn mutation_shot(mutation: Mutation) -> Shot {
     let puffs = mutation == Mutation::Puff;
     shoot(
         &slug,
+        Margin::EVEN,
         vec![(before, BEFORE_TICKS), (after, AFTER_TICKS)],
         |fishes, scene, tick| {
             if !puffs || scene == 0 {
@@ -825,11 +1033,11 @@ fn main() -> ExitCode {
     for &variant in CowVariant::ALL {
         let name = format!("{variant:?}");
         let slug = format!("cow-{}", slug_of(&name));
-        shots.push(cow_shot(variant, TankKind::Base, &slug));
+        shots.push(cow_shot(variant, &slug));
         let milk = format!("{:?}", variant.milk());
         let _ = writeln!(tsv, "{}", bare_row("cow", &slug, &format!("{name}:{milk}")));
     }
-    shots.push(cow_shot(CowVariant::Brown, TankKind::Rad, "cow-irradiated"));
+    shots.push(irradiated_cow_shot("cow-irradiated"));
     let _ = writeln!(
         tsv,
         "{}",

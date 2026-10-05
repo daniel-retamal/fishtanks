@@ -1991,7 +1991,7 @@ fn render_bat(bat: &Bat, area: Rect, buf: &mut Buffer) {
     }
 }
 
-fn render_cow(cow: &Cow, area: Rect, buf: &mut Buffer) {
+pub fn render_cow(cow: &Cow, area: Rect, buf: &mut Buffer) {
     let sprite = cow_sprite(cow);
     let base_x = area.x as i32 + cow.position.x as i32;
     let base_y = area.y as i32 + cow.position.y as i32 - cow.sprite_top_offset() as i32;
