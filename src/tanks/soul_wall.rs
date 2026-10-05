@@ -4,6 +4,8 @@ use rand::RngExt;
 use ratatui::style::Color;
 
 use crate::fishes::fish::{Direction, Fish};
+use crate::fishes::quirk::FORGET_TURN_MEAN_SECS;
+use crate::util::exponential_event;
 
 pub const SOUL_WALL_LIMIT: usize = 75;
 
@@ -44,7 +46,11 @@ impl Soul {
         soul
     }
 
-    fn tick(&mut self, dt: f32, height: u16) {
+    fn tick(&mut self, dt: f32, width: u16, height: u16, rng: &mut impl RngExt) {
+        if self.fish.forgets_it_died() {
+            self.roam(dt, width, height, rng);
+            return;
+        }
         let step = self.drift * dt;
         match self.fish.facing {
             Direction::Left => self.fish.position.x -= step,
@@ -53,7 +59,32 @@ impl Soul {
         self.fish.position.y = self.fish.position.y.min(lowest_soul_row(height));
     }
 
+    fn roam(&mut self, dt: f32, width: u16, height: u16, rng: &mut impl RngExt) {
+        let room = (width as f32 - self.fish.display_width as f32).max(0.0);
+        let turns = exponential_event(rng, FORGET_TURN_MEAN_SECS, dt);
+        let at_wall = match self.fish.facing {
+            Direction::Left => self.fish.position.x <= 0.0,
+            Direction::Right => self.fish.position.x >= room,
+        };
+        if turns || at_wall {
+            self.fish.facing = match self.fish.facing {
+                Direction::Left => Direction::Right,
+                Direction::Right => Direction::Left,
+            };
+        }
+        let step = self.fish.speed * dt;
+        let x = match self.fish.facing {
+            Direction::Left => self.fish.position.x - step,
+            Direction::Right => self.fish.position.x + step,
+        };
+        self.fish.position.x = x.clamp(0.0, room);
+        self.fish.position.y = self.fish.position.y.min(lowest_soul_row(height));
+    }
+
     fn is_gone(&self, width: u16) -> bool {
+        if self.fish.forgets_it_died() {
+            return false;
+        }
         let x = self.fish.position.x;
         match self.fish.facing {
             Direction::Left => x + self.fish.display_width as f32 <= 0.0,
@@ -134,7 +165,7 @@ impl SoulWall {
             return;
         }
         for soul in &mut self.drifting {
-            soul.tick(dt, height);
+            soul.tick(dt, width, height, rng);
         }
         let (gone, staying): (Vec<Soul>, Vec<Soul>) = std::mem::take(&mut self.drifting)
             .into_iter()

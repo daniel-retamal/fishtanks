@@ -222,6 +222,7 @@ impl Tank {
         else {
             return false;
         };
+        self.shed_if_molting(idx);
         if mutation == Mutation::Revert {
             return self.revert_fish(idx, &mut rng);
         }

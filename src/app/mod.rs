@@ -55,6 +55,7 @@ mod input;
 mod lessons;
 mod money;
 mod news;
+mod oddities;
 mod persistence;
 mod room;
 mod snapshot;
@@ -784,6 +785,8 @@ impl App {
 
         let coffee = self.coffee_stacks();
         let sky = self.day_clock.sky(self.zen);
+        self.watch_the_current_tank();
+        self.settle_graeae();
         for i in 0..self.tanks.len() {
             let events = self.tanks[i].tick(&self.settings, coffee, sky);
             let star_cash = std::mem::take(&mut self.tanks[i].pending_star_cash);
@@ -873,7 +876,7 @@ impl App {
             active_statuses: &self.active_statuses,
             cash: self.purse.shown(),
             food_supply: self.food_supply,
-            fish_count: self.tank().fish.len(),
+            fish_count: self.tank().seated(),
             fish_capacity: self.tank().shown_capacity(),
             modes,
             tank_name: &self.tank().name,
@@ -995,7 +998,8 @@ impl App {
             let mut tv = TankView::new(self.tank())
                 .with_names(self.settings.show_names && !self.zen)
                 .with_nets(self.settings.show_nets && !self.zen)
-                .with_epitaphs(!self.zen);
+                .with_epitaphs(!self.zen)
+                .with_typing(!self.editor.text.is_empty());
             if ritual_blocking {
                 let text = void_ritual::wish_display_text(&self.void_ritual, self.next_prayer);
                 tv = tv.with_ritual(text);

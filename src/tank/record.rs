@@ -75,6 +75,8 @@ impl TankRecord {
             sky: _,
             trails: _,
             inks: _,
+            sheddings: _,
+            watched: _,
         } = tank;
         let cargo = ufos
             .iter()

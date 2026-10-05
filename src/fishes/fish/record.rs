@@ -54,6 +54,8 @@ pub struct FishRecord {
     pending_rad_mutations: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     placement: Option<Placement>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    leeched: bool,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -99,6 +101,7 @@ impl From<Fish> for FishRecord {
             field_cache: _,
             sky: _,
             habits: _,
+            leeched,
             direction_timer: _,
             zoomie_timer: _,
             zoomed_secs: _,
@@ -125,6 +128,7 @@ impl From<Fish> for FishRecord {
             blessing_timer,
             pending_rad_mutations,
             placement,
+            leeched,
         }
     }
 }
@@ -180,6 +184,7 @@ impl From<FishRecord> for Fish {
             field_cache: Vec::new(),
             sky: Sky::default(),
             habits: Box::default(),
+            leeched: record.leeched,
             direction_timer: rng.random_range(DIRECTION_TIMER_MIN..DIRECTION_TIMER_MAX),
             zoomie_timer: rng.random_range(ZOOMIE_INITIAL_TIMER_MIN..ZOOMIE_INITIAL_TIMER_MAX),
             zoomed_secs: 0.0,

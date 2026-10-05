@@ -1,6 +1,7 @@
 use crate::entities::cow::CowVariant;
 use crate::fishes::mutations::Mutation;
 use crate::fishes::species::{ALL_SPECIES, FishSpecies};
+use crate::fishes::unfish::UnfishKind;
 use crate::loot::{ConsumableKind, MilkVariant};
 use crate::names::title_case;
 use crate::tank::TankKind;
@@ -1421,7 +1422,7 @@ pub enum Action {
     Import(String),
     Cowsay(String),
     Say(String),
-    VoidSpawn,
+    VoidSpawn(Option<UnfishKind>),
     StartVoidWish {
         skip: bool,
     },
@@ -1758,7 +1759,11 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
                 Action::Say(text)
             }
         }
-        "voidspawn" => Action::VoidSpawn,
+        "voidspawn" => match rest.trim() {
+            "" => Action::VoidSpawn(None),
+            token => UnfishKind::parse(token)
+                .map_or(Action::Unknown, |kind| Action::VoidSpawn(Some(kind))),
+        },
         "startfishabduction" => Action::StartFishAbduction,
         "startcowabduction" => Action::StartCowAbduction,
         "startcallhome" => Action::StartCallHome,
@@ -1791,7 +1796,7 @@ impl Action {
             | Restore(_) => Clearance::God,
             ModResource { .. }
             | Give(_)
-            | VoidSpawn
+            | VoidSpawn(_)
             | StartVoidWish { .. }
             | StartFishAbduction
             | StartCowAbduction
@@ -2022,7 +2027,15 @@ mod tests {
         let (fish, tanks) = no_names();
         assert!(matches!(
             parse("/voidspawn", fish, tanks),
-            Action::VoidSpawn
+            Action::VoidSpawn(None)
+        ));
+        assert!(matches!(
+            parse("/voidspawn graeae", fish, tanks),
+            Action::VoidSpawn(Some(UnfishKind::Graeae))
+        ));
+        assert!(matches!(
+            parse("/voidspawn salmon", fish, tanks),
+            Action::Unknown
         ));
     }
 

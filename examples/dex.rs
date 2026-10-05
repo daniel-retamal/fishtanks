@@ -7,10 +7,11 @@ use std::process::ExitCode;
 use fishtank::entities::cow::{Cow, CowVariant};
 use fishtank::fishes::fish::{Direction, Fish, FishState, compute_display_width};
 use fishtank::fishes::mutations::{Mutatable, Mutation, apply_mutation, apply_mutation_to_fish};
+use fishtank::fishes::quirk::{FAULT_SLIP_SECS, Quirk};
 use fishtank::fishes::species::{
     ALL_SPECIES, FishSpecies, Habit, Habitat, Locomotion, SizeCategory, SpeciesConfig, Zoomie,
 };
-use fishtank::fishes::unfish::{UnfishKind, is_multi_row};
+use fishtank::fishes::unfish::{SPAWNABLE_UNFISH, UnfishKind, is_multi_row};
 use fishtank::settings::{DEFAULT_FPS, Settings};
 use fishtank::sprite::TRANSPARENT;
 use fishtank::tank::{Sky, Tank, TankBackground, TankKind};
@@ -105,15 +106,19 @@ const TRIMMED: [(FishSpecies, Margin); 5] = [
     (FishSpecies::Snailfish, ON_THE_FLOOR),
 ];
 const HIDDEN: [FishSpecies; 2] = [FishSpecies::Cheatfish, FishSpecies::Junkfish];
-const UNFISH: [UnfishKind; 7] = [
-    UnfishKind::Reversed,
-    UnfishKind::Doppleganger,
-    UnfishKind::Phantom,
-    UnfishKind::Blinker,
-    UnfishKind::Ball,
-    UnfishKind::Skull,
-    UnfishKind::Worm,
-];
+const ODD_POND: (u16, u16) = (40, 10);
+const ODD_TICKS: usize = 300;
+const RING_TICKS: usize = 240;
+const SIGNAL_EVERY: usize = 3;
+const HURRY_EVERY: usize = 60;
+const LEECH_BITE_EVERY: usize = 60;
+const LEECH_AFTER_TICKS: usize = 120;
+const LEECH_LIMIT_TICKS: usize = 30 * 120;
+const STILL_SPELL: usize = 60;
+const FED_EXTRA_G: u32 = 5000;
+const ODD_ROW: f32 = 4.0;
+const ODD_LEFT_X: f32 = 4.0;
+const ODD_RIGHT_X: f32 = 30.0;
 
 struct Shot {
     slug: String,
@@ -643,6 +648,34 @@ fn unfish_shot(kind: UnfishKind, rng: &mut impl rand::RngExt) -> (Shot, Fish) {
             vec![(vec![just_before_a_blink(&fish)], BLINK_TICKS)],
             |_, _, _| {},
         ),
+        UnfishKind::Signal => shoot(
+            &slug,
+            Margin::EVEN,
+            vec![(vec![posed(&fish, Direction::Left)], PORTRAIT_TICKS)],
+            |fishes, _, tick| {
+                if tick % SIGNAL_EVERY == 0 {
+                    fishes[0].broadcast();
+                }
+            },
+        ),
+        UnfishKind::Ouroboros => shoot(
+            &slug,
+            Margin::EVEN,
+            vec![(vec![posed(&fish, Direction::Left)], RING_TICKS)],
+            |_, _, _| {},
+        ),
+        UnfishKind::Absence => absence_scene(&slug, rng),
+        UnfishKind::Leech => leech_scene(&slug, rng),
+        UnfishKind::Negative => meeting_scene(&slug, kind, rng),
+        UnfishKind::Still => still_scene(&slug, rng),
+        UnfishKind::Bones
+        | UnfishKind::Forgetting
+        | UnfishKind::Verso
+        | UnfishKind::Fault
+        | UnfishKind::Anagram
+        | UnfishKind::Reflection
+        | UnfishKind::Molt
+        | UnfishKind::Graeae => odd_scene(&slug, kind, rng),
         _ => shoot(
             &slug,
             Margin::EVEN,
@@ -651,6 +684,148 @@ fn unfish_shot(kind: UnfishKind, rng: &mut impl rand::RngExt) -> (Shot, Fish) {
         ),
     };
     (shot, posed(&fish, Direction::Left))
+}
+
+fn odd_pond(kind: TankKind, cast: Vec<Fish>) -> Pond {
+    let mut pond = Pond::new(kind, ODD_POND, false).without_bubbles();
+    for fish in cast {
+        pond = pond.with_fish(fish);
+    }
+    pond
+}
+
+fn film_pond(
+    slug: &str,
+    mut pond: Pond,
+    ticks: usize,
+    mut hook: impl FnMut(&mut Tank, usize) -> bool,
+) -> Shot {
+    let settings = Settings::default();
+    let mut shot = Shot::new(slug);
+    for tick in 0..ticks {
+        let filmed = hook(&mut pond.tank, tick);
+        pond.step(&settings);
+        if filmed && tick % FILM_EVERY == 0 {
+            shot.push(&pond.frame());
+        }
+    }
+    shot
+}
+
+fn hurry(fish: &mut Fish) {
+    match fish.quirk_mut() {
+        Some(Quirk::Forgetting(forgetting)) => forgetting.shape_clock = 0.0,
+        Some(Quirk::Anagram(anagram)) => anagram.clock = 0.0,
+        Some(Quirk::Reflection(reflection)) => reflection.clock = 0.0,
+        Some(Quirk::Molt(molt)) => molt.clock = 0.0,
+        Some(Quirk::Fault(fault)) => fault.slip = FAULT_SLIP_SECS,
+        Some(Quirk::Bones(_)) => {
+            fish.hurry_zoomie();
+        }
+        _ => {}
+    }
+}
+
+fn odd_scene(slug: &str, kind: UnfishKind, rng: &mut impl rand::RngExt) -> Shot {
+    let mut cast = vec![Fish::new_unfish(kind, format!("{kind:?}"), 0.0, 0.0, rng)];
+    match kind {
+        UnfishKind::Anagram => cast.push(Fish::new(SUBJECT, SUBJECT_NAME.into(), 0.0, 0.0, rng)),
+        UnfishKind::Bones | UnfishKind::Graeae => {
+            for n in 1..3 {
+                cast.push(Fish::new_unfish(
+                    kind,
+                    format!("{kind:?} {n}"),
+                    0.0,
+                    0.0,
+                    rng,
+                ));
+            }
+        }
+        _ => {}
+    }
+    let pond = odd_pond(TankKind::Base, cast);
+    film_pond(slug, pond, ODD_TICKS, |tank, tick| {
+        if tick == 0
+            && let Some(Quirk::Graeae(graeae)) = tank.fish[0].quirk_mut()
+        {
+            graeae.sighted = true;
+        }
+        if tick % HURRY_EVERY == HURRY_EVERY / 2
+            && let Some(first) = tank.fish.first_mut()
+        {
+            hurry(first);
+        }
+        true
+    })
+}
+
+fn absence_scene(slug: &str, rng: &mut impl rand::RngExt) -> Shot {
+    let hole = Fish::new_unfish(UnfishKind::Absence, "Absence".into(), 0.0, 0.0, rng);
+    let pond = odd_pond(TankKind::CoralReef, vec![hole]);
+    film_pond(slug, pond, ODD_TICKS, |tank, tick| {
+        let hole = &mut tank.fish[0];
+        if tick == 0 {
+            hole.position.x = 0.0;
+        }
+        hole.position.y = ODD_ROW;
+        steer_towards(hole, Direction::Right);
+        true
+    })
+}
+
+fn meeting_scene(slug: &str, kind: UnfishKind, rng: &mut impl rand::RngExt) -> Shot {
+    let odd = Fish::new_unfish(kind, format!("{kind:?}"), 0.0, 0.0, rng);
+    let other = Fish::new(SUBJECT, SUBJECT_NAME.into(), 0.0, 0.0, rng);
+    let pond = odd_pond(TankKind::Base, vec![odd, other]);
+    film_pond(slug, pond, ODD_TICKS, |tank, tick| {
+        if tick == 0 {
+            tank.fish[0].position.x = ODD_LEFT_X;
+            tank.fish[1].position.x = ODD_RIGHT_X;
+        }
+        steer_towards(&mut tank.fish[0], Direction::Right);
+        if let Some(other) = tank.fish.get_mut(1) {
+            steer_towards(other, Direction::Left);
+        }
+        true
+    })
+}
+
+fn leech_scene(slug: &str, rng: &mut impl rand::RngExt) -> Shot {
+    let mut host = Fish::new(SUBJECT, SUBJECT_NAME.into(), 0.0, 0.0, rng);
+    host.weight_g += FED_EXTRA_G;
+    let leech = Fish::new_unfish(UnfishKind::Leech, "Leech".into(), 0.0, 0.0, rng);
+    let pond = odd_pond(TankKind::Base, vec![host, leech]);
+    let mut turned_at = None;
+    film_pond(slug, pond, LEECH_LIMIT_TICKS, |tank, tick| {
+        if tick == 0 {
+            tank.fish[0].position.x = ODD_RIGHT_X;
+            tank.fish[1].position.x = ODD_LEFT_X;
+            tank.fish[1].position.y = tank.fish[0].position.y;
+        }
+        if tick % LEECH_BITE_EVERY == 0
+            && let Some(Quirk::Leech(leech)) = tank.fish[1].quirk_mut()
+        {
+            leech.bite_clock = 0.0;
+        }
+        if turned_at.is_none() && tank.fish[1].leeched {
+            turned_at = Some(tick);
+        }
+        turned_at.is_none_or(|at| tick - at < LEECH_AFTER_TICKS)
+    })
+}
+
+fn still_scene(slug: &str, rng: &mut impl rand::RngExt) -> Shot {
+    let other = Fish::new(SUBJECT, SUBJECT_NAME.into(), 0.0, 0.0, rng);
+    let still = Fish::new_unfish(UnfishKind::Still, "Still".into(), 0.0, 0.0, rng);
+    let pond = odd_pond(TankKind::Base, vec![other, still]);
+    film_pond(slug, pond, ODD_TICKS, |tank, tick| {
+        if tick == 0 {
+            tank.fish[1].position.x = ODD_LEFT_X;
+        }
+        let watched = (tick / STILL_SPELL).is_multiple_of(2);
+        tank.watched = watched;
+        watched
+    })
 }
 
 fn just_before_a_blink(fish: &Fish) -> Fish {
@@ -1031,7 +1206,7 @@ fn main() -> ExitCode {
         let _ = writeln!(tsv, "{}", species_row(species, &fish));
         shots.push(shot);
     }
-    for kind in UNFISH {
+    for &kind in SPAWNABLE_UNFISH {
         let (shot, fish) = unfish_shot(kind, &mut rng);
         let _ = writeln!(tsv, "{}", unfish_row(kind, &fish));
         shots.push(shot);

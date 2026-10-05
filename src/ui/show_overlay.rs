@@ -84,7 +84,7 @@ impl ShowState {
             },
             ShowField {
                 label: "Species",
-                value: fish.species.display_name().to_string(),
+                value: fish.kind_name().to_string(),
                 swatch: None,
             },
             ShowField {

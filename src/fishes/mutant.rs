@@ -259,6 +259,8 @@ pub struct MutantState {
     pub adornments: Adornments,
     #[serde(default)]
     pub patterned: bool,
+    #[serde(default)]
+    pub negative: bool,
 }
 
 impl MutantState {
@@ -287,6 +289,7 @@ impl MutantState {
             body_extension: None,
             adornments: Adornments::default(),
             patterned: true,
+            negative: false,
         }
     }
 
@@ -321,6 +324,7 @@ impl MutantState {
             body_extension: None,
             adornments: Adornments::default(),
             patterned: false,
+            negative: false,
         }
     }
 

@@ -408,6 +408,7 @@ impl Fish {
         if habit == Some(Habit::Shy) && self.sky.calm {
             glisten(&mut sprite, self.sway.phase, PINK, BLUSH_PEAK);
         }
+        self.tint(&mut sprite);
         sprite
     }
 

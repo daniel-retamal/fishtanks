@@ -30,7 +30,7 @@ impl Switch {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
 pub enum Cheat {
     ShowMeTheMoney,
     BreatheDeep,

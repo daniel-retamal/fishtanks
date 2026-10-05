@@ -35,7 +35,7 @@ use ratatui::{
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::fishes::fish::{Fish, LineSprite};
-use crate::fishes::unfish::{BALL_HEIGHT, SKULL_HEIGHT, UnfishKind, is_multi_row};
+use crate::fishes::unfish::{UnfishKind, is_multi_row};
 use crate::sprite::TRANSPARENT;
 
 const UNCOVERED: &str = " ";
@@ -97,10 +97,9 @@ pub fn render_fish_sprite(
 }
 
 pub fn fish_art_height(fish: &Fish, floor: u16) -> u16 {
-    match fish.unfish_state.as_ref().map(|us| us.kind) {
-        Some(UnfishKind::Ball) => BALL_HEIGHT,
-        Some(UnfishKind::Skull) => SKULL_HEIGHT,
-        _ => floor.max(fish.line_sprite().rows.len() as u16 + FISH_ART_PAD_ROWS),
+    match fish.unfish_kind().and_then(UnfishKind::grid) {
+        Some(grid) => grid.height,
+        None => floor.max(fish.line_sprite().rows.len() as u16 + FISH_ART_PAD_ROWS),
     }
 }
 

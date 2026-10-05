@@ -11,7 +11,7 @@ use ratatui::{
 
 use crate::colors::{BLACK, STEEL, WHITE};
 use crate::fishes::fish::{Direction, Fish, LineSprite};
-use crate::fishes::unfish::{BALL_HEIGHT, SKULL_HEIGHT, UnfishKind};
+use crate::fishes::unfish::UnfishKind;
 use crate::tanks::soul_wall::SoulWall;
 use crate::ui::fields::{self, FieldKind, FieldValue};
 use crate::ui::grid::{self, CELL_PAD, Grid, HEADER_ROWS, HeaderStyle};
@@ -101,10 +101,9 @@ pub struct IndexState {
 }
 
 fn row_height(fish: &Fish, art: &LineSprite) -> u16 {
-    match fish.unfish_state.as_ref().map(|us| us.kind) {
-        Some(UnfishKind::Ball) => BALL_HEIGHT,
-        Some(UnfishKind::Skull) => SKULL_HEIGHT,
-        _ => art.rows.len() as u16,
+    match fish.unfish_kind().and_then(UnfishKind::grid) {
+        Some(grid) => grid.height,
+        None => art.rows.len() as u16,
     }
 }
 
@@ -141,7 +140,7 @@ impl IndexState {
                 let art = still_art(f);
                 FishSnapshot {
                     name: f.name.clone(),
-                    species_name: f.species.display_name(),
+                    species_name: f.kind_name(),
                     display_width: f.display_width,
                     weight_g: f.weight_g,
                     worth: dead.map_or_else(

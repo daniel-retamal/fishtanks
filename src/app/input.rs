@@ -13,6 +13,7 @@ use crate::{
     fishes::fish::{Fed, Fish},
     fishes::parts::{RIG_WAIT_MAX_SECS, RIG_WAIT_MIN_SECS},
     fishes::species::FishSpecies,
+    fishes::unfish::UnfishKind,
     ledger::Flow,
     loot::{ConsumableKind, LootKind, MilkVariant, NameTarget, StockItem},
     names,
@@ -1822,6 +1823,8 @@ impl App {
             }
             WishAction::Nothing => {
                 self.nothing_stacks += 1;
+                let mut rng = rand::rng();
+                self.tanks[self.current_tank].spawn_unfish_of(UnfishKind::Absence, &mut rng);
             }
             WishAction::Restore { name } => {
                 self.restore_entity(&name);
@@ -1956,9 +1959,7 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, f)| {
-                f.unfish_state.is_none()
-                    && f.ability_stacks(FishSpecies::Holyfish) == 0
-                    && f.is_sellable()
+                !f.is_unfish() && f.ability_stacks(FishSpecies::Holyfish) == 0 && f.is_sellable()
             })
             .map(|(i, _)| i)
             .collect();
@@ -2859,13 +2860,16 @@ impl App {
             commands::Action::Import(path) => self.import_game(&path),
             commands::Action::Cowsay(text) => self.cowsay(text),
             commands::Action::Say(text) => self.say(None, text),
-            commands::Action::VoidSpawn => {
+            commands::Action::VoidSpawn(kind) => {
                 if !self.tanks[self.current_tank].kind.config().spawns_unfish {
                     return false;
                 }
                 let mut rng = rand::rng();
-                self.tanks[self.current_tank].spawn_unfish(&mut rng);
-                true
+                let tank = &mut self.tanks[self.current_tank];
+                match kind {
+                    Some(kind) => tank.spawn_unfish_of(kind, &mut rng),
+                    None => tank.spawn_unfish(&mut rng),
+                }
             }
             commands::Action::StartVoidWish { skip } => {
                 if !self.tanks[self.current_tank].kind.config().hosts_ritual {

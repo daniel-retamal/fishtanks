@@ -4,7 +4,7 @@ use fishtank::{
         fish::{Direction, Fish, PUFF_SECS},
         mutations::{Mutatable, Mutation, apply_mutation},
         species::{ALL_SPECIES, FishSpecies},
-        unfish::UnfishKind,
+        unfish::SPAWNABLE_UNFISH,
     },
     tank::{FULL_MOON, Sky, Tank, TankBackground, TankKind},
     ui::tank_view::TankView,
@@ -144,7 +144,7 @@ impl Being {
                 (0..TANK_W)
                     .map(|x| {
                         let cell = &buf[(x, y)];
-                        format!("{}{:?}", cell.symbol(), cell.fg)
+                        format!("{}{:?}{:?}", cell.symbol(), cell.fg, cell.bg)
                     })
                     .collect()
             })
@@ -158,15 +158,7 @@ fn beings() -> Vec<Being> {
         .iter()
         .map(|&species| Being::Fish(Fish::new(species, "Probe".into(), SPOT.0, SPOT.1, &mut rng)))
         .collect();
-    for kind in [
-        UnfishKind::Reversed,
-        UnfishKind::Doppleganger,
-        UnfishKind::Phantom,
-        UnfishKind::Blinker,
-        UnfishKind::Ball,
-        UnfishKind::Skull,
-        UnfishKind::Worm,
-    ] {
+    for &kind in SPAWNABLE_UNFISH {
         beings.push(Being::Fish(Fish::new_unfish(
             kind,
             "Probe".into(),

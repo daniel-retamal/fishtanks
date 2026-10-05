@@ -8,6 +8,7 @@ use super::{
     ZOOMIE_DURATION_MAX, ZOOMIE_DURATION_MIN, ZOOMIE_SPEED_MULTIPLIER,
 };
 use crate::fishes::habits::{Crawl, Lurk, Side};
+use crate::fishes::quirk::BONES_ZOOMIE_STRETCH;
 use crate::fishes::species::{Habit, Locomotion, Zoomie};
 use crate::util::sample_exponential;
 
@@ -435,11 +436,16 @@ impl Fish {
                 self.habits.inked = style == Zoomie::Ink;
                 rng.random::<bool>()
             }
+            Zoomie::Scatter => {
+                self.velocity.dx = ahead * self.speed;
+                self.velocity.dy = 0.0;
+                false
+            }
         };
-        let duration = if style == Zoomie::Hop {
-            HOP_SECS
-        } else {
-            duration
+        let duration = match style {
+            Zoomie::Hop => HOP_SECS,
+            Zoomie::Scatter => duration * BONES_ZOOMIE_STRETCH,
+            _ => duration,
         };
         self.state = FishState::Zoomie {
             time_remaining: duration,

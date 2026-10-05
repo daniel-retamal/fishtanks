@@ -264,7 +264,7 @@ impl ConsumeTarget {
     }
 
     pub fn accepts(self, fish: &Fish) -> bool {
-        if fish.unfish_state.is_some() {
+        if fish.is_unfish() {
             return false;
         }
         match self {
