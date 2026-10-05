@@ -49,7 +49,10 @@ const PUFF_TICKS: usize = 20;
 const PUFF_SECS: f32 = 1.0;
 const POND: (u16, u16) = (36, 8);
 const BOX_POND: (u16, u16) = (24, 10);
-const COW_PAD: u16 = 3;
+const COW_SIDE_PAD: u16 = 3;
+const COW_TOP_PAD: u16 = 2;
+const COW_MUTATIONS: usize = 16;
+const SHOWCASE: [Mutation; 3] = [Mutation::Hydra, Mutation::ColorPatch, Mutation::EyeColor];
 const COW_STAGE: (u16, u16) = (96, 40);
 const COW_SPOT: (f32, f32) = (24.0, 20.0);
 const COW_NAME: &str = "Vaquita";
@@ -681,10 +684,10 @@ impl Paddock {
             .expect("a cow paints something");
         let stage = Rect::new(0, 0, COW_STAGE.0, COW_STAGE.1);
         let room = Rect::new(
-            bounds.x.saturating_sub(COW_PAD),
-            bounds.y.saturating_sub(COW_PAD),
-            bounds.width + 2 * COW_PAD,
-            bounds.height + COW_PAD,
+            bounds.x.saturating_sub(COW_SIDE_PAD),
+            bounds.y.saturating_sub(COW_TOP_PAD),
+            bounds.width + 2 * COW_SIDE_PAD,
+            bounds.height + COW_TOP_PAD,
         );
         assert_eq!(stage.intersection(room), room, "the cow fits its stage");
         Self { bounds }
@@ -694,17 +697,17 @@ impl Paddock {
         Rect::new(
             0,
             0,
-            self.bounds.width + 2 * COW_PAD,
-            self.bounds.height + COW_PAD,
+            self.bounds.width + 2 * COW_SIDE_PAD,
+            self.bounds.height + COW_TOP_PAD,
         )
     }
 
     fn left(&self) -> u16 {
-        self.bounds.x - COW_PAD
+        self.bounds.x - COW_SIDE_PAD
     }
 
     fn top(&self) -> u16 {
-        self.bounds.y - COW_PAD
+        self.bounds.y - COW_TOP_PAD
     }
 
     fn crop(&self, stage: &Buffer) -> Buffer {
@@ -783,22 +786,21 @@ fn shows_hydra(cow: &Cow) -> bool {
     cow.hydra_count().min(cow.hydra_max()) > 0
 }
 
-fn mutate_keeping_hydra(cow: &mut Cow) {
+fn mutate_in_sight(cow: &mut Cow, step: usize) {
     let mut rng = rand::rng();
-    if !shows_hydra(cow) {
-        apply_mutation(cow, Mutation::Hydra, &mut rng);
-        cow.refresh_width();
-        assert!(shows_hydra(cow), "the irradiated cow grows a hydra head");
-        return;
-    }
+    let before = on_stage(cow);
     for _ in 0..MUTATION_TRIES {
-        let Some(mutation) = cow.random_mutation_with_room(&mut rng, false) else {
-            return;
+        let mutation = match SHOWCASE.get(step) {
+            Some(&showcased) => showcased,
+            None => match cow.random_mutation_with_room(&mut rng, false) {
+                Some(drawn) => drawn,
+                None => return,
+            },
         };
         let mut trial = cow.clone();
         apply_mutation(&mut trial, mutation, &mut rng);
         trial.refresh_width();
-        if shows_hydra(&trial) {
+        if shows_hydra(&trial) && on_stage(&trial) != before {
             *cow = trial;
             return;
         }
@@ -808,12 +810,16 @@ fn mutate_keeping_hydra(cow: &mut Cow) {
 fn irradiated_cow_shot(slug: &str) -> Shot {
     let frames = cow_frames(
         staged_cow(CowVariant::Brown),
-        MUTANT_STEP_TICKS * MUTANT_STEPS,
+        MUTANT_STEP_TICKS * (COW_MUTATIONS + 1),
         |cow, tick| {
             if tick > 0 && tick % MUTANT_STEP_TICKS == 0 {
-                mutate_keeping_hydra(cow);
+                mutate_in_sight(cow, tick / MUTANT_STEP_TICKS - 1);
             }
         },
+    );
+    assert!(
+        frames.last().is_some_and(shows_hydra),
+        "the irradiated cow keeps its hydra head"
     );
     let paddock = Paddock::around(&frames);
     let area = paddock.area();
