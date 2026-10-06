@@ -21,6 +21,15 @@ pub const KEY_NAMES: &[(&str, KeyCode)] = &[
     ("space", KeyCode::Char(' ')),
 ];
 
+pub const SCROLL_KEYS: [KeyCode; 6] = [
+    KeyCode::Up,
+    KeyCode::Down,
+    KeyCode::PageUp,
+    KeyCode::PageDown,
+    KeyCode::Home,
+    KeyCode::End,
+];
+
 pub enum InputAction {
     Quit,
     Cancel,
@@ -272,6 +281,10 @@ impl HeldKeys {
         }
         self.keys.remove(at);
         true
+    }
+
+    pub fn is_scrolling(&self) -> bool {
+        SCROLL_KEYS.iter().any(|&code| self.is_certainly_down(code))
     }
 
     pub fn is_down(&self, code: KeyCode) -> bool {

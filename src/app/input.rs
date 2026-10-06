@@ -29,7 +29,7 @@ use crate::{
         fishtanks_overlay::FishtanksState,
         foundry_overlay::FoundryState,
         index_overlay::IndexState,
-        input_action::{InputAction, classify, hold},
+        input_action::{Hold, InputAction, SCROLL_KEYS, classify, hold},
         ledger_overlay::LedgerState,
         shop_overlay::{
             BuyCategory, BuyList, BuyListState, BuyTankPopup, Counter, FishNamePopup, Purchase,
@@ -102,6 +102,7 @@ impl App {
             return;
         }
         let is_key_press = matches!(&event, Event::Key(k) if k.kind == KeyEventKind::Press);
+        let is_key_down = matches!(&event, Event::Key(k) if k.kind != KeyEventKind::Release);
         if is_key_press {
             self.tanks[self.current_tank].startle();
         }
@@ -132,7 +133,10 @@ impl App {
         } else if matches!(self.active_overlay, Some(Overlay::ConsumePicker(_))) {
             self.handle_consume_picker_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Shop(_))) {
+            let held = hold(&event);
             self.handle_shop_input(event);
+            self.hold_a_scroll_key(held);
+            self.settle_shop();
         } else if matches!(self.active_overlay, Some(Overlay::Circuit(_))) {
             self.handle_circuit_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Wiring { .. })) {
@@ -145,7 +149,7 @@ impl App {
             self.handle_command_input(event);
         }
         self.settle_arrivals();
-        if is_key_press {
+        if is_key_down {
             self.reset_blink();
         }
     }
@@ -1210,12 +1214,8 @@ impl App {
                         InputAction::Cancel | InputAction::Char('q') => {
                             *buy_popup = None;
                         }
-                        InputAction::Left if popup.qty > 1 => {
-                            popup.qty -= 1;
-                        }
-                        InputAction::Right if popup.qty < popup.max_qty => {
-                            popup.qty += 1;
-                        }
+                        InputAction::Left => popup.fewer(),
+                        InputAction::Right => popup.more(),
                         InputAction::Confirm => {
                             let bought = buy_popup.take().expect("the popup is open");
                             self.take_qty_purchase(&bought);
@@ -1406,12 +1406,8 @@ impl App {
                         InputAction::Cancel | InputAction::Char('q') => {
                             pl.popup = None;
                         }
-                        InputAction::Left if popup.qty > 1 => {
-                            popup.qty -= 1;
-                        }
-                        InputAction::Right if popup.qty < popup.max_qty => {
-                            popup.qty += 1;
-                        }
+                        InputAction::Left => popup.fewer(),
+                        InputAction::Right => popup.more(),
                         InputAction::Confirm => {
                             let bought = pl.popup.take().expect("the popup is open");
                             self.take_qty_purchase(&bought);
@@ -1526,7 +1522,9 @@ impl App {
                             self.earn(earned, flow);
 
                             match self.build_sell_menu_state() {
-                                Some(new_sm) => shop.page = ShopPage::Sell(new_sm),
+                                Some(new_sm) => {
+                                    shop.page = ShopPage::Sell(new_sm.keeping_place(sm))
+                                }
                                 None => {
                                     shop.page = ShopPage::Main {
                                         selected: Counter::Sell.index(),
@@ -1562,6 +1560,25 @@ impl App {
         }
 
         self.set_overlay(Overlay::Shop(shop));
+    }
+
+    fn hold_a_scroll_key(&mut self, held: Option<Hold>) {
+        let Some(held) = held else { return };
+        if !SCROLL_KEYS.contains(&held.code) {
+            return;
+        }
+        if held.down {
+            self.held_keys.press(held.code);
+        } else {
+            self.held_keys.release(held.code);
+        }
+    }
+
+    fn settle_shop(&mut self) {
+        let access = self.shop_access();
+        if let Some(Overlay::Shop(shop)) = &mut self.active_overlay {
+            shop.page.settle(access);
+        }
     }
 
     pub(super) fn build_sell_menu_state(&self) -> Option<SellMenuState> {

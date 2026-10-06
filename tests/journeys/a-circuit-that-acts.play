@@ -11,15 +11,15 @@ key enter
 select Food
 key enter
 expect < 1 >
-key right 99
-expect < 100 >
-snap a hundred food on the counter
+key right 31
+expect < 90 >
+snap ninety food on the counter, thirty at a time past thirty
 key enter
 key esc
 key esc
 absent Price/unit
 expect food
-expect 160
+expect 150
 include scenes/take-a-fish.play botfish clk
 include scenes/take-a-fish.play botfish feeder
 
@@ -45,8 +45,8 @@ snap the fire pin and the script line
 key enter
 
 tick 120
-absent food: 160
-absent food 160
+absent food: 150
+absent food 150
 snap the module spent food from the supply on its own
 run /circuit
 expect fire ◂ clk

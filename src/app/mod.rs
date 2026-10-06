@@ -752,6 +752,9 @@ impl App {
             }
             Some(Overlay::Shop(shop)) => {
                 shop.tick(self.settings.fps);
+                if self.held_keys.is_scrolling() {
+                    shop.reset_blink();
+                }
                 return;
             }
             Some(Overlay::Fishing(_)) => return,

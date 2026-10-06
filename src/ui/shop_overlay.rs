@@ -63,14 +63,21 @@ pub struct ShopAccess {
 
 pub struct Shelf {
     order: Vec<usize>,
+    ranked: Vec<usize>,
     available: Vec<bool>,
 }
 
 impl Shelf {
     fn of<K: Ord>(available: Vec<bool>, key: impl Fn(usize) -> K) -> Self {
-        let mut order: Vec<usize> = (0..available.len()).collect();
-        order.sort_by_key(|&item| (!available[item], key(item)));
-        Self { order, available }
+        let mut ranked: Vec<usize> = (0..available.len()).collect();
+        ranked.sort_by_key(|&item| key(item));
+        let mut order = ranked.clone();
+        order.sort_by_key(|&item| !available[item]);
+        Self {
+            order,
+            ranked,
+            available,
+        }
     }
 
     pub fn first(&self) -> usize {
@@ -105,10 +112,26 @@ impl Shelf {
 
     pub fn settle(&self, item: usize) -> usize {
         if self.is_available(item) || self.available_count() == 0 {
-            item
-        } else {
-            self.first()
+            return item;
         }
+        let at = self
+            .ranked
+            .iter()
+            .position(|&ranked| ranked == item)
+            .unwrap_or(0);
+        let open = |index: usize| {
+            self.ranked
+                .get(index)
+                .copied()
+                .filter(|&ranked| self.is_available(ranked))
+        };
+        (1..self.ranked.len())
+            .find_map(|distance| {
+                at.checked_sub(distance)
+                    .and_then(open)
+                    .or_else(|| open(at + distance))
+            })
+            .unwrap_or_else(|| self.first())
     }
 
     fn rank(&self, item: usize) -> usize {
@@ -252,7 +275,16 @@ pub enum QtyTarget {
     Food,
 }
 
+pub const FOOD_BULK: u32 = 30;
+
 impl QtyTarget {
+    fn bulk(self) -> u32 {
+        match self {
+            QtyTarget::Food => FOOD_BULK,
+            QtyTarget::Stock(_) => 1,
+        }
+    }
+
     pub fn display_name(self) -> &'static str {
         match self {
             QtyTarget::Stock(item) => item.display_name(),
@@ -381,6 +413,26 @@ impl QtyPopup {
     pub fn cost(&self) -> Money {
         Money::from(self.qty) * Money::from(self.unit_price)
     }
+
+    pub fn more(&mut self) {
+        let bulk = self.target.bulk();
+        let next = if self.qty >= bulk {
+            (self.qty / bulk + 1) * bulk
+        } else {
+            self.qty + 1
+        };
+        self.qty = next.min(self.max_qty);
+    }
+
+    pub fn fewer(&mut self) {
+        let bulk = self.target.bulk();
+        let next = if self.qty > bulk {
+            ((self.qty - 1) / bulk).max(1) * bulk
+        } else {
+            self.qty - 1
+        };
+        self.qty = next.max(1);
+    }
 }
 
 pub struct BuyTankPopup {
@@ -440,6 +492,21 @@ pub enum SellEntry {
 }
 
 impl SellEntry {
+    fn is_same_thing(&self, other: &SellEntry) -> bool {
+        match (self, other) {
+            (SellEntry::Fish { name: a, .. }, SellEntry::Fish { name: b, .. })
+            | (SellEntry::Tank { name: a, .. }, SellEntry::Tank { name: b, .. })
+            | (SellEntry::Blueprint { name: a }, SellEntry::Blueprint { name: b }) => a == b,
+            (SellEntry::Milk { variant: a, .. }, SellEntry::Milk { variant: b, .. }) => a == b,
+            (SellEntry::Seed { kind: a, .. }, SellEntry::Seed { kind: b, .. })
+            | (SellEntry::Robotics { kind: a, .. }, SellEntry::Robotics { kind: b, .. }) => a == b,
+            (SellEntry::Junk { .. }, SellEntry::Junk { .. })
+            | (SellEntry::Coffee { .. }, SellEntry::Coffee { .. })
+            | (SellEntry::Bait { .. }, SellEntry::Bait { .. }) => true,
+            _ => false,
+        }
+    }
+
     pub fn label(&self) -> String {
         match self {
             SellEntry::Fish { name, species, .. } => {
@@ -626,6 +693,18 @@ impl SellMenuState {
             fields::FED_HEADER,
             notes.map(|note| table::visual_width(&note)),
         ) + PRICE_GAP
+    }
+
+    pub fn keeping_place(mut self, before: &SellMenuState) -> Self {
+        let was = before.items.get(before.selected);
+        let last = self.items.len().saturating_sub(1);
+        self.selected = self
+            .items
+            .iter()
+            .position(|entry| was.is_some_and(|was| entry.is_same_thing(was)))
+            .unwrap_or(before.selected.min(last));
+        self.scroll = before.scroll.clone();
+        self
     }
 
     pub fn scroll_up(&mut self) {
@@ -822,6 +901,22 @@ impl ShopState {
 }
 
 impl ShopPage {
+    pub fn settle(&mut self, access: ShopAccess) {
+        match self {
+            ShopPage::Main { selected } => *selected = Counter::shelf(access).settle(*selected),
+            ShopPage::BuyCategory { selected, .. } => {
+                *selected = BuyCategory::shelf(access).settle(*selected)
+            }
+            ShopPage::BuyBenchTiers { selected } => {
+                *selected = tier_shelf(access).settle(*selected)
+            }
+            ShopPage::BuyFishList(list) => list.settle(access),
+            ShopPage::BuyTankList(list) => list.settle(access),
+            ShopPage::BuyBenchList(list) => list.settle(access),
+            ShopPage::Sell(_) => {}
+        }
+    }
+
     fn title(&self) -> &'static str {
         match self {
             ShopPage::Main { .. } => " Shop ",
