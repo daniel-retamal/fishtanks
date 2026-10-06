@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 - 2026-10-06
+
+- **Sort and filter the index.** In `/index`, `←`/`→` pick a column, `S` sorts by it (up, down, off) and `F` filters it as you type; `C` clears it all. The command bar asks the same questions: `/index species:koi sort:-worth`, `/index weight:>1kg`, `/index "Coral"`. The table shows the command it is answering, so the words come by using it.
+- **Fifteen new unfish.** Pale, idle, uncanny things crawl out of the Void: the Leech, Bones, the Ouroboros, the Graeae, the Still, Verso, the Molt and more, each acting on your fishes in its own way. Every one sells and dies like a fish.
+- **Coffee is drunk by your casts too.** A cup still lasts a minute, and every fish you land drinks a tenth of it: a cup is about ten casts (a bait is five), and ten seconds of coffee are no longer an afternoon of fishing.
+- **The shop keeps your place.** After you sell or buy something the cursor stays where you were instead of jumping to the top, and it no longer blinks away while you hold an arrow.
+- **Food by the thirty.** Past 30 pellets, the shop's food counter steps 30 at a time.
+- **Hold ↓ and steer in more terminals.** When a terminal hides which keys are held, the game asks the keyboard itself: on Windows straight away, on macOS once you allow Input Monitoring (it asks once, after a cast).
+- The Shoalfish is hooked by its leading fish on the catch card, not in the water in front of it.
+
 ## 1.2.1 - 2026-10-04
 
 - **Twins swim apart.** When a double splits in two, the new fish heads off the other way instead of shadowing its parent.
