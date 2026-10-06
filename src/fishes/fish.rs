@@ -32,7 +32,7 @@ use crate::loot::{StockItem, junk_cell};
 use crate::settings::Settings;
 use crate::sprite::{
     Band, BodyExtension, EAR_LEFT, EAR_RIGHT, Feet, PosedExtension, ear_glyph, feet_row,
-    mirror_char, painted_span,
+    mirror_char, painted_columns, painted_span,
 };
 use crate::tank::Sky;
 use crate::util::even_indices;
@@ -110,6 +110,23 @@ pub struct LineSprite {
 }
 
 impl LineSprite {
+    pub fn width(&self) -> usize {
+        self.rows
+            .iter()
+            .map(|row| painted_columns(row))
+            .max()
+            .unwrap_or(0)
+    }
+
+    pub fn hook_col(&self) -> usize {
+        self.rows
+            .iter()
+            .take(self.body_row + 1)
+            .map(|row| painted_columns(row))
+            .max()
+            .unwrap_or(0)
+    }
+
     fn shut_eyes(&mut self) {
         for cell in self.rows.iter_mut().flatten() {
             cell.0 = crate::fishes::species::shut_eye(cell.0);

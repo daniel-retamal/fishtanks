@@ -1472,3 +1472,46 @@ fn a_doubled_stonefish_keeps_its_own_mouth_on_both_heads() {
         "both heads end in the stonefish's mouth: {body}"
     );
 }
+
+#[test]
+fn every_catch_card_hooks_its_fish_by_the_mouth() {
+    use fishtank::loot::LootKind;
+    use fishtank::testing::Still;
+    use fishtank::ui::{
+        catch_overlay::{CatchOverlay, CatchState},
+        layout::Screen,
+    };
+    for &species in ALL_SPECIES {
+        let state = CatchState::new(LootKind::Fish(species), &mut rand::rng());
+        let area = Rect::new(0, 0, 100, 26);
+        let mut buffer = Buffer::empty(area);
+        CatchOverlay::new(&state, Screen::only(area)).render(area, &mut buffer);
+        let text = Still::of(species.display_name(), &buffer).text();
+        let row = text
+            .lines()
+            .find(|line| line.contains("J │"))
+            .unwrap_or_else(|| panic!("{species:?} hangs from a hook:\n{text}"));
+        let before = row.split("J │").next().unwrap();
+        assert!(
+            before.ends_with(|c: char| c != ' '),
+            "{species:?} bites the hook, which sits right in front of it:\n{text}"
+        );
+    }
+}
+
+#[test]
+fn a_shoal_is_hooked_by_its_leading_fish() {
+    use fishtank::loot::LootKind;
+    use fishtank::testing::Still;
+    use fishtank::ui::{
+        catch_overlay::{CatchOverlay, CatchState},
+        layout::Screen,
+    };
+    let state = CatchState::new(LootKind::Fish(FishSpecies::Shoalfish), &mut rand::rng());
+    let area = Rect::new(0, 0, 100, 26);
+    let mut buffer = Buffer::empty(area);
+    CatchOverlay::new(&state, Screen::only(area)).render(area, &mut buffer);
+    let text = Still::of("shoal", &buffer).text();
+    let row = text.lines().find(|line| line.contains("J │")).unwrap();
+    assert!(row.contains("=>J"), "the rightmost fish bites:\n{text}");
+}

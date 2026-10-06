@@ -234,13 +234,13 @@ impl<'a> CardArt<'a> {
     fn of(state: &'a CatchState) -> Self {
         let (sprite, hook) = match &state.loot {
             LootKind::Fish(_) => match state.fish.as_ref() {
-                Some(fish) => (
-                    Sprite::Fish(fish),
+                Some(fish) => {
+                    let sprite = fish.line_sprite();
                     (
-                        fish.display_width as u16,
-                        fish.line_sprite().body_row as u16,
-                    ),
-                ),
+                        Sprite::Fish(fish),
+                        (sprite.hook_col() as u16, sprite.body_row as u16),
+                    )
+                }
                 None => (Sprite::Cells(Vec::new()), (0, 0)),
             },
             LootKind::Cash(cv) => (
@@ -507,7 +507,7 @@ fn is_milk(loot: &LootKind) -> bool {
 
 fn left_panel_inner_w(loot: &LootKind, fish: Option<&Fish>) -> u16 {
     match loot {
-        LootKind::Fish(_) => fish.map_or(10, |f| f.display_width as u16) + 3,
+        LootKind::Fish(_) => fish.map_or(10, |f| f.line_sprite().width() as u16) + 3,
         LootKind::Cash(_) => 5 + 3,
         LootKind::Food(_) => 11 + 3,
         LootKind::Item(item) => match item {
