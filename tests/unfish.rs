@@ -594,7 +594,10 @@ fn a_blind_sister_who_touches_the_one_with_the_eye_takes_it() {
 #[test]
 fn the_still_moves_only_while_its_tank_is_not_watched() {
     let mut tank = lab();
-    add(&mut tank, fish(FishSpecies::Salmon, "Prey"), 45.0, 3.0);
+    let prey = add(&mut tank, fish(FishSpecies::Salmon, "Prey"), 45.0, 3.0);
+    tank.fish[prey].speed = 0.0;
+    tank.fish[prey].velocity.dx = 0.0;
+    tank.fish[prey].velocity.dy = 0.0;
     add(&mut tank, unfish(UnfishKind::Still, "Still"), 5.0, 10.0);
     tank.watched = true;
     for _ in 0..200 {
