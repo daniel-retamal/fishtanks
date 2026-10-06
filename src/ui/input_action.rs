@@ -1,5 +1,7 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 
+use crate::keyboard::{Keyboard, Numb};
+
 pub const KEY_NAMES: &[(&str, KeyCode)] = &[
     ("enter", KeyCode::Enter),
     ("esc", KeyCode::Esc),
@@ -118,6 +120,10 @@ impl Evidence {
     fn trusts_every_release_of(self, code: KeyCode) -> bool {
         self.releases(code) && self.repeats_while_down
     }
+
+    fn hides_every_key_up(self, code: KeyCode) -> bool {
+        self.repeats_while_down && !self.releases(code)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -138,6 +144,9 @@ pub struct HeldKeys {
     keys: Vec<HeldKey>,
     silenced: Vec<HeldKey>,
     last_down: Option<KeyCode>,
+    keyboard: Box<dyn Keyboard>,
+    touched: bool,
+    asked: bool,
 }
 
 impl Default for HeldKeys {
@@ -151,11 +160,39 @@ impl Default for HeldKeys {
             keys: Vec::new(),
             silenced: Vec::new(),
             last_down: None,
+            keyboard: Box::new(Numb),
+            touched: false,
+            asked: false,
         }
     }
 }
 
 impl HeldKeys {
+    pub fn feel(&mut self, keyboard: Box<dyn Keyboard>) {
+        self.keyboard = keyboard;
+        self.touched = false;
+        self.asked = false;
+    }
+
+    fn felt(&self, code: KeyCode) -> Option<bool> {
+        if !self.touched {
+            return None;
+        }
+        self.keyboard.is_down(code)
+    }
+
+    fn vouched_for(&self, key: &HeldKey) -> bool {
+        self.felt(key.code) == Some(true)
+    }
+
+    pub fn ask_for_the_keyboard(&mut self) {
+        if self.asked || self.touched || !self.evidence.hides_every_key_up(KeyCode::Down) {
+            return;
+        }
+        self.asked = true;
+        self.keyboard.ask();
+    }
+
     pub fn hear(&mut self, event: &Event) {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Release
@@ -169,6 +206,9 @@ impl HeldKeys {
     }
 
     pub fn press(&mut self, code: KeyCode) -> Vec<KeyCode> {
+        if self.keyboard.is_down(code) == Some(true) {
+            self.touched = true;
+        }
         let lifted = self.lift_the_silent_but(code);
         self.last_down = Some(code);
         let mut key = HeldKey {
@@ -209,15 +249,19 @@ impl HeldKeys {
     }
 
     fn lift_the_silent_but(&mut self, code: KeyCode) -> Vec<KeyCode> {
-        let (kept, lifted): (Vec<HeldKey>, Vec<HeldKey>) = std::mem::take(&mut self.keys)
-            .into_iter()
-            .partition(|key| key.code == code || self.held_by_release(key));
+        let (kept, lifted): (Vec<HeldKey>, Vec<HeldKey>) =
+            std::mem::take(&mut self.keys).into_iter().partition(|key| {
+                key.code == code || self.held_by_release(key) || self.vouched_for(key)
+            });
         self.keys = kept;
         lifted.into_iter().map(|key| key.code).collect()
     }
 
     pub fn release(&mut self, code: KeyCode) -> bool {
-        let trusted = self.evidence.trusts_every_release_of(code);
+        if self.felt(code) == Some(true) {
+            return false;
+        }
+        let trusted = self.felt(code).is_some() || self.evidence.trusts_every_release_of(code);
         let Some(at) = self.keys.iter().position(|key| key.code == code) else {
             return false;
         };
@@ -235,6 +279,9 @@ impl HeldKeys {
     }
 
     pub fn is_certainly_down(&self, code: KeyCode) -> bool {
+        if let Some(down) = self.felt(code) {
+            return down && self.is_down(code);
+        }
         self.keys.iter().any(|key| {
             key.code == code
                 && (self.held_by_release(key) || self.clock - key.seen <= self.repeat_window())
@@ -259,6 +306,9 @@ impl HeldKeys {
     }
 
     fn keeps(&self, key: &HeldKey) -> bool {
+        if let Some(down) = self.felt(key.code) {
+            return down;
+        }
         if self.clock - key.seen <= self.window(key) {
             return true;
         }
@@ -314,6 +364,7 @@ pub fn key_name(code: KeyCode) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::Fingers;
     use crossterm::event::KeyEvent;
 
     fn event(code: KeyCode, kind: KeyEventKind) -> Event {
@@ -610,6 +661,108 @@ mod tests {
         keys.let_go();
         keys.press(KeyCode::Right);
         assert!(ticks(&mut keys, slow_first_repeat).is_empty());
+    }
+
+    fn feeling(fingers: &Fingers) -> HeldKeys {
+        let mut keys = HeldKeys::default();
+        keys.feel(fingers.keyboard());
+        keys
+    }
+
+    fn press_both(keys: &mut HeldKeys, fingers: &Fingers, code: KeyCode) -> Vec<KeyCode> {
+        fingers.press(code);
+        keys.press(code)
+    }
+
+    #[test]
+    fn a_keyboard_that_felt_a_press_holds_every_key_until_it_is_lifted() {
+        let fingers = Fingers::granted();
+        let mut keys = feeling(&fingers);
+        press_both(&mut keys, &fingers, KeyCode::Down);
+        assert!(
+            press_both(&mut keys, &fingers, KeyCode::Left).is_empty(),
+            "a key the keyboard holds is never lifted by another press"
+        );
+        assert!(ticks(&mut keys, 300).is_empty(), "no repeat is needed");
+        assert!(keys.is_certainly_down(KeyCode::Down));
+        fingers.lift(KeyCode::Down);
+        assert!(
+            !keys.is_certainly_down(KeyCode::Down),
+            "up the moment it is"
+        );
+        assert_eq!(ticks(&mut keys, 1), vec![KeyCode::Down]);
+        assert!(keys.is_down(KeyCode::Left));
+    }
+
+    #[test]
+    fn a_key_up_the_keyboard_denies_is_not_believed() {
+        let fingers = Fingers::granted();
+        let mut keys = feeling(&fingers);
+        press_both(&mut keys, &fingers, KeyCode::Down);
+        ticks(&mut keys, 1);
+        keys.hear(&event(KeyCode::Down, KeyEventKind::Release));
+        assert!(!keys.release(KeyCode::Down), "the finger is still on it");
+        fingers.lift(KeyCode::Down);
+        assert!(
+            keys.release(KeyCode::Down),
+            "a key-up the keyboard agrees with"
+        );
+    }
+
+    #[test]
+    fn a_keyboard_is_believed_only_once_it_has_felt_a_press_the_terminal_sent() {
+        let fingers = Fingers::withheld();
+        let mut keys = feeling(&fingers);
+        press_both(&mut keys, &fingers, KeyCode::Down);
+        assert_eq!(
+            press_both(&mut keys, &fingers, KeyCode::Right),
+            vec![KeyCode::Down],
+            "a keyboard that felt nothing is somebody else's"
+        );
+        let fingers = Fingers::granted();
+        let mut keys = feeling(&fingers);
+        fingers.press(KeyCode::Down);
+        assert!(ticks(&mut keys, 1).is_empty());
+        assert!(
+            !keys.is_down(KeyCode::Down),
+            "a key held in another window is never pressed here"
+        );
+    }
+
+    #[test]
+    fn a_letter_is_never_read_from_the_keyboard() {
+        let fingers = Fingers::granted();
+        let mut keys = feeling(&fingers);
+        press_both(&mut keys, &fingers, KeyCode::Down);
+        press_both(&mut keys, &fingers, KeyCode::Char('w'));
+        assert_eq!(
+            press_both(&mut keys, &fingers, KeyCode::Left),
+            vec![KeyCode::Char('w')],
+            "where a letter sits depends on the layout, so only the terminal speaks for it"
+        );
+    }
+
+    #[test]
+    fn only_a_terminal_that_repeats_a_key_with_no_key_up_asks_for_the_keyboard() {
+        let fingers = Fingers::withheld();
+        let mut keys = feeling(&fingers);
+        keys.ask_for_the_keyboard();
+        assert_eq!(fingers.asks(), 0, "nothing is known yet");
+        press_both(&mut keys, &fingers, KeyCode::Down);
+        ticks(&mut keys, 1);
+        press_both(&mut keys, &fingers, KeyCode::Down);
+        keys.ask_for_the_keyboard();
+        keys.ask_for_the_keyboard();
+        assert_eq!(fingers.asks(), 1);
+
+        let fingers = Fingers::withheld();
+        let mut keys = feeling(&fingers);
+        keys.hear(&event(KeyCode::Up, KeyEventKind::Release));
+        press_both(&mut keys, &fingers, KeyCode::Down);
+        ticks(&mut keys, 1);
+        press_both(&mut keys, &fingers, KeyCode::Down);
+        keys.ask_for_the_keyboard();
+        assert_eq!(fingers.asks(), 0, "an arrow's key-up was heard");
     }
 
     #[test]

@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crossterm::event::{Event, KeyCode};
 use fishtank::app::LESSON_STREAK;
-use fishtank::testing::Tui;
+use fishtank::testing::{Fingers, Tui};
 use fishtank::ui::fishing_overlay::{LESSON_PACE, Temper};
 
 const CAST_TICKS: usize = 30 * 90;
@@ -85,14 +85,20 @@ struct Hand {
     terminal: Emulator,
     cadence: Cadence,
     held: Vec<(KeyCode, u32)>,
+    fingers: Fingers,
 }
 
 impl Hand {
     fn new(terminal: Emulator, cadence: Cadence) -> Self {
+        Self::feeling(terminal, cadence, Fingers::withheld())
+    }
+
+    fn feeling(terminal: Emulator, cadence: Cadence, fingers: Fingers) -> Self {
         Self {
             terminal,
             cadence,
             held: Vec::new(),
+            fingers,
         }
     }
 
@@ -111,11 +117,13 @@ impl Hand {
         let at = self.held.iter().position(|(held, _)| *held == code);
         match (at, down) {
             (None, true) => {
+                self.fingers.press(code);
                 self.strike(tui, code);
                 self.held.push((code, 0));
             }
             (Some(i), false) => {
                 self.held.remove(i);
+                self.fingers.lift(code);
                 if !self.terminal.pairs_every_press_with_a_release() {
                     self.lift(tui, code);
                 }
@@ -133,6 +141,7 @@ impl Hand {
 
     fn let_go(&mut self, tui: &mut Tui) {
         for (code, _) in std::mem::take(&mut self.held) {
+            self.fingers.lift(code);
             if !self.terminal.pairs_every_press_with_a_release() {
                 self.lift(tui, code);
             }
@@ -217,9 +226,19 @@ fn cast_like_a_player(tui: &mut Tui, hand: &mut Hand, style: Style, line: &str) 
 }
 
 fn landed_casts(terminal: Emulator, cadence: Cadence, style: Style) -> usize {
+    landed_casts_feeling(terminal, cadence, style, Fingers::withheld())
+}
+
+fn landed_casts_feeling(
+    terminal: Emulator,
+    cadence: Cadence,
+    style: Style,
+    fingers: Fingers,
+) -> usize {
     let mut tui = Tui::new();
     tui.clear_tank();
-    let mut hand = Hand::new(terminal, cadence);
+    tui.feel(&fingers);
+    let mut hand = Hand::feeling(terminal, cadence, fingers);
     let mut landed = 0;
     for cast in 0..CASTS {
         if !reel_like_a_player(&mut tui, &mut hand, style) {
@@ -289,6 +308,137 @@ fn a_player_in_a_multiplexer_whose_every_key_up_comes_with_its_key_down_lands_ev
             CASTS,
             "{cadence:?}"
         );
+    }
+}
+
+#[test]
+fn terminal_app_with_input_monitoring_reels_while_steering_like_windows() {
+    for cadence in MAC_CADENCES {
+        assert_eq!(
+            landed_casts_feeling(
+                Emulator::AppleTerminal,
+                cadence,
+                Style::ReelWhileSteering,
+                Fingers::granted()
+            ),
+            CASTS,
+            "{cadence:?}"
+        );
+    }
+}
+
+#[test]
+fn a_multiplexer_whose_every_key_up_comes_with_its_key_down_reels_while_steering_on_windows() {
+    for cadence in [WINDOWS_CADENCE].into_iter().chain(MAC_CADENCES) {
+        assert_eq!(
+            landed_casts_feeling(
+                Emulator::ConPty,
+                cadence,
+                Style::ReelWhileSteering,
+                Fingers::granted()
+            ),
+            CASTS,
+            "{cadence:?}"
+        );
+    }
+}
+
+fn hold_down_then_steer(terminal: Emulator, fingers: Fingers) -> (bool, Tui, Hand) {
+    hold_down_then_steer_after(terminal, fingers, &[])
+}
+
+fn hold_down_then_steer_after(
+    terminal: Emulator,
+    fingers: Fingers,
+    lines: &[&str],
+) -> (bool, Tui, Hand) {
+    let mut tui = Tui::new();
+    tui.feel(&fingers);
+    let mut hand = Hand::feeling(terminal, WINDOWS_CADENCE, fingers);
+    for line in lines {
+        hand.run(&mut tui, line);
+    }
+    tui.clear_tank();
+    hand.run(&mut tui, "/fish --no-escape");
+    for _ in 0..CAST_TICKS {
+        if tui.app.fishing_state().is_some_and(|s| s.is_biting()) {
+            break;
+        }
+        hand.tick(&mut tui);
+    }
+    hand.hold(&mut tui, KeyCode::Down, true);
+    for _ in 0..TWO_SECONDS {
+        hand.tick(&mut tui);
+    }
+    hand.hold(&mut tui, KeyCode::Left, true);
+    let mut kept_reeling = true;
+    for _ in 0..TWO_SECONDS {
+        hand.tick(&mut tui);
+        let state = tui.app.fishing_state().expect("no escape");
+        kept_reeling &= state.is_reeling && state.is_pushing_left;
+    }
+    (kept_reeling, tui, hand)
+}
+
+#[test]
+fn holding_down_and_pressing_a_side_keeps_reeling_wherever_the_keyboard_can_be_read() {
+    for terminal in [Emulator::ConPty, Emulator::AppleTerminal] {
+        let (kept_reeling, mut tui, mut hand) = hold_down_then_steer(terminal, Fingers::granted());
+        assert!(kept_reeling, "{terminal:?}: ↓ stays down under ←");
+        hand.hold(&mut tui, KeyCode::Down, false);
+        hand.tick(&mut tui);
+        assert!(
+            !reeling(&tui),
+            "{terminal:?}: and is up the frame it is let go"
+        );
+    }
+}
+
+#[test]
+fn a_new_game_keeps_the_keyboard_it_was_reading() {
+    let (kept_reeling, _, _) =
+        hold_down_then_steer_after(Emulator::ConPty, Fingers::granted(), &["/reset"]);
+    assert!(
+        kept_reeling,
+        "/reset and /import start a game, not a terminal"
+    );
+}
+
+#[test]
+fn a_terminal_that_hides_key_ups_asks_for_the_keyboard_once() {
+    let fingers = Fingers::withheld();
+    let (kept_reeling, mut tui, mut hand) =
+        hold_down_then_steer(Emulator::AppleTerminal, fingers.clone());
+    assert!(!kept_reeling, "an unread keyboard cannot see ↓ under ←");
+    assert_eq!(fingers.asks(), 0, "never in the middle of a fight");
+    hand.let_go(&mut tui);
+    tui.key(KeyCode::Esc);
+    assert_eq!(fingers.asks(), 1, "asked as the cast ends");
+    hold_down_then_steer_again(&mut tui, &mut hand);
+    tui.key(KeyCode::Esc);
+    assert_eq!(fingers.asks(), 1, "and only once");
+}
+
+fn hold_down_then_steer_again(tui: &mut Tui, hand: &mut Hand) {
+    hand.run(tui, "/fish --no-fight");
+    hand.hold(tui, KeyCode::Down, true);
+    for _ in 0..TWO_SECONDS {
+        hand.tick(tui);
+    }
+    hand.let_go(tui);
+}
+
+#[test]
+fn a_terminal_that_reports_key_ups_or_a_keyboard_already_read_never_asks() {
+    for (terminal, fingers) in [
+        (Emulator::Kitty, Fingers::withheld()),
+        (Emulator::Windows, Fingers::withheld()),
+        (Emulator::AppleTerminal, Fingers::granted()),
+    ] {
+        let (_, mut tui, mut hand) = hold_down_then_steer(terminal, fingers.clone());
+        hand.let_go(&mut tui);
+        tui.key(KeyCode::Esc);
+        assert_eq!(fingers.asks(), 0, "{terminal:?}");
     }
 }
 

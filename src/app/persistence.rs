@@ -205,9 +205,11 @@ impl App {
     fn replace_game(&mut self, save: SaveFile) {
         let debug_mode = self.debug_mode;
         let persistence = self.persistence.take();
+        let held_keys = std::mem::take(&mut self.held_keys);
         *self = Self::resume(save, self.terminal_width, self.terminal_height);
         self.debug_mode |= debug_mode;
         self.persistence = persistence;
+        self.held_keys = held_keys;
     }
 }
 

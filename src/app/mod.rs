@@ -14,6 +14,7 @@ use crate::{
     consumable::{ActiveConsumable, ActiveMilkStatus, Buff, Caster, ConsumeTarget},
     economy::Purse,
     fishes::{fish::Fish, graveyard::Graveyard, species::FishSpecies},
+    keyboard::Keyboard,
     ledger::{Flow, Ledger},
     loot::{ConsumableKind, CowCounts, JUNK_PER_JUNKFISH, LootKind, LootPool, StockItem},
     names,
@@ -338,6 +339,10 @@ impl App {
                 None
             }
         }
+    }
+
+    pub fn feel_the_keyboard(&mut self, keyboard: Box<dyn Keyboard>) {
+        self.held_keys.feel(keyboard);
     }
 
     fn set_overlay(&mut self, overlay: Overlay) {

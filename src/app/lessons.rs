@@ -35,6 +35,7 @@ impl App {
         let Some(Overlay::Fishing(state)) = &self.active_overlay else {
             return;
         };
+        self.held_keys.ask_for_the_keyboard();
         if let Some(landed) = state.fought() {
             self.lessons.fought(landed);
         }
