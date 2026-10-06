@@ -11,6 +11,7 @@ use crate::ui::hints::{HINT_ENTER_CONSUME, HINT_ENTER_ETCH, HINT_ENTER_INSTALL};
 pub const COFFEE_DURATION: f32 = 60.0;
 pub const BAIT_DURATION: f32 = 60.0;
 pub const CASTS_PER_BUFF: u32 = 5;
+pub const COFFEE_CASTS: u32 = 2 * CASTS_PER_BUFF;
 
 pub const COFFEE_SPEED_MULT: f32 = 0.8;
 pub const COFFEE_SWAY_MULT: f32 = 0.7;
@@ -81,6 +82,7 @@ pub trait Buff {
     fn stacks(&self) -> u32;
     fn full_measure(&self) -> Measure;
     fn improves(&self, caster: Caster) -> bool;
+    fn casts_it_lasts(&self) -> u32;
     fn clocks(&self) -> (f32, u32);
     fn clocks_mut(&mut self) -> (&mut f32, &mut u32);
 
@@ -99,11 +101,19 @@ pub trait Buff {
     }
 
     fn spend_cast(&mut self, caster: Caster) {
-        if !matches!(self.full_measure(), Measure::Casts(_)) || !self.improves(caster) {
+        if !self.improves(caster) {
             return;
         }
-        let casts = self.clocks_mut().1;
-        *casts = casts.saturating_sub(1);
+        match self.full_measure() {
+            Measure::Casts(_) => {
+                let casts = self.clocks_mut().1;
+                *casts = casts.saturating_sub(1);
+            }
+            Measure::Seconds(full) => {
+                let a_cast = full / self.casts_it_lasts().max(1) as f32;
+                *self.clocks_mut().0 -= a_cast;
+            }
+        }
     }
 
     fn is_spent(&self) -> bool {
@@ -159,6 +169,10 @@ impl Buff for ActiveMilkStatus {
         caster == Caster::Angler
     }
 
+    fn casts_it_lasts(&self) -> u32 {
+        CASTS_PER_BUFF
+    }
+
     fn clocks(&self) -> (f32, u32) {
         (self.time_remaining, self.casts_left)
     }
@@ -202,8 +216,12 @@ impl Buff for ActiveConsumable {
         self.kind.active_measure().unwrap_or(Measure::Seconds(0.0))
     }
 
-    fn improves(&self, _caster: Caster) -> bool {
-        true
+    fn improves(&self, caster: Caster) -> bool {
+        self.kind.improves(caster)
+    }
+
+    fn casts_it_lasts(&self) -> u32 {
+        self.kind.active_casts()
     }
 
     fn clocks(&self) -> (f32, u32) {
@@ -340,11 +358,46 @@ mod tests {
     }
 
     #[test]
-    fn coffee_is_spent_by_time_and_never_by_a_cast() {
+    fn coffee_is_spent_by_time_and_by_the_angler_s_casts() {
         let mut cup = ActiveConsumable::fresh(ConsumableKind::Coffee).expect("coffee is a buff");
-        cup.spend_cast(Caster::Angler);
+        cup.spend_cast(Caster::Rig);
         assert_eq!(cup.left(), Measure::Seconds(COFFEE_DURATION));
-        cup.tick(COFFEE_DURATION);
+        cup.tick(COFFEE_DURATION / 2.0);
+        assert!(!cup.is_spent());
+        cup.tick(COFFEE_DURATION / 2.0);
         assert!(cup.is_spent());
+    }
+
+    #[test]
+    fn a_cup_of_coffee_lasts_twice_the_casts_of_a_bait() {
+        let mut cup = ActiveConsumable::fresh(ConsumableKind::Coffee).expect("coffee is a buff");
+        let mut bait = ActiveConsumable::fresh(ConsumableKind::Bait).expect("bait is a buff");
+        let lasts = |buff: &mut ActiveConsumable| {
+            (1..)
+                .find(|_| {
+                    buff.spend_cast(Caster::Angler);
+                    buff.is_spent()
+                })
+                .unwrap()
+        };
+        assert_eq!(lasts(&mut bait), CASTS_PER_BUFF);
+        assert_eq!(lasts(&mut cup), COFFEE_CASTS);
+        assert_eq!(COFFEE_CASTS, 2 * CASTS_PER_BUFF);
+    }
+
+    #[test]
+    fn a_cup_with_seconds_left_lasts_only_their_share_of_casts() {
+        let mut cup = ActiveConsumable::fresh(ConsumableKind::Coffee).expect("coffee is a buff");
+        cup.tick(COFFEE_DURATION - 10.0);
+        let casts = (1..)
+            .find(|_| {
+                cup.spend_cast(Caster::Angler);
+                cup.is_spent()
+            })
+            .unwrap();
+        assert_eq!(
+            casts, 2,
+            "ten seconds of a sixty-second cup is two of its ten casts"
+        );
     }
 }
