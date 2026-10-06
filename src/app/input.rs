@@ -22,6 +22,7 @@ use crate::{
         Blueprint, FEED_PORTION, FRESH_SPEECH, Fabrication, FabricationQuote, FabricationRefusal,
         Selector, StageBudget, Tank, TankKind, Workshop, WorldSignal, WorldView,
     },
+    tanks::soul_wall::SoulWall,
     ui::{
         circuit_overlay::{CircuitFish, CircuitState},
         fields,
@@ -29,6 +30,7 @@ use crate::{
         fishtanks_overlay::FishtanksState,
         foundry_overlay::FoundryState,
         index_overlay::IndexState,
+        index_query::IndexQuery,
         input_action::{Hold, InputAction, SCROLL_KEYS, classify, hold},
         ledger_overlay::LedgerState,
         shop_overlay::{
@@ -370,6 +372,13 @@ impl App {
         let Some(action) = classify(&event) else {
             return;
         };
+        if !matches!(action, InputAction::Quit)
+            && let Some(s) = self.index_state_mut()
+            && s.is_editing()
+        {
+            s.edit(&action);
+            return;
+        }
         match action {
             InputAction::Quit => {
                 self.running = false;
@@ -395,6 +404,21 @@ impl App {
             InputAction::Right => {
                 if let Some(s) = self.index_state_mut() {
                     s.scroll_right();
+                }
+            }
+            InputAction::Char('s' | 'S') => {
+                if let Some(s) = self.index_state_mut() {
+                    s.sort_focused();
+                }
+            }
+            InputAction::Char('f' | 'F' | '/') => {
+                if let Some(s) = self.index_state_mut() {
+                    s.edit_focused();
+                }
+            }
+            InputAction::Char('c' | 'C') => {
+                if let Some(s) = self.index_state_mut() {
+                    s.clear();
                 }
             }
             InputAction::Confirm => {
@@ -1574,6 +1598,30 @@ impl App {
         }
     }
 
+    fn open_index(&mut self, query: IndexQuery) {
+        let all_names: Vec<String> = self
+            .tanks
+            .iter()
+            .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
+            .collect();
+        let mut rng = rand::rng();
+        for fish in self.tanks.iter_mut().flat_map(|t| t.fish.iter_mut()) {
+            fields::populate_field_cache(fish, &all_names, &mut rng);
+        }
+        let living: Vec<(&str, &Fish)> = self
+            .tanks
+            .iter()
+            .flat_map(|t| t.fish.iter().map(|f| (t.name.as_str(), f)))
+            .collect();
+        let walls: Vec<(&str, &SoulWall)> = self
+            .tanks
+            .iter()
+            .filter_map(|t| t.soul_wall().map(|wall| (t.name.as_str(), wall)))
+            .collect();
+        let state = IndexState::new(&living, &walls, query);
+        self.set_overlay(Overlay::Index(state));
+    }
+
     fn settle_shop(&mut self) {
         let access = self.shop_access();
         if let Some(Overlay::Shop(shop)) = &mut self.active_overlay {
@@ -1746,7 +1794,7 @@ impl App {
                         self.tanks.iter().map(|t| t.name.as_str()).collect();
                     let action = commands::parse(&input, &fish_names_ref, &tank_names_ref);
                     match action {
-                        commands::Action::Index { .. }
+                        commands::Action::Index(_)
                         | commands::Action::Show { .. }
                         | commands::Action::Fishtanks
                         | commands::Action::ToggleNames
@@ -2699,51 +2747,8 @@ impl App {
             commands::Action::SetFrozen { name, frozen } => self.set_frozen(&name, frozen),
             commands::Action::Nudge { name, dx, dy } => self.nudge_fish(&name, dx, dy),
             commands::Action::Flip(name) => self.flip_fish(&name),
-            commands::Action::Index { all, tank_filter } => {
-                let all_names: Vec<String> = self
-                    .tanks
-                    .iter()
-                    .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
-                    .collect();
-                let mut rng = rand::rng();
-                if let Some(filter) = tank_filter {
-                    let tank_idx = self
-                        .tanks
-                        .iter()
-                        .position(|t| t.name.eq_ignore_ascii_case(&filter));
-                    if let Some(idx) = tank_idx {
-                        for fish in &mut self.tanks[idx].fish {
-                            fields::populate_field_cache(fish, &all_names, &mut rng);
-                        }
-                        let tank = &self.tanks[idx];
-                        let fish_with_tanks: Vec<(&str, &Fish)> =
-                            tank.fish.iter().map(|f| (tank.name.as_str(), f)).collect();
-                        let souls = tank.soul_wall().map(|wall| (tank.name.as_str(), wall));
-                        self.set_overlay(Overlay::Index(IndexState::new(
-                            &fish_with_tanks,
-                            souls,
-                            all,
-                            false,
-                        )));
-                    }
-                } else {
-                    for tank in &mut self.tanks {
-                        for fish in &mut tank.fish {
-                            fields::populate_field_cache(fish, &all_names, &mut rng);
-                        }
-                    }
-                    let fish_with_tanks: Vec<(&str, &Fish)> = self
-                        .tanks
-                        .iter()
-                        .flat_map(|t| t.fish.iter().map(|f| (t.name.as_str(), f)))
-                        .collect();
-                    self.set_overlay(Overlay::Index(IndexState::new(
-                        &fish_with_tanks,
-                        None,
-                        all,
-                        true,
-                    )));
-                }
+            commands::Action::Index(query) => {
+                self.open_index(query);
                 true
             }
             commands::Action::Inventory => {

@@ -12,6 +12,7 @@ pub mod grid;
 pub mod hint_bar;
 pub mod hints;
 pub mod index_overlay;
+pub mod index_query;
 pub mod input_action;
 pub mod inventory_overlay;
 pub mod layout;

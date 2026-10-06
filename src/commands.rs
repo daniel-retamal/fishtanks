@@ -6,7 +6,10 @@ use crate::loot::{ConsumableKind, MilkVariant};
 use crate::names::title_case;
 use crate::tank::TankKind;
 use crate::ui::fishing_overlay::Temper;
+use crate::ui::index_query::{self, Column, IndexQuery, Term};
 use crate::void_ritual::{GiveTarget, parse_give_target};
+
+const INDEX_ARGS: &str = "[\"<tank>\"] [<column>:<text>] [sort:[-]<column>]";
 
 const TEMPER_FLAGS: [(&str, Temper); 2] = [
     ("--normal", Temper::Normal),
@@ -947,65 +950,82 @@ fn complete_move_tank(
 }
 
 fn complete_index(rest: &str, tank_names: &[&str]) -> Option<Completion> {
-    if tank_names.is_empty() {
-        return None;
-    }
     if rest.is_empty() {
         return Some(Completion {
-            ghost: "<name>".to_string(),
+            ghost: INDEX_ARGS.to_string(),
             tab_result: None,
         });
     }
-    let (quoted, inner) = if let Some(s) = rest.strip_prefix('"') {
-        (true, s)
+    let word_start = if rest.matches('"').count() % 2 == 1 {
+        rest.rfind('"').unwrap_or(0)
     } else {
-        (false, rest)
+        rest.rfind(' ').map_or(0, |space| space + 1)
     };
-    if quoted && inner.contains('"') {
+    let (head, word) = rest.split_at(word_start);
+    if word.is_empty() {
         return None;
     }
-    let inner_lower = inner.to_ascii_lowercase();
-    let matches: Vec<&str> = tank_names
+    let candidates = index_words_for(word, tank_names);
+    let lower = word.to_lowercase();
+    let matches: Vec<&str> = candidates
         .iter()
-        .copied()
-        .filter(|&n| n.to_ascii_lowercase().starts_with(inner_lower.as_str()))
+        .map(String::as_str)
+        .filter(|candidate| candidate.to_lowercase().starts_with(&lower))
         .collect();
-    if matches.is_empty() {
-        if quoted {
-            return Some(Completion {
-                ghost: "\"".to_string(),
-                tab_result: None,
-            });
-        }
-        return None;
+    let first = *matches.first()?;
+    let common = longest_common_prefix(&matches);
+    let completed = if matches.len() == 1 || common.len() <= word.len() {
+        first
+    } else {
+        common
+    };
+    Some(Completion {
+        ghost: first[word.len()..].to_string(),
+        tab_result: Some(format!("/index {head}{completed}")),
+    })
+}
+
+fn index_words_for(word: &str, tank_names: &[&str]) -> Vec<String> {
+    let quoted = |name: &str| format!("\"{name}\"");
+    if let Some(value) = word.strip_prefix(&format!("{}:", index_query::SORT_WORD)) {
+        let sign = if value.starts_with('-') { "-" } else { "" };
+        return Column::keys()
+            .into_iter()
+            .map(|key| format!("{}:{sign}{key}", index_query::SORT_WORD))
+            .collect();
     }
-    let first = matches[0];
-    let ghost = if quoted {
-        format!("{}\"", &first[inner.len()..])
-    } else {
-        first[inner.len()..].to_string()
-    };
-    let tab_result = if matches.len() == 1 {
-        if quoted {
-            Some(format!("/index \"{}\"", first))
-        } else {
-            Some(format!("/index {}", first))
-        }
-    } else {
-        let cp = longest_common_prefix(&matches);
-        if cp.len() > inner.len() {
-            if quoted {
-                Some(format!("/index \"{}", cp))
-            } else {
-                Some(format!("/index {}", cp))
-            }
-        } else if quoted {
-            Some(format!("/index \"{}\"", first))
-        } else {
-            Some(format!("/index {}", first))
-        }
-    };
-    Some(Completion { ghost, tab_result })
+    if let Some((key, value)) = word.split_once(':') {
+        let exact = value.starts_with('"');
+        return match Column::parse(key) {
+            Some(Column::Fishtank) => tank_names
+                .iter()
+                .map(|name| match exact || name.contains(' ') {
+                    true => format!("{key}:{}", quoted(name)),
+                    false => format!("{key}:{name}"),
+                })
+                .collect(),
+            Some(Column::Species) => ALL_SPECIES
+                .iter()
+                .map(|species| format!("{key}:{}", species.display_name().to_lowercase()))
+                .collect(),
+            _ => Vec::new(),
+        };
+    }
+    if word.starts_with('"') {
+        return tank_names.iter().map(|name| quoted(name)).collect();
+    }
+    tank_names
+        .iter()
+        .map(|name| match name.contains(' ') {
+            true => quoted(name),
+            false => name.to_string(),
+        })
+        .chain([
+            index_query::ALL_WORD.to_string(),
+            format!("{}:", index_query::SORT_WORD),
+        ])
+        .chain(Column::keys().into_iter().map(|key| format!("{key}:")))
+        .collect()
 }
 
 fn complete_show(rest: &str, fish_in_tanks: &[(&str, &str)]) -> Option<Completion> {
@@ -1342,7 +1362,8 @@ fn command_args_placeholder(cmd: &str) -> &'static str {
         "say" => "\"<text>\"",
         "fps" => FPS_ARG,
         "clock" => CLOCK_ARG,
-        "index" | "show" | "switch" => "<name>",
+        "index" => INDEX_ARGS,
+        "show" | "switch" => "<name>",
         "bless" | "clone" | "restore" | "revive" | "kill" | "program" | "console" | "freeze"
         | "unfreeze" | "flip" => "<name>",
         "nudge" => "<name> <dx> <dy>",
@@ -1385,10 +1406,7 @@ pub enum Action {
         name: String,
         all: bool,
     },
-    Index {
-        all: bool,
-        tank_filter: Option<String>,
-    },
+    Index(IndexQuery),
     Fish {
         no_escape: bool,
         no_fight: bool,
@@ -1509,6 +1527,26 @@ fn parse_raw_arg(rest: &str) -> String {
     rest.split_whitespace().next().unwrap_or("").to_string()
 }
 
+fn parse_index(rest: &str, tank_names: &[&str]) -> Option<IndexQuery> {
+    let mut query = IndexQuery::default();
+    let words = index_query::words(rest);
+    let mut at = 0;
+    while at < words.len() {
+        let word = words[at].as_str();
+        let bare = !word.contains(':') && !word.starts_with('"');
+        if bare && !word.eq_ignore_ascii_case(index_query::ALL_WORD) {
+            let run: Vec<&str> = words[at..].iter().map(String::as_str).collect();
+            let (consumed, name) = greedy_name_words(&run, tank_names)?;
+            query.add(Term::Name(name.to_string()));
+            at += consumed;
+            continue;
+        }
+        query.add(Term::parse(word)?);
+        at += 1;
+    }
+    Some(query)
+}
+
 fn parse_name_greedy(rest: &str, names: &[&str]) -> Option<String> {
     split_name(rest, names).map(|(name, _)| name)
 }
@@ -1618,27 +1656,7 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
                 None => Action::Unknown,
             }
         }
-        "index" => {
-            if rest.is_empty() {
-                return Action::Index {
-                    all: false,
-                    tank_filter: None,
-                };
-            }
-            if rest.eq_ignore_ascii_case("all") {
-                return Action::Index {
-                    all: true,
-                    tank_filter: None,
-                };
-            }
-            match parse_name_greedy(rest, tank_names) {
-                Some(name) if !name.is_empty() => Action::Index {
-                    all: false,
-                    tank_filter: Some(name),
-                },
-                _ => Action::Unknown,
-            }
-        }
+        "index" => parse_index(rest, tank_names).map_or(Action::Unknown, Action::Index),
         "consume" => {
             let name = parse_rest_or_quoted(rest);
             if name.is_empty() {
@@ -1811,7 +1829,7 @@ impl Action {
             | SetFps(_)
             | SetClock(_)
             | Show { .. }
-            | Index { .. }
+            | Index(_)
             | Fish { .. }
             | Inventory
             | Shop
@@ -2107,38 +2125,49 @@ mod tests {
         }
     }
 
+    fn index_words(line: &str, tanks: &[&str]) -> Option<Vec<String>> {
+        match parse(line, &[], tanks) {
+            Action::Index(query) => Some(query.words()),
+            _ => None,
+        }
+    }
+
     #[test]
     fn parse_index_no_arg() {
-        let (fish, tanks) = no_names();
-        assert!(matches!(
-            parse("/index", fish, tanks),
-            Action::Index {
-                all: false,
-                tank_filter: None
-            }
-        ));
+        assert!(index_words("/index", &[]).unwrap().is_empty());
     }
 
     #[test]
     fn parse_index_all() {
-        let (fish, tanks) = no_names();
-        assert!(matches!(
-            parse("/index all", fish, tanks),
-            Action::Index {
-                all: true,
-                tank_filter: None
-            }
-        ));
+        assert_eq!(index_words("/index all", &[]).unwrap(), ["all"]);
     }
 
     #[test]
     fn parse_index_tank_filter() {
-        let fish: &[&str] = &[];
-        let tanks: &[&str] = &["Ocean"];
-        assert!(matches!(
-            parse("/index Ocean", fish, tanks),
-            Action::Index { all: false, tank_filter: Some(ref n) } if n == "Ocean"
-        ));
+        assert_eq!(
+            index_words("/index Big Ocean", &["Big Ocean"]).unwrap(),
+            [r#"fishtank:"Big Ocean""#]
+        );
+        assert_eq!(
+            index_words(r#"/index "Big Ocean" all"#, &[]).unwrap(),
+            ["all", r#"fishtank:"Big Ocean""#]
+        );
+        assert!(index_words("/index Nowhere", &["Ocean"]).is_none());
+    }
+
+    #[test]
+    fn parse_index_filters_and_sorts() {
+        assert_eq!(
+            index_words("/index species:sal sort:-worth Ocean", &["Ocean"]).unwrap(),
+            ["species:sal", r#"fishtank:"Ocean""#, "sort:-worth"]
+        );
+        assert_eq!(
+            index_words("/index tank:oce weight:>1kg", &[]).unwrap(),
+            ["fishtank:oce", "weight:>1kg"]
+        );
+        assert!(index_words("/index colour:red", &[]).is_none());
+        assert!(index_words("/index sort:display", &[]).is_none());
+        assert!(index_words("/index species:", &[]).is_none());
     }
 
     #[test]
@@ -2269,6 +2298,43 @@ mod tests {
     fn parse_no_slash_is_unknown() {
         let (fish, tanks) = no_names();
         assert!(matches!(parse("feed 5", fish, tanks), Action::Unknown));
+    }
+
+    #[test]
+    fn the_index_completes_tanks_columns_and_sorts() {
+        let ctx = CompletionCtx {
+            tank_names: &["Coral", "Big Reef"],
+            ..Default::default()
+        };
+        let complete = |line: &str| autocomplete(line, &ctx).expect(line);
+        assert_eq!(complete("/index ").ghost, INDEX_ARGS);
+        assert_eq!(complete("/index Cor").ghost, "al");
+        assert_eq!(
+            complete("/index \"Big").tab_result.as_deref(),
+            Some("/index \"Big Reef\"")
+        );
+        assert_eq!(complete("/index spe").ghost, "cies:");
+        assert_eq!(complete("/index species:sal").ghost, "mon");
+        assert_eq!(
+            complete("/index all sort:-wor").tab_result.as_deref(),
+            Some("/index all sort:-worth")
+        );
+        assert_eq!(
+            complete("/index tank:C").tab_result.as_deref(),
+            Some("/index tank:Coral")
+        );
+        assert_eq!(
+            complete("/index tank:\"C").tab_result.as_deref(),
+            Some("/index tank:\"Coral\"")
+        );
+        assert!(matches!(
+            parse(
+                &complete("/index all sort:-wor").tab_result.unwrap(),
+                &[],
+                &[]
+            ),
+            Action::Index(_)
+        ));
     }
 
     #[test]

@@ -54,6 +54,9 @@ const STRAIGHTS: &[&str] = &["─", "│", "┃", "━"];
 const OFF_VIEW: &[&str] = &["┊", "┈"];
 const COLUMN_RULE: &str = "│";
 const TABLE_CROSSING: &str = "┼";
+const TABLE_TEE: &str = "┬";
+const RULE_LINE: &str = "─";
+const INNER_RULE_START: &str = "├";
 const BRANCHES: &[&str] = &["├", "└"];
 const TOP_LEFT: &str = "┌";
 const TOP_RIGHT: &str = "┐";
@@ -378,7 +381,7 @@ impl Still {
                 Arm::Left => false,
             };
         }
-        symbol == COLUMN_RULE && self.vertical_run(x, y).contains(&TABLE_CROSSING)
+        symbol == COLUMN_RULE && self.hangs_from_a_table_rule(x, y)
     }
 
     fn is_title_cell(&self, x: usize, y: usize) -> bool {
@@ -409,6 +412,28 @@ impl Still {
             .map(|cx| self.symbol_at(cx, y).unwrap_or_default())
             .find(|symbol| !RULE_RUN.contains(symbol))
             .is_some_and(|symbol| RULE_START.contains(&symbol))
+    }
+
+    fn hangs_from_a_table_rule(&self, x: usize, y: usize) -> bool {
+        let run = self.vertical_run(x, y);
+        if run.contains(&TABLE_CROSSING) {
+            return true;
+        }
+        let top = (0..=y)
+            .rev()
+            .take_while(|&row| {
+                matches!(self.symbol_at(x, row), Some(COLUMN_RULE) | Some(TABLE_TEE))
+            })
+            .find(|&row| self.symbol_at(x, row) == Some(TABLE_TEE));
+        top.is_some_and(|row| self.is_inner_rule(x, row))
+    }
+
+    fn is_inner_rule(&self, x: usize, y: usize) -> bool {
+        (0..x)
+            .rev()
+            .map(|cx| self.symbol_at(cx, y).unwrap_or_default())
+            .find(|&symbol| symbol != RULE_LINE && symbol != TABLE_TEE)
+            == Some(INNER_RULE_START)
     }
 
     fn vertical_run(&self, x: usize, y: usize) -> Vec<&str> {

@@ -15,6 +15,17 @@ pub enum Fed {
     Worthless,
 }
 
+impl Fed {
+    pub fn percent(self) -> Option<f64> {
+        match self {
+            Fed::Growing(percent) => Some(f64::from(percent)),
+            Fed::Full => Some(PERCENT_WHOLE as f64),
+            Fed::Boundless => Some(f64::INFINITY),
+            Fed::Worthless => None,
+        }
+    }
+}
+
 impl Fish {
     pub fn fed(&self) -> Fed {
         let Some(cap) = self.food_cap_g() else {
