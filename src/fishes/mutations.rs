@@ -868,6 +868,33 @@ const GROWING_SLIME_CAPS: &[Mutation] = &[
     Mutation::Revert,
 ];
 
+const LEECH_CAPS: &[Mutation] = &[
+    Mutation::EyeIncrease,
+    Mutation::ColorPatch,
+    Mutation::EyeColor,
+    Mutation::GlistenFast,
+    Mutation::GlistenSlow,
+    Mutation::GlistenEnable,
+    Mutation::BodyColor,
+    Mutation::NightOwl,
+    Mutation::HelpedByGod,
+    Mutation::Heterochromia,
+    Mutation::Ear,
+    Mutation::EarColor,
+    Mutation::Hydra,
+    Mutation::Feet,
+    Mutation::FeetColor,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
+    Mutation::Lure,
+    Mutation::Bill,
+    Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Lunar,
+    Mutation::Revert,
+];
+
 const FACE_CAPS: &[Mutation] = &[
     Mutation::ColorPatch,
     Mutation::EyeColor,
@@ -911,6 +938,7 @@ fn unfish_caps(kind: UnfishKind) -> &'static [Mutation] {
         UnfishKind::Ouroboros => RING_CAPS,
         UnfishKind::Bones | UnfishKind::Signal => GROWING_SLIME_CAPS,
         UnfishKind::Face => FACE_CAPS,
+        UnfishKind::Leech => LEECH_CAPS,
         _ => SLIME_CAPS,
     }
 }

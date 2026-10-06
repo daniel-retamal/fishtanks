@@ -2,7 +2,7 @@ use fishtank::app::App;
 use fishtank::entities::food::FOOD_WEIGHT_GAIN_G;
 use fishtank::fishes::fish::{Direction, Fish, FishState};
 use fishtank::fishes::mutations::Mutatable;
-use fishtank::fishes::quirk::{Cling, Quirk, SIGNAL_GAP_BITS};
+use fishtank::fishes::quirk::{Cling, LEECH_BITE_MEAN_SECS, Quirk, SIGNAL_GAP_BITS};
 use fishtank::fishes::species::FishSpecies;
 use fishtank::fishes::unfish::{SPAWNABLE_UNFISH, UnfishKind};
 use fishtank::settings::Settings;
@@ -81,9 +81,13 @@ fn leech_state(fish: &Fish) -> (Option<String>, Option<Cling>, u32) {
 }
 
 fn hurry_leeches(tank: &mut Tank) {
+    set_bite_clocks(tank, 0.0);
+}
+
+fn set_bite_clocks(tank: &mut Tank, secs: f32) {
     for fish in &mut tank.fish {
         if let Some(Quirk::Leech(leech)) = fish.quirk_mut() {
-            leech.bite_clock = 0.0;
+            leech.bite_clock = secs;
         }
     }
 }
@@ -155,6 +159,24 @@ fn a_leech_drinks_only_what_food_put_on_a_fish() {
 }
 
 #[test]
+fn a_leech_is_a_sucker_and_a_tail_whichever_way_it_faces() {
+    let mut leech = unfish(UnfishKind::Leech, "Leech");
+    for (facing, drawn) in [(Direction::Left, "c~"), (Direction::Right, "~ɔ")] {
+        if leech.facing != facing {
+            leech.flip();
+        }
+        let glyphs: String = leech
+            .line_sprite()
+            .rows
+            .iter()
+            .flatten()
+            .map(|&(glyph, _)| glyph)
+            .collect();
+        assert_eq!(glyphs, drawn);
+    }
+}
+
+#[test]
 fn a_leech_that_drank_a_whole_fish_becomes_its_pale_copy() {
     let mut tank = lab();
     add(
@@ -206,10 +228,15 @@ fn a_fish_carries_two_leeches_at_most_one_above_one_below() {
         for name in ["I", "II", "III"] {
             let leech = index_of(&tank, name);
             if leech_state(&tank.fish[leech]).0.is_none() {
-                tank.fish[leech].position.x = 21.0;
-                tank.fish[leech].position.y = tank.fish[index_of(&tank, "Host")].position.y;
+                let host = &tank.fish[index_of(&tank, "Host")];
+                let centre = host.position.x + host.display_width as f32 / 2.0;
+                let row = host.position.y;
+                let width = tank.fish[leech].display_width as f32;
+                tank.fish[leech].position.x = centre - width / 2.0;
+                tank.fish[leech].position.y = row;
             }
         }
+        set_bite_clocks(&mut tank, LEECH_BITE_MEAN_SECS);
         tick(&mut tank);
     }
     let clings: Vec<Cling> = ["I", "II", "III"]

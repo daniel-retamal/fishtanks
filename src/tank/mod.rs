@@ -37,7 +37,7 @@ mod relay;
 mod simulation;
 mod world;
 
-pub use background::{Scenery, TankBackground};
+pub use background::{PLANT_HEIGHT_MAX, PLANT_HEIGHT_MIN, Scenery, TankBackground};
 pub use blueprint::{
     Blueprint, BlueprintFish, BlueprintPins, Fabrication, FabricationQuote, FabricationRefusal,
     Material, Workshop,

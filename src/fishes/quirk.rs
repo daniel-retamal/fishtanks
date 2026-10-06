@@ -3,15 +3,15 @@ use serde::{Deserialize, Serialize};
 
 use super::mutant::MutationRecord;
 use super::species::{
-    ALL_SPECIES, BodyChars, BodyTemplate, EYE_CIRCLE_SHUT, EYE_ROUND, EyeAt, FishSpecies,
-    SizeCategory, TailKind,
+    ALL_SPECIES, BodyChars, BodyTemplate, EYE_CIRCLE_SHUT, EyeAt, FishSpecies, SizeCategory,
+    TailKind,
 };
 use super::unfish::{UnfishKind, UnfishState};
 use crate::cheats::Cheat;
 use crate::util::sample_exponential;
 
 pub const LEECH_BITE_MEAN_SECS: f32 = 20.0;
-pub const LEECH_BODY_SIZE: usize = 3;
+pub const LEECH_BODY_SIZE: usize = 0;
 pub const BONES_RIBS_MIN: usize = 3;
 pub const BONES_RIBS_MAX: usize = 8;
 pub const BONES_RIBS_CAP: usize = 12;
@@ -59,18 +59,15 @@ pub const BONES_CHARS: BodyChars = BodyChars {
 };
 
 pub const LEECH_CHARS: BodyChars = BodyChars {
-    mouth_left: '(',
-    mouth_right: ')',
-    eye_left: EYE_ROUND,
-    eye_right: EYE_ROUND,
-    body_left: '≈',
-    wave_left: '~',
-    body_right: '≈',
-    wave_right: '~',
-    tail: TailKind::Custom {
-        left: ')',
-        right: '(',
-    },
+    mouth_left: 'c',
+    mouth_right: 'ɔ',
+    eye_left: '~',
+    eye_right: '~',
+    body_left: '~',
+    wave_left: '≈',
+    body_right: '~',
+    wave_right: '≈',
+    tail: TailKind::None,
 };
 
 pub const FACE_OPEN: [char; 5] = ['(', '°', '‿', '°', ')'];
