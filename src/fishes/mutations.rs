@@ -10,8 +10,8 @@ use super::mutant::{
 use super::revert::{Look, can_revert, revert, settle_old_record};
 use super::species::{BodyTemplate, FishSpecies, SINGLE_EYE, TailKind};
 use super::unfish::{
-    BALL_HEIGHT, SKULL_HEIGHT, SLIME_GLISTEN_SPEED_FAST, SLIME_GLISTEN_SPEED_SLOW, UnfishKind,
-    UnfishMutationStyle, is_multi_row, worm_display_width,
+    SLIME_GLISTEN_SPEED_FAST, SLIME_GLISTEN_SPEED_SLOW, UnfishKind, UnfishMutationStyle,
+    is_multi_row, worm_display_width,
 };
 use crate::colors::{DARK_GRAY, LIGHT_GREEN, PINK, WHITE};
 use crate::sprite::{Band, BodyExtension, ExtensionVariant, Feet, FeetStyle};
@@ -77,6 +77,7 @@ pub enum Mutation {
     VentralFin,
     Lunar,
     Puff,
+    Negative,
     Revert,
 }
 
@@ -121,6 +122,7 @@ impl Mutation {
         Mutation::VentralFin,
         Mutation::Lunar,
         Mutation::Puff,
+        Mutation::Negative,
         Mutation::Revert,
     ];
 
@@ -174,6 +176,7 @@ impl Mutation {
             Mutation::VentralFin => "ventralfin",
             Mutation::Lunar => "lunar",
             Mutation::Puff => "puff",
+            Mutation::Negative => "negative",
             Mutation::Revert => "revert",
         }
     }
@@ -187,7 +190,10 @@ impl Mutation {
     }
 
     pub fn auto_selectable(self) -> bool {
-        !matches!(self, Mutation::Strawberry | Mutation::Alienation)
+        !matches!(
+            self,
+            Mutation::Strawberry | Mutation::Alienation | Mutation::Negative
+        )
     }
 
     pub fn divides(self) -> bool {
@@ -298,6 +304,10 @@ pub trait Mutatable {
 
     fn hydra_max(&self) -> usize {
         0
+    }
+
+    fn has_patch_room(&self) -> bool {
+        true
     }
 
     fn has_feet(&self) -> bool {
@@ -424,7 +434,9 @@ pub trait Mutatable {
             Mutation::Cyclops => self.has_many_eyes(),
             Mutation::EyeColor | Mutation::Heterochromia => self.shows_eye_colour(),
             Mutation::GlistenMode => self.has_glisten(),
-            Mutation::ColorPatch => !self.has_glisten() && !adornments.lunar,
+            Mutation::ColorPatch => {
+                !self.has_glisten() && !adornments.lunar && self.has_patch_room()
+            }
             Mutation::BodyVariant => self.shifts_body(),
             Mutation::MouthVariant => self.turns_mouth(),
             Mutation::TailVariant => !self.is_double() || self.backwards(),
@@ -697,6 +709,10 @@ pub fn apply_mutant_mutation<T: MutantBacked + Mutatable>(
                 feet.color = Some(random_rgb_other(rng, &[feet.color]));
             }
         }
+        Mutation::Negative => {
+            let mutant = target.mutant_mut();
+            mutant.negative = !mutant.negative;
+        }
         Mutation::Spikes | Mutation::Wings | Mutation::Tentacles | Mutation::Revert => {}
         Mutation::Lure
         | Mutation::Bill
@@ -744,6 +760,7 @@ const FIXED_MULTICHAR_CAPS: &[Mutation] = &[
     Mutation::VentralFin,
     Mutation::Lunar,
     Mutation::Puff,
+    Mutation::Negative,
     Mutation::Revert,
 ];
 
@@ -794,6 +811,7 @@ const FIXED_JELLY_CAPS: &[Mutation] = &[
     Mutation::DorsalFin,
     Mutation::VentralFin,
     Mutation::Puff,
+    Mutation::Negative,
     Mutation::Revert,
 ];
 
@@ -826,6 +844,112 @@ const SLIME_CAPS: &[Mutation] = &[
     Mutation::Revert,
 ];
 
+const GROWING_SLIME_CAPS: &[Mutation] = &[
+    Mutation::SizeIncrease,
+    Mutation::EyeIncrease,
+    Mutation::ColorPatch,
+    Mutation::EyeColor,
+    Mutation::GlistenFast,
+    Mutation::GlistenSlow,
+    Mutation::GlistenMode,
+    Mutation::GlistenColor,
+    Mutation::GlistenEnable,
+    Mutation::BodyColor,
+    Mutation::NightOwl,
+    Mutation::HelpedByGod,
+    Mutation::Heterochromia,
+    Mutation::Ear,
+    Mutation::EarColor,
+    Mutation::Hydra,
+    Mutation::Feet,
+    Mutation::FeetColor,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
+    Mutation::Lure,
+    Mutation::Bill,
+    Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Lunar,
+    Mutation::Revert,
+];
+
+const LEECH_CAPS: &[Mutation] = &[
+    Mutation::EyeIncrease,
+    Mutation::ColorPatch,
+    Mutation::EyeColor,
+    Mutation::GlistenFast,
+    Mutation::GlistenSlow,
+    Mutation::GlistenColor,
+    Mutation::GlistenEnable,
+    Mutation::BodyColor,
+    Mutation::NightOwl,
+    Mutation::HelpedByGod,
+    Mutation::Heterochromia,
+    Mutation::Ear,
+    Mutation::EarColor,
+    Mutation::Hydra,
+    Mutation::Feet,
+    Mutation::FeetColor,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
+    Mutation::Lure,
+    Mutation::Bill,
+    Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Lunar,
+    Mutation::Revert,
+];
+
+const FACE_CAPS: &[Mutation] = &[
+    Mutation::ColorPatch,
+    Mutation::EyeColor,
+    Mutation::GlistenFast,
+    Mutation::GlistenSlow,
+    Mutation::GlistenMode,
+    Mutation::GlistenColor,
+    Mutation::GlistenEnable,
+    Mutation::BodyColor,
+    Mutation::NightOwl,
+    Mutation::HelpedByGod,
+    Mutation::Heterochromia,
+    Mutation::Feet,
+    Mutation::FeetColor,
+    Mutation::Spikes,
+    Mutation::Wings,
+    Mutation::Tentacles,
+    Mutation::DorsalFin,
+    Mutation::VentralFin,
+    Mutation::Lunar,
+    Mutation::Revert,
+];
+
+const RING_CAPS: &[Mutation] = &[
+    Mutation::EyeColor,
+    Mutation::GlistenFast,
+    Mutation::GlistenSlow,
+    Mutation::GlistenMode,
+    Mutation::GlistenColor,
+    Mutation::GlistenEnable,
+    Mutation::BodyColor,
+    Mutation::NightOwl,
+    Mutation::HelpedByGod,
+    Mutation::Revert,
+];
+
+fn unfish_caps(kind: UnfishKind) -> &'static [Mutation] {
+    match kind {
+        UnfishKind::Worm => WORM_CAPS,
+        UnfishKind::Absence => &[],
+        UnfishKind::Ouroboros => RING_CAPS,
+        UnfishKind::Bones | UnfishKind::Signal => GROWING_SLIME_CAPS,
+        UnfishKind::Face => FACE_CAPS,
+        UnfishKind::Leech => LEECH_CAPS,
+        _ => SLIME_CAPS,
+    }
+}
+
 const FIGURE_CAPS: &[Mutation] = &[
     Mutation::GlistenFast,
     Mutation::GlistenSlow,
@@ -845,6 +969,7 @@ const FIGURE_CAPS: &[Mutation] = &[
     Mutation::Spikes,
     Mutation::Wings,
     Mutation::Tentacles,
+    Mutation::Negative,
     Mutation::Revert,
 ];
 
@@ -938,7 +1063,9 @@ impl Fish {
     }
 
     fn can_grow_body(&self) -> bool {
-        if let Some(us) = self.unfish_state.as_ref() {
+        if let Some(us) = self.unfish_state.as_ref()
+            && us.kind.mutation_style() == UnfishMutationStyle::Worm
+        {
             return us.worm_segments < WORM_MAX_SEGMENTS;
         }
         self.natural_body_size() < MUTATION_MAX_BODY_SIZE
@@ -1052,7 +1179,8 @@ pub fn apply_unfish_mutation(
         .unwrap();
     let worm_component = fish.fused_self_component();
     let sprite_width = fish.display_width;
-    let body_size = fish.body_size;
+    let patch_cells = fish.unfish_patch_cells();
+    let hydra_room = fish.hydra_max();
     let extension = mutation
         .extension()
         .map(|variant| (variant, fish.bands_to_extend(variant)));
@@ -1120,8 +1248,7 @@ pub fn apply_unfish_mutation(
             }
             mutation if mutation.adorns() => us.adornments.grow(mutation),
             Mutation::Hydra if style == UnfishMutationStyle::Slime => {
-                let cap = body_size.saturating_sub(1);
-                let remaining = cap.saturating_sub(us.hydra_count);
+                let remaining = hydra_room.saturating_sub(us.hydra_count);
                 let requested = rng
                     .random_range(HYDRA_EYES_PER_APPLICATION_MIN..=HYDRA_EYES_PER_APPLICATION_MAX);
                 us.hydra_count += requested.min(remaining);
@@ -1136,7 +1263,10 @@ pub fn apply_unfish_mutation(
             Mutation::ColorPatch => {
                 let count = rng.random_range(MUTATION_PATCH_COUNT_MIN..=MUTATION_PATCH_COUNT_MAX);
                 for _ in 0..count {
-                    let pos = rng.random_range(0..sprite_width.max(1));
+                    let pos = match &patch_cells {
+                        Some(cells) if !cells.is_empty() => cells[rng.random_range(0..cells.len())],
+                        _ => rng.random_range(0..sprite_width.max(1)),
+                    };
                     us.slime_color_patches.push((pos, random_rgb(rng)));
                 }
                 if us.slime_color_patches.len() > MUTATION_PATCH_MAX {
@@ -1151,6 +1281,9 @@ pub fn apply_unfish_mutation(
         && let Some(us) = fish.unfish_state.as_mut()
     {
         us.resync_worm_eye_colors(rng);
+    }
+    if style == UnfishMutationStyle::Slime && mutation == Mutation::SizeIncrease {
+        fish.body_size = (fish.body_size + 1).min(MUTATION_MAX_BODY_SIZE);
     }
     refresh_unfish_width(fish);
     MutationOutcome::Applied
@@ -1169,18 +1302,14 @@ fn refresh_unfish_width(fish: &mut Fish) {
             us.hydra_count,
         );
     } else if !is_multi_row(us.kind) {
-        let extras = us.ear_count + us.hydra_count + us.adornments.lead();
-        fish.display_width = compute_display_width(FishSpecies::Unfish, fish.body_size) + extras;
+        fish.display_width = fish.unfish_line_width();
     }
 }
 
 impl Mutatable for Fish {
     fn capabilities(&self) -> &'static [Mutation] {
         if let Some(us) = self.unfish_state.as_ref() {
-            return match us.kind.mutation_style() {
-                UnfishMutationStyle::Slime => SLIME_CAPS,
-                UnfishMutationStyle::Worm => WORM_CAPS,
-            };
+            return unfish_caps(us.kind);
         }
         if !self.species.config().mutatable {
             return &[];
@@ -1319,10 +1448,9 @@ impl Mutatable for Fish {
     }
 
     fn max_ears(&self) -> usize {
-        match self.unfish_state.as_ref().map(|us| us.kind) {
-            Some(UnfishKind::Ball) => BALL_HEIGHT as usize,
-            Some(UnfishKind::Skull) => SKULL_HEIGHT as usize,
-            _ => MAX_EARS,
+        match self.unfish_kind().and_then(UnfishKind::grid) {
+            Some(grid) => grid.height as usize,
+            None => MAX_EARS,
         }
     }
 
@@ -1352,12 +1480,15 @@ impl Mutatable for Fish {
         Fish::leaves_a_wake(self)
     }
 
+    fn has_patch_room(&self) -> bool {
+        self.unfish_patch_cells()
+            .is_none_or(|cells| !cells.is_empty())
+    }
+
     fn hydra_max(&self) -> usize {
         if let Some(us) = self.unfish_state.as_ref() {
             return match us.kind.mutation_style() {
-                UnfishMutationStyle::Slime if !is_multi_row(us.kind) => {
-                    self.body_size.saturating_sub(1)
-                }
+                UnfishMutationStyle::Slime if !is_multi_row(us.kind) => self.unfish_hydra_room(),
                 UnfishMutationStyle::Worm => us.worm_segments.saturating_sub(1),
                 _ => 0,
             };

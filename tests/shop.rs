@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use fishtank::{
     colors::{DARK_GRAY, WHITE},
     economy::Money,
@@ -129,4 +129,189 @@ fn a_priced_shelf_reads_cheapest_first_and_ties_by_name() {
         .collect();
     assert!(rows.len() > 1, "the shelf shows several fish");
     assert!(rows.is_sorted(), "cheapest first, ties by name");
+}
+
+fn cursor_row(tui: &mut Tui) -> Option<String> {
+    tui.screen()
+        .text()
+        .lines()
+        .find_map(|line| {
+            ["│> ", "┤> "]
+                .iter()
+                .find_map(|mark| line.split_once(mark).map(|(_, row)| row.to_string()))
+        })
+        .map(|row| {
+            row.split("  ")
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        })
+}
+
+fn by_price() -> Vec<FishSpecies> {
+    let mut shelf: Vec<FishSpecies> = FishSpecies::all_buyable().to_vec();
+    shelf.sort_by_key(|species| (species.buy_price(), species.display_name()));
+    shelf
+}
+
+#[test]
+fn a_fish_you_can_no_longer_afford_leaves_the_cursor_beside_it() {
+    let shelf = by_price();
+    let dearer = shelf
+        .iter()
+        .position(|species| species.buy_price() > shelf[0].buy_price())
+        .expect("the shelf has two prices");
+    let bought = shelf[dearer];
+    let beside = shelf[dearer - 1];
+    let mut tui = shop_with(Money::from(bought.buy_price() + beside.buy_price()));
+    tui.key(KeyCode::Enter);
+    tui.select(FISHES_ROW);
+    tui.key(KeyCode::Enter);
+    tui.select(bought.display_name());
+    tui.key(KeyCode::Enter);
+    tui.type_text("Pip");
+    tui.key(KeyCode::Enter);
+    tui.snap("the dearer fish went grey");
+    assert_eq!(
+        cursor_row(&mut tui).as_deref(),
+        Some(beside.display_name()),
+        "the cursor waits on the row beside it, never back at the top"
+    );
+}
+
+#[test]
+fn selling_keeps_the_cursor_where_it_was() {
+    let mut tui = Tui::with_size(DEFAULT_COLS, rows_for_every_fish());
+    tui.film(
+        Path::new(env!("CARGO_TARGET_TMPDIR")),
+        "shop-keeps-its-place",
+    );
+    tui.clear_tank();
+    for name in ["Ann", "Bea", "Cid"] {
+        tui.run(&format!("/spawn merluza \"{name}\""));
+    }
+    tui.run("/add coffee 3");
+    tui.run("/add bait 3");
+    tui.run("/shop");
+    tui.select("Sell");
+    tui.key(KeyCode::Enter);
+    tui.select("Bait (3)");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Enter);
+    tui.snap("one bait sold");
+    assert_eq!(
+        cursor_row(&mut tui).as_deref(),
+        Some("Bait (2)"),
+        "the cursor stays on what is left of it"
+    );
+    tui.select("Bea (Merluza)");
+    let below = {
+        tui.key(KeyCode::Down);
+        let below = cursor_row(&mut tui).expect("a row below Bea");
+        tui.key(KeyCode::Up);
+        below
+    };
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Enter);
+    tui.snap("Bea sold");
+    assert_eq!(
+        cursor_row(&mut tui),
+        Some(below),
+        "the row that took its place is selected"
+    );
+}
+
+#[test]
+fn past_thirty_the_food_counter_moves_by_thirty() {
+    let mut tui = shop_with(Money::from(10_000u32));
+    tui.key(KeyCode::Enter);
+    tui.select("Food");
+    tui.key(KeyCode::Enter);
+    for _ in 1..30 {
+        tui.key(KeyCode::Right);
+    }
+    tui.screen().expect_find("< 30 >");
+    tui.key(KeyCode::Right);
+    tui.screen().expect_find("< 60 >");
+    tui.key(KeyCode::Right);
+    tui.screen().expect_find("< 90 >");
+    tui.key(KeyCode::Left);
+    tui.screen().expect_find("< 60 >");
+    tui.key(KeyCode::Left);
+    tui.key(KeyCode::Left);
+    tui.screen().expect_find("< 29 >");
+}
+
+#[test]
+fn the_food_counter_stops_at_what_the_purse_holds() {
+    let mut tui = shop_with(Money::from(45u32));
+    tui.key(KeyCode::Enter);
+    tui.select("Food");
+    tui.key(KeyCode::Enter);
+    for _ in 1..30 {
+        tui.key(KeyCode::Right);
+    }
+    tui.key(KeyCode::Right);
+    tui.screen().expect_find("< 45 >");
+    tui.key(KeyCode::Left);
+    tui.screen().expect_find("< 30 >");
+}
+
+fn hold_down(tui: &mut Tui, first_delay: usize, repeats: usize, kind: KeyEventKind) -> usize {
+    let mut dark = 0;
+    let mut watch = |tui: &mut Tui| {
+        tui.tick_n(1);
+        if cursor_row(tui).is_none() {
+            dark += 1;
+        }
+    };
+    tui.key(KeyCode::Down);
+    for _ in 0..first_delay {
+        watch(tui);
+    }
+    for _ in 0..repeats {
+        let mut repeat = KeyEvent::new(KeyCode::Down, KeyModifiers::empty());
+        repeat.kind = kind;
+        tui.app.handle_input(Event::Key(repeat));
+        watch(tui);
+    }
+    tui.release(KeyCode::Down).tick_n(1);
+    dark
+}
+
+const FIRST_REPEAT_TICKS: usize = 15;
+const REPEAT_TICKS: usize = 45;
+
+#[test]
+fn a_held_arrow_never_blinks_the_cursor_away() {
+    let mut tui = shop_with(Money::MAX / 2);
+    tui.key(KeyCode::Enter).tick_n(1).release(KeyCode::Enter);
+    tui.select(FISHES_ROW);
+    tui.release(KeyCode::Down).tick_n(1);
+    tui.key(KeyCode::Enter).tick_n(1).release(KeyCode::Enter);
+    assert_eq!(
+        hold_down(
+            &mut tui,
+            FIRST_REPEAT_TICKS,
+            REPEAT_TICKS,
+            KeyEventKind::Press
+        ),
+        0,
+        "Windows repeats a held key as presses"
+    );
+    for _ in 0..REPEAT_TICKS {
+        tui.key(KeyCode::Up);
+    }
+    tui.release(KeyCode::Up).tick_n(1);
+    assert_eq!(
+        hold_down(
+            &mut tui,
+            FIRST_REPEAT_TICKS,
+            REPEAT_TICKS,
+            KeyEventKind::Repeat
+        ),
+        0,
+        "a kitty terminal repeats it as repeats"
+    );
 }

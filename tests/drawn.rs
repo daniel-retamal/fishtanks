@@ -4,7 +4,7 @@ use fishtank::{
         fish::{Direction, Fish, PUFF_SECS},
         mutations::{Mutatable, Mutation, apply_mutation},
         species::{ALL_SPECIES, FishSpecies},
-        unfish::UnfishKind,
+        unfish::SPAWNABLE_UNFISH,
     },
     tank::{FULL_MOON, Sky, Tank, TankBackground, TankKind},
     ui::tank_view::TankView,
@@ -16,6 +16,12 @@ const TANK_H: u16 = 20;
 const SPOT: (f32, f32) = (14.0, 10.0);
 const PATCH_SAMPLES: usize = 2000;
 const PHASES: [f32; 2] = [0.0, 1.6];
+const GLISTEN_PHASES: [f32; PHASES.len() * SKIES.len()] = [
+    0.0,
+    std::f32::consts::FRAC_PI_2,
+    std::f32::consts::PI,
+    3.0 * std::f32::consts::FRAC_PI_2,
+];
 const SKIES: [Sky; 2] = [
     Sky {
         daylight: true,
@@ -47,6 +53,13 @@ const GROWN: [Mutation; 4] = [
     Mutation::GlistenEnable,
     Mutation::Telophase,
 ];
+
+#[derive(Clone, Copy)]
+struct Moment {
+    phase: f32,
+    sky: Sky,
+    glisten: f32,
+}
 
 #[derive(Clone)]
 enum Being {
@@ -91,19 +104,30 @@ impl Being {
     fn frames(&self) -> Vec<Vec<String>> {
         let mut frames = Vec::new();
         for facing in [Direction::Left, Direction::Right] {
-            for phase in PHASES {
-                for sky in SKIES {
-                    frames.push(self.frame(facing, phase, sky, false));
-                    if self.puffs() {
-                        frames.push(self.frame(facing, phase, sky, true));
-                    }
+            let moments = PHASES
+                .into_iter()
+                .flat_map(|phase| SKIES.into_iter().map(move |sky| (phase, sky)));
+            for ((phase, sky), glisten) in moments.zip(GLISTEN_PHASES) {
+                let moment = Moment {
+                    phase,
+                    sky,
+                    glisten,
+                };
+                frames.push(self.frame(facing, moment, false));
+                if self.puffs() {
+                    frames.push(self.frame(facing, moment, true));
                 }
             }
         }
         frames
     }
 
-    fn frame(&self, facing: Direction, phase: f32, sky: Sky, puffed: bool) -> Vec<String> {
+    fn frame(&self, facing: Direction, moment: Moment, puffed: bool) -> Vec<String> {
+        let Moment {
+            phase,
+            sky,
+            glisten,
+        } = moment;
         let mut tank = Tank::new("Lab".into(), TankKind::Base, &[]);
         tank.resize(TANK_W, TANK_H, &[]);
         if let TankBackground::Plain { plants } = &mut tank.background {
@@ -115,6 +139,9 @@ impl Being {
                 fish.position.y = SPOT.1;
                 fish.facing = facing;
                 fish.sway.phase = phase;
+                if let Some(unfish) = fish.unfish_state.as_mut() {
+                    unfish.slime_glisten_phase = glisten;
+                }
                 fish.sky = sky;
                 if let Some(mutant) = fish.mutant.as_mut() {
                     for eye in mutant.all_eyes_mut() {
@@ -144,7 +171,7 @@ impl Being {
                 (0..TANK_W)
                     .map(|x| {
                         let cell = &buf[(x, y)];
-                        format!("{}{:?}", cell.symbol(), cell.fg)
+                        format!("{}{:?}{:?}", cell.symbol(), cell.fg, cell.bg)
                     })
                     .collect()
             })
@@ -158,15 +185,7 @@ fn beings() -> Vec<Being> {
         .iter()
         .map(|&species| Being::Fish(Fish::new(species, "Probe".into(), SPOT.0, SPOT.1, &mut rng)))
         .collect();
-    for kind in [
-        UnfishKind::Reversed,
-        UnfishKind::Doppleganger,
-        UnfishKind::Phantom,
-        UnfishKind::Blinker,
-        UnfishKind::Ball,
-        UnfishKind::Skull,
-        UnfishKind::Worm,
-    ] {
+    for &kind in SPAWNABLE_UNFISH {
         beings.push(Being::Fish(Fish::new_unfish(
             kind,
             "Probe".into(),

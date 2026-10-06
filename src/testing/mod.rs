@@ -8,11 +8,13 @@ use crate::economy::Money;
 use crate::ledger::Flow;
 
 mod angler;
+mod fingers;
 mod reel;
 mod screenplay;
 mod stage;
 
 pub use angler::{Angler, Angling};
+pub use fingers::Fingers;
 pub use reel::{Arm, Flaw, Glyph, Reel, Still, TerminalCell};
 pub use screenplay::{Cue, CueError, Screenplay};
 pub use stage::{PLAY_EXTENSION, TerminalSize, play_name, plays_in, review, stage};
@@ -103,6 +105,11 @@ impl Tui {
         self.app
             .handle_input(Event::Key(KeyEvent::new(code, KeyModifiers::empty())));
         self.draw();
+        self
+    }
+
+    pub fn feel(&mut self, fingers: &Fingers) -> &mut Self {
+        self.app.feel_the_keyboard(fingers.keyboard());
         self
     }
 

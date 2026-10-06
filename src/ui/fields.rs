@@ -184,7 +184,7 @@ pub fn generate_rut(rng: &mut impl RngExt) -> String {
 }
 
 pub fn populate_field_cache(fish: &mut Fish, all_names: &[String], rng: &mut impl RngExt) {
-    if fish.unfish_state.is_some() {
+    if fish.is_unfish() {
         return;
     }
     let all_kinds = FieldKind::all();
@@ -215,7 +215,7 @@ pub fn field_value(
     all_names: &[String],
     rng: &mut impl RngExt,
 ) -> FieldValue {
-    if fish.unfish_state.is_some() {
+    if fish.is_unfish() {
         return unfish_field_value(kind, fish);
     }
     cached_field_value(fish, kind).unwrap_or_else(|| gen_field_value(kind, fish, all_names, rng))

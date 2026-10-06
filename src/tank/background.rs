@@ -24,8 +24,8 @@ use super::{INITIAL_HEIGHT, INITIAL_WIDTH, TankKind};
 
 const PLANT_SPACING_MIN: i32 = 3;
 const PLANT_SPACING_MAX: i32 = 6;
-const PLANT_HEIGHT_MIN: usize = 8;
-const PLANT_HEIGHT_MAX: usize = 27;
+pub const PLANT_HEIGHT_MIN: usize = 8;
+pub const PLANT_HEIGHT_MAX: usize = 27;
 const PLANT_SPAWN_LOOKAHEAD: i32 = 30;
 const CORAL_SPAWN_LOOKAHEAD: i32 = 130;
 const CANDY_PINK_PLANT_COLORS: &[Color] = &[

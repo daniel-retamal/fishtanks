@@ -153,6 +153,17 @@ impl From<ExtensionRecord> for BodyExtension {
     }
 }
 
+pub fn painted_columns(row: &[Cell]) -> usize {
+    let painted = |c: char| c != ' ' && c != TRANSPARENT;
+    let Some(last) = row.iter().rposition(|&(c, _)| painted(c)) else {
+        return 0;
+    };
+    row[..=last]
+        .iter()
+        .map(|&(c, _)| unicode_width::UnicodeWidthChar::width(c).unwrap_or(1))
+        .sum()
+}
+
 pub fn painted_span(body: &[Cell]) -> Option<(usize, usize)> {
     let painted = |c: char| c != ' ' && c != TRANSPARENT;
     let first = body.iter().position(|&(c, _)| painted(c))?;

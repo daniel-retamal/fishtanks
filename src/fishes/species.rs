@@ -305,6 +305,7 @@ pub enum Zoomie {
     Lunge,
     Hop,
     Ink,
+    Scatter,
 }
 
 impl Zoomie {

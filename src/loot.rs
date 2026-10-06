@@ -7,7 +7,7 @@ use crate::colors::{
     GREEN, LIGHT_GREEN, LIGHT_MAGENTA, LIGHT_YELLOW, NAVY_LIGHT, OLIVE_LIGHT, ORANGE, PINK,
     PURPLE_LIGHT, RED, SILVER, STEEL, TAN, TERRACOTTA, WHITE,
 };
-use crate::consumable::{Measure, MilkStatus};
+use crate::consumable::{Caster, Measure, MilkStatus};
 use crate::economy::{Purchasable, Rarity, Sellable};
 use crate::entities::cow::CowVariant;
 use crate::entities::glistening::GlisteningMode;
@@ -503,6 +503,40 @@ impl ConsumableKind {
             | ConsumableKind::Part(_)
             | ConsumableKind::Fabricator
             | ConsumableKind::BlankBlueprint => None,
+        }
+    }
+
+    pub fn active_casts(self) -> u32 {
+        match self {
+            ConsumableKind::Coffee => crate::consumable::COFFEE_CASTS,
+            ConsumableKind::Bait => crate::consumable::CASTS_PER_BUFF,
+            ConsumableKind::Milk(_)
+            | ConsumableKind::Necronomicon
+            | ConsumableKind::DemonCore
+            | ConsumableKind::Computer
+            | ConsumableKind::VoidSeed
+            | ConsumableKind::GoldenPearl
+            | ConsumableKind::BlankWafer
+            | ConsumableKind::Part(_)
+            | ConsumableKind::Fabricator
+            | ConsumableKind::BlankBlueprint => 0,
+        }
+    }
+
+    pub fn improves(self, caster: Caster) -> bool {
+        match self {
+            ConsumableKind::Coffee => caster == Caster::Angler,
+            ConsumableKind::Bait
+            | ConsumableKind::Milk(_)
+            | ConsumableKind::Necronomicon
+            | ConsumableKind::DemonCore
+            | ConsumableKind::Computer
+            | ConsumableKind::VoidSeed
+            | ConsumableKind::GoldenPearl
+            | ConsumableKind::BlankWafer
+            | ConsumableKind::Part(_)
+            | ConsumableKind::Fabricator
+            | ConsumableKind::BlankBlueprint => true,
         }
     }
 

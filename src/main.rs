@@ -8,6 +8,7 @@ use crossterm::terminal;
 use fishtank::app::App;
 use fishtank::cli::Invocation;
 use fishtank::closing;
+use fishtank::keyboard;
 use fishtank::terminal_events::{self, Heard, TerminalEvents};
 use fishtank::update::{self, Watch};
 use fishtank::vault::Vault;
@@ -44,6 +45,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    app.feel_the_keyboard(keyboard::this_machines());
     closing::listen();
     let mut terminal = ratatui::init();
     let asked = terminal_events::ask_for_key_releases();

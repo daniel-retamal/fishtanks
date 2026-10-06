@@ -6,7 +6,9 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthChar;
 
-use crate::colors::{LIGHT_CYAN, LIGHT_GREEN, PINK, WHITE, YELLOW};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
+
+use crate::colors::{BLACK, LIGHT_CYAN, LIGHT_GREEN, PINK, WHITE, YELLOW};
 use crate::sprite::{
     Band, Cell, EAR_LEFT, EAR_RIGHT, Feet, PosedExtension, TRANSPARENT, feet_row, opaque_line,
     painted_span,
@@ -23,14 +25,15 @@ use crate::{
     fishes::botfish::BotfishState,
     fishes::fish::Fish,
     fishes::parts::Display,
+    fishes::quirk::{FACE_DOWN, FACE_OPEN, Quirk},
     fishes::species::{EYE_CIRCLE, EYE_ROUND, EYE_ROUND_SHUT, Skin},
     fishes::unfish::{
-        BALL_BASE, BALL_CENTER_ROW, BALL_EYE_COL, BALL_EYE_ROW, BALL_WIDTH, SKULL_CENTER_ROW,
-        SKULL_CLOSED, SKULL_OPEN, SKULL_WIDTH, UNFISH_BODY_COLOR, UNFISH_EYE_COLOR, UnfishKind,
-        is_multi_row,
+        BALL_BASE, BALL_CENTER_ROW, BALL_EYE_COL, BALL_EYE_ROW, BALL_WIDTH, SKULL_CLOSED,
+        SKULL_OPEN, SKULL_WIDTH, UNFISH_BODY_COLOR, UNFISH_EYE_COLOR, UnfishKind, UnfishState,
+        absence_cells, is_multi_row, ring_frame,
     },
     tank::speech_ink,
-    tank::{InkBlot, TRAIL_GLYPH, Tank, TankBackground, TrailMark},
+    tank::{InkBlot, Shedding, TRAIL_GLYPH, Tank, TankBackground, TrailMark},
     tanks::alien::{AlienPyramid, AlienStar, pyramid_canvas_w, pyramid_lines},
     tanks::coral::{
         CORAL_A_LINES, CORAL_A_ROWS, CORAL_COLOR, CoralAlgaeInstance, CoralStructure,
@@ -58,12 +61,15 @@ use crate::{
 };
 
 const NET_COLOR: Color = LIGHT_CYAN;
+const SCATTER_REACH_X: f32 = 8.0;
+const SCATTER_REACH_Y: f32 = 3.0;
 
 pub struct TankView<'a> {
     tank: &'a Tank,
     show_names: bool,
     show_nets: bool,
     show_epitaphs: bool,
+    typing: bool,
     ritual_text: Option<[Option<String>; 2]>,
 }
 
@@ -74,8 +80,14 @@ impl<'a> TankView<'a> {
             show_names: false,
             show_nets: false,
             show_epitaphs: true,
+            typing: false,
             ritual_text: None,
         }
+    }
+
+    pub fn with_typing(mut self, typing: bool) -> Self {
+        self.typing = typing;
+        self
     }
 
     pub fn with_epitaphs(mut self, show_epitaphs: bool) -> Self {
@@ -271,9 +283,12 @@ impl Widget for TankView<'_> {
         for food in &self.tank.food {
             render_food(food, area, buf);
         }
+        for shed in &self.tank.sheddings {
+            render_shedding(shed, area, buf);
+        }
         let water = self.tank.water_color();
         for fish in &self.tank.fish {
-            render_fish(fish, water, area, buf);
+            render_fish_watching(fish, water, self.typing, area, buf);
         }
         for fish in &self.tank.fish {
             render_fish_surfaces(fish, area, buf);
@@ -313,6 +328,11 @@ impl Widget for TankView<'_> {
         }
         for cow in &self.tank.cows {
             render_cow_speech(cow, area, buf);
+        }
+        for fish in &self.tank.fish {
+            if fish.unfish_body() == Some(UnfishKind::Absence) && !fish.is_invisible() {
+                render_absence(fish, area, buf);
+            }
         }
 
         if ritual_active {
@@ -721,7 +741,7 @@ fn render_fish_name(fish: &Fish, area: Rect, buf: &mut Buffer) {
 }
 
 fn render_fish_label(fish: &Fish, color: Color, area: Rect, buf: &mut Buffer) {
-    if fish.is_invisible() || fish.is_out_of_sight(area.width) {
+    if fish.is_invisible() || fish.is_out_of_sight(area.width) || !fish.takes_a_seat() {
         return;
     }
     if let Some(ref us) = fish.unfish_state
@@ -780,7 +800,11 @@ fn render_fish_net(fish: &Fish, names_shown: bool, area: Rect, buf: &mut Buffer)
     if fish.is_invisible() || fish.is_out_of_sight(area.width) {
         return;
     }
-    let Some(net) = fish.script().and_then(BotfishState::net_label) else {
+    let Some(net) = fish
+        .script()
+        .and_then(BotfishState::net_label)
+        .or_else(|| fish.broadcast_channel())
+    else {
         return;
     };
     let net_y = area.y as i32 + fish.position.y as i32 - rows_above_body(fish, names_shown) - 1;
@@ -925,10 +949,17 @@ fn draw_bubble(
 }
 
 fn render_fish(fish: &Fish, water: Color, area: Rect, buf: &mut Buffer) {
+    render_fish_watching(fish, water, false, area, buf);
+}
+
+fn render_fish_watching(fish: &Fish, water: Color, typing: bool, area: Rect, buf: &mut Buffer) {
     if fish.is_invisible() {
         return;
     }
     if let Some(kind) = fish.unfish_body() {
+        if kind == UnfishKind::Absence {
+            return;
+        }
         if is_multi_row(kind) {
             render_multi_row_unfish(fish, area, buf);
             return;
@@ -939,24 +970,45 @@ fn render_fish(fish: &Fish, water: Color, area: Rect, buf: &mut Buffer) {
         }
     }
 
-    render_line_sprite(fish, water, area, buf);
+    render_line_sprite(fish, water, typing, area, buf);
+    render_reflection(fish, area, buf);
+}
+
+fn face_glyph(glyph: char) -> char {
+    FACE_OPEN
+        .iter()
+        .position(|&open| open == glyph)
+        .map_or(glyph, |at| FACE_DOWN[at])
+}
+
+fn scatter_offset(seed: u64, index: usize, progress: f32) -> (i32, i32) {
+    let burst = (progress * std::f32::consts::PI).sin();
+    let mut rng = SmallRng::seed_from_u64(seed ^ index as u64);
+    let angle = rng.random::<f32>() * std::f32::consts::TAU;
+    (
+        (angle.cos() * burst * SCATTER_REACH_X).round() as i32,
+        (angle.sin() * burst * SCATTER_REACH_Y).round() as i32,
+    )
 }
 
 fn is_eye_glyph(glyph: char) -> bool {
     matches!(glyph, EYE_ROUND | EYE_ROUND_SHUT | EYE_CIRCLE)
 }
 
-fn render_line_sprite(fish: &Fish, water: Color, area: Rect, buf: &mut Buffer) {
+fn render_line_sprite(fish: &Fish, water: Color, typing: bool, area: Rect, buf: &mut Buffer) {
     let sprite = fish.line_sprite();
     let skin = fish.skin();
     let body_screen_y = area.y as i32 + fish.position.y as i32;
     let base_y = body_screen_y - sprite.body_row as i32;
     let x_base = area.x as i32 + fish.position.x as i32;
+    let scatter = fish.scatter_progress();
+    let lag = fish.fault_lag();
+    let reverse = fish.is_reverse_video();
+    let watching_face = typing && fish.unfish_kind() == Some(UnfishKind::Face);
+    let half = fish.display_width as i32 / 2;
+    let mut index = 0usize;
     for (row_idx, row) in sprite.rows.iter().enumerate() {
-        let sy = base_y + row_idx as i32;
-        if sy < area.y as i32 || sy >= area.bottom() as i32 {
-            continue;
-        }
+        let row_y = base_y + row_idx as i32;
         let mut col = 0i32;
         for &(ch, color) in row {
             let w = UnicodeWidthChar::width(ch).unwrap_or(1) as i32;
@@ -964,12 +1016,44 @@ fn render_line_sprite(fish: &Fish, water: Color, area: Rect, buf: &mut Buffer) {
                 col += w;
                 continue;
             }
-            let sx = x_base + col;
-            if sx >= area.right() as i32 {
-                break;
+            index += 1;
+            let ch = if watching_face { face_glyph(ch) } else { ch };
+            let (mut sx, mut sy) = (x_base + col, row_y);
+            col += w;
+            if let Some(progress) = scatter {
+                let (dx, dy) = scatter_offset(fish.pattern_seed, index, progress);
+                sx += dx;
+                sy += dy;
             }
-            if sx >= area.x as i32 {
+            if let Some(lag) = lag {
+                let local = sx - x_base;
+                let trailing = if fish.facing_left() {
+                    local >= half
+                } else {
+                    local < half
+                };
+                if trailing {
+                    sx += if fish.facing_left() { lag } else { -lag };
+                    sy += 1;
+                }
+            }
+            if sy < area.y as i32 || sy >= area.bottom() as i32 {
+                continue;
+            }
+            if sx >= area.x as i32 && sx < area.right() as i32 {
                 let cell = &mut buf[(sx as u16, sy as u16)];
+                if reverse {
+                    let eye = is_eye_glyph(ch);
+                    let ink = if eye { color } else { BLACK };
+                    let slab = if eye { UNFISH_BODY_COLOR } else { color };
+                    cell.set_char(ch).set_style(
+                        Style::new()
+                            .fg(ink)
+                            .bg(slab)
+                            .remove_modifier(Modifier::all()),
+                    );
+                    continue;
+                }
                 let behind = (cell.symbol() != " ").then(|| (cell.symbol().to_string(), cell.fg));
                 let plain = Style::new().fg(color).remove_modifier(Modifier::all());
                 match (skin, behind) {
@@ -997,16 +1081,12 @@ fn render_line_sprite(fish: &Fish, water: Color, area: Rect, buf: &mut Buffer) {
                     }
                 }
             }
-            col += w;
         }
     }
 }
 
 fn unfish_center_row(kind: UnfishKind) -> i32 {
-    match kind {
-        UnfishKind::Skull => SKULL_CENTER_ROW,
-        _ => BALL_CENTER_ROW,
-    }
+    kind.grid().map_or(BALL_CENTER_ROW, |grid| grid.center)
 }
 
 fn interior_col_range(line: &str) -> Option<(usize, usize)> {
@@ -1240,7 +1320,111 @@ pub(crate) fn render_multi_row_unfish_at(
             }
             render_extension_bands(fish, lines, &coat, (base_x, base_y), area, buf);
         }
+        UnfishKind::Ouroboros => render_ring(unfish_state, (base_x, base_y), area, buf),
         _ => {}
+    }
+}
+
+fn render_ring(us: &UnfishState, (base_x, base_y): (i32, i32), area: Rect, buf: &mut Buffer) {
+    let turn = match &us.quirk {
+        Quirk::Ring(ring) => ring.turn,
+        _ => 0.0,
+    };
+    let frame = ring_frame(turn);
+    let width = frame.rows.first().map_or(0, Vec::len);
+    let colors = us.line_colors(width, |_| UNFISH_BODY_COLOR);
+    for (row, cells) in frame.rows.iter().enumerate() {
+        let sy = base_y + row as i32;
+        if sy < area.y as i32 || sy >= area.bottom() as i32 {
+            continue;
+        }
+        for (col, &glyph) in cells.iter().enumerate() {
+            let sx = base_x + col as i32;
+            if glyph == ' ' || sx < area.x as i32 || sx >= area.right() as i32 {
+                continue;
+            }
+            let color = if (col, row) == frame.eye {
+                us.eye_render_color()
+            } else {
+                colors[col]
+            };
+            buf[(sx as u16, sy as u16)]
+                .set_char(glyph)
+                .set_style(Style::new().fg(color).remove_modifier(Modifier::all()));
+        }
+    }
+}
+
+fn render_absence(fish: &Fish, area: Rect, buf: &mut Buffer) {
+    let Some(grid) = UnfishKind::Absence.grid() else {
+        return;
+    };
+    let base_x = area.x as i32 + fish.position.x as i32;
+    let base_y = area.y as i32 + fish.position.y as i32 - grid.center;
+    for (col, row) in absence_cells(fish.facing_left()) {
+        let (sx, sy) = (base_x + col as i32, base_y + row as i32);
+        if sx < area.x as i32 || sx >= area.right() as i32 {
+            continue;
+        }
+        if sy < area.y as i32 || sy >= area.bottom() as i32 {
+            continue;
+        }
+        overdraw(buf, sx as u16, sy as u16).reset();
+    }
+}
+
+fn render_shedding(shed: &Shedding, area: Rect, buf: &mut Buffer) {
+    let sy = area.y as i32 + shed.y as i32;
+    if sy < area.y as i32 || sy >= area.bottom() as i32 {
+        return;
+    }
+    let mut col = 0i32;
+    for &(glyph, color) in &shed.cells {
+        let width = UnicodeWidthChar::width(glyph).unwrap_or(1) as i32;
+        let sx = area.x as i32 + shed.x as i32 + col;
+        col += width;
+        if glyph == TRANSPARENT || glyph == ' ' || sx < area.x as i32 || sx >= area.right() as i32 {
+            continue;
+        }
+        buf[(sx as u16, sy as u16)]
+            .set_char(glyph)
+            .set_style(Style::new().fg(color).add_modifier(Modifier::DIM));
+    }
+}
+
+fn render_reflection(fish: &Fish, area: Rect, buf: &mut Buffer) {
+    let Some(reflected) = fish.reflected() else {
+        return;
+    };
+    let sprite = fish.line_sprite();
+    let Some(body) = sprite.rows.get(sprite.body_row) else {
+        return;
+    };
+    let cells: Vec<(char, Color)> = if reflected.faces_away {
+        body.iter()
+            .rev()
+            .map(|&(glyph, color)| (mirror_char(glyph), color))
+            .collect()
+    } else {
+        body.clone()
+    };
+    let below = sprite.rows.len() - sprite.body_row;
+    let sy = area.y as i32 + fish.position.y as i32 + below as i32;
+    if sy < area.y as i32 || sy >= area.bottom() as i32 {
+        return;
+    }
+    let x_base = area.x as i32 + (fish.position.x + reflected.offset) as i32;
+    let mut col = 0i32;
+    for (glyph, color) in cells {
+        let width = UnicodeWidthChar::width(glyph).unwrap_or(1) as i32;
+        let sx = x_base + col;
+        col += width;
+        if glyph == TRANSPARENT || sx < area.x as i32 || sx >= area.right() as i32 {
+            continue;
+        }
+        buf[(sx as u16, sy as u16)]
+            .set_char(glyph)
+            .set_style(Style::new().fg(color).add_modifier(Modifier::DIM));
     }
 }
 
@@ -1991,7 +2175,7 @@ fn render_bat(bat: &Bat, area: Rect, buf: &mut Buffer) {
     }
 }
 
-fn render_cow(cow: &Cow, area: Rect, buf: &mut Buffer) {
+pub fn render_cow(cow: &Cow, area: Rect, buf: &mut Buffer) {
     let sprite = cow_sprite(cow);
     let base_x = area.x as i32 + cow.position.x as i32;
     let base_y = area.y as i32 + cow.position.y as i32 - cow.sprite_top_offset() as i32;

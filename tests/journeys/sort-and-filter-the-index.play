@@ -1,0 +1,41 @@
+# JOURNEY · the index: a player narrows the fishes to one species and sorts them by worth, from
+# inside the table and from the command bar, and the table shows the command it is answering.
+# The player buys Ann, a Koi, and Bea, a Merluza.
+
+clear
+include scenes/start-with-a-stake.play
+include scenes/buy-a-fish.play Koi Ann
+include scenes/buy-a-fish.play Merluza Bea
+run /index
+expect FishResource#index
+expect Bea
+expect Ann
+key right
+type f
+type koi
+expect /index species:koi
+absent Merluza
+expect Ann
+snap the table narrows while the filter is typed
+key enter
+absent ENTER keep
+expect C clear
+type c
+expect Bea
+absent /index
+key right
+key right
+type s
+type s
+expect Worth ▼
+expect /index sort:-worth
+snap the fishes by worth, the dearest first
+key esc
+absent FishResource#index
+run /index species:koi sort:-worth
+expect /index species:koi sort:-worth
+expect Worth ▼
+expect Ann
+absent Merluza
+snap the command bar asks the same question
+key esc

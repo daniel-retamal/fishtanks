@@ -31,12 +31,13 @@ mod habits;
 mod mothership;
 mod mutations;
 mod netlist;
+mod oddities;
 mod record;
 mod relay;
 mod simulation;
 mod world;
 
-pub use background::{Scenery, TankBackground};
+pub use background::{PLANT_HEIGHT_MAX, PLANT_HEIGHT_MIN, Scenery, TankBackground};
 pub use blueprint::{
     Blueprint, BlueprintFish, BlueprintPins, Fabrication, FabricationQuote, FabricationRefusal,
     Material, Workshop,
@@ -52,6 +53,7 @@ pub use mothership::{
     speech_ink,
 };
 pub use netlist::{Netlist, Settling};
+pub use oddities::{SHED_SINK_PER_SEC, Shedding};
 pub use record::TankRecord;
 pub use relay::{Link, Transmission};
 pub use world::{
@@ -553,6 +555,8 @@ pub struct Tank {
     pub sky: Sky,
     pub trails: Vec<TrailMark>,
     pub inks: Vec<InkBlot>,
+    pub sheddings: Vec<Shedding>,
+    pub watched: bool,
 }
 
 impl Tank {
@@ -599,6 +603,8 @@ impl Tank {
             sky: Sky::default(),
             trails: Vec::new(),
             inks: Vec::new(),
+            sheddings: Vec::new(),
+            watched: false,
         }
     }
 
@@ -616,7 +622,7 @@ impl Tank {
 
     pub fn room(&self) -> usize {
         self.capacity()
-            .saturating_sub(self.fish.len() + self.incoming_fish())
+            .saturating_sub(self.seated() + self.incoming_fish())
     }
 
     pub fn is_full(&self) -> bool {
@@ -839,7 +845,9 @@ impl Tank {
 
         self.candy_tick = self.candy_tick.wrapping_add(1);
         self.steer_seeking_fish();
+        let held = self.hold_the_still();
         self.tick_fish(settings, coffee);
+        self.tick_oddities(dt, held, &mut rng);
         self.spawn_bubbles(dt);
         self.tick_candyfish_effects(dt);
         self.check_eating_collisions();

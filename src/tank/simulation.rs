@@ -2,6 +2,7 @@ use rand::RngExt;
 
 use crate::colors::{LIGHT_YELLOW, WHITE};
 use crate::entities::bubble::{Bubble, BubblePhase};
+use crate::entities::components::Position;
 use crate::entities::cow::Cow;
 use crate::fishes::fish::{
     BLESSING_GLOW_SECS, BLESSING_INTERVAL_SECS, Direction, EATING_DURATION, Fish, FishState,
@@ -56,7 +57,7 @@ fn engulf_compatible(receiver: &Fish, candidate: &Fish) -> bool {
     }
 }
 
-fn fish_near(a: &Fish, b: &Fish) -> bool {
+pub(super) fn fish_near(a: &Fish, b: &Fish) -> bool {
     horizontally_near(a.position.x, a.display_width, b.position.x, b.display_width)
         && (a.position.y - b.position.y).abs() <= ENGULF_FISH_Y_TOLERANCE
 }
@@ -445,22 +446,24 @@ impl Tank {
         self.cows.remove(engulfed);
     }
 
-    pub fn spawn_unfish(&mut self, rng: &mut impl RngExt) {
-        if self.is_full() {
-            return;
-        }
+    pub fn spawn_unfish(&mut self, rng: &mut impl RngExt) -> bool {
         let kind = SPAWNABLE_UNFISH[rng.random_range(0..SPAWNABLE_UNFISH.len())];
+        self.spawn_unfish_of(kind, rng)
+    }
+
+    pub fn spawn_unfish_of(&mut self, kind: UnfishKind, rng: &mut impl RngExt) -> bool {
+        if kind.takes_a_seat() && self.is_full() {
+            return false;
+        }
         let actual_name = if kind == crate::fishes::unfish::UnfishKind::Doppleganger {
             names::unique_name_in(&self.used_names, "Doppleganger")
         } else {
             names::unique_roman_in(&self.used_names)
         };
-        let x_max = (self.width as f32 - 15.0).max(6.0);
-        let y_max = (self.height as f32 - 5.0).max(3.0);
-        let x = rng.random_range(5.0_f32..x_max);
-        let y = rng.random_range(3.0_f32..y_max);
+        let Position { x, y } = self.spawn_point(rng);
         let fish = crate::fishes::fish::Fish::new_unfish(kind, actual_name.clone(), x, y, rng);
         self.admit(fish, actual_name);
+        true
     }
 
     pub(super) fn tick_void_spawn(&mut self, dt: f32, rng: &mut impl RngExt) {
@@ -486,7 +489,7 @@ impl Tank {
             return;
         };
 
-        let target_idx = self.fish.iter().position(|f| f.unfish_state.is_none());
+        let target_idx = self.fish.iter().position(|f| !f.is_unfish());
         let Some(t_idx) = target_idx else { return };
 
         let target_name = self.fish[t_idx].name.clone();
@@ -509,7 +512,7 @@ impl Tank {
 
     fn tick_fused_doppleganger(&mut self) {
         let host_idx = self.fish.iter().position(|f| {
-            f.unfish_state.is_none()
+            !f.is_unfish()
                 && f.fused_components().iter().any(|c| {
                     c.persona.as_deref().is_some_and(|us| {
                         us.kind == UnfishKind::Doppleganger && !us.doppleganger_cloned
@@ -522,7 +525,7 @@ impl Tank {
             .fish
             .iter()
             .enumerate()
-            .find(|(i, f)| *i != h_idx && f.unfish_state.is_none())
+            .find(|(i, f)| *i != h_idx && !f.is_unfish())
             .map(|(_, f)| f.name.clone());
         let Some(target_name) = target_name else {
             return;

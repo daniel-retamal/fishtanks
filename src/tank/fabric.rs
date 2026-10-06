@@ -54,6 +54,9 @@ impl Tank {
             if let Some(bot) = fish.script_mut() {
                 sent.extend(bot.step(&mut self.channels, world));
             }
+            if let Some(level) = fish.broadcast() {
+                self.channels.drive(&fish.name, level);
+            }
         }
         sent
     }

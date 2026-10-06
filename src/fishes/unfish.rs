@@ -9,7 +9,11 @@ use crate::entities::components::BlinkTimer;
 use crate::entities::glistening::{GlisteningMode, color_for_glisten, derive_glistening_palette};
 use crate::fishes::fused::FusedComponent;
 use crate::fishes::mutant::{Adornments, Circadian, random_rgb_other};
-use crate::fishes::species::Sin;
+use crate::fishes::quirk::{
+    BONES_CHARS, BONES_RIBS_MAX, BONES_RIBS_MIN, FORGETTING_EYE, LEECH_BODY_SIZE, LEECH_CHARS,
+    Quirk, SIGNAL_BODY_SIZE, borrowed_size, chars_of,
+};
+use crate::fishes::species::{BodyChars, BodyTemplate, EYE_ROUND, FishSpecies, Sin, Zoomie};
 use crate::sprite::{BodyExtension, EAR_LEFT, EAR_RIGHT, Feet};
 use crate::util::{even_indices, sample_exponential};
 
@@ -24,6 +28,21 @@ pub enum UnfishKind {
     Ball,
     Skull,
     Worm,
+    Absence,
+    Leech,
+    Bones,
+    Signal,
+    Ouroboros,
+    Negative,
+    Forgetting,
+    Verso,
+    Fault,
+    Anagram,
+    Reflection,
+    Molt,
+    Face,
+    Graeae,
+    Still,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,6 +53,7 @@ pub enum UnfishMutationStyle {
 
 const WORM_DY_FRACTION: f32 = 0.05;
 const DEFAULT_DY_FRACTION: f32 = 0.4;
+const RING_DY_FRACTION: f32 = 0.15;
 
 impl UnfishKind {
     pub fn mutation_style(self) -> UnfishMutationStyle {
@@ -46,6 +66,7 @@ impl UnfishKind {
     pub fn dy_fraction(self) -> f32 {
         match self {
             UnfishKind::Worm => WORM_DY_FRACTION,
+            UnfishKind::Ouroboros => RING_DY_FRACTION,
             _ => DEFAULT_DY_FRACTION,
         }
     }
@@ -54,6 +75,8 @@ impl UnfishKind {
         match self {
             UnfishKind::Phantom => (0.3, 0.8),
             UnfishKind::Worm => (2.88, 5.04),
+            UnfishKind::Ouroboros => (0.4, 0.9),
+            UnfishKind::Leech => (1.0, 2.0),
             _ => (2.0, 4.0),
         }
     }
@@ -68,10 +91,167 @@ impl UnfishKind {
     pub fn has_fused_behavior(self) -> bool {
         matches!(
             self,
-            UnfishKind::Phantom | UnfishKind::Blinker | UnfishKind::Doppleganger
+            UnfishKind::Phantom
+                | UnfishKind::Blinker
+                | UnfishKind::Doppleganger
+                | UnfishKind::Bones
+                | UnfishKind::Forgetting
+                | UnfishKind::Still
         )
     }
+
+    pub fn takes_a_seat(self) -> bool {
+        self != UnfishKind::Absence
+    }
+
+    pub fn zoomie(self) -> Option<Zoomie> {
+        (self == UnfishKind::Bones).then_some(Zoomie::Scatter)
+    }
+
+    pub fn born_size(self, rng: &mut impl RngExt) -> usize {
+        match self {
+            UnfishKind::Leech => LEECH_BODY_SIZE,
+            UnfishKind::Bones => rng.random_range(BONES_RIBS_MIN..=BONES_RIBS_MAX),
+            UnfishKind::Signal => SIGNAL_BODY_SIZE,
+            _ => DEFAULT_BODY_SIZE,
+        }
+    }
+
+    pub fn parse(token: &str) -> Option<UnfishKind> {
+        SPAWNABLE_UNFISH
+            .iter()
+            .copied()
+            .find(|kind| format!("{kind:?}").eq_ignore_ascii_case(token.trim()))
+    }
+
+    pub fn grid(self) -> Option<Grid> {
+        match self {
+            UnfishKind::Ball => Some(Grid {
+                width: BALL_WIDTH,
+                height: BALL_HEIGHT,
+                center: BALL_CENTER_ROW,
+            }),
+            UnfishKind::Skull => Some(Grid {
+                width: SKULL_WIDTH,
+                height: SKULL_HEIGHT,
+                center: SKULL_CENTER_ROW,
+            }),
+            UnfishKind::Ouroboros => Some(Grid {
+                width: RING_WIDTH,
+                height: RING_HEIGHT,
+                center: RING_CENTER_ROW,
+            }),
+            UnfishKind::Absence => Some(Grid {
+                width: ABSENCE_WIDTH,
+                height: ABSENCE_HEIGHT,
+                center: ABSENCE_CENTER_ROW,
+            }),
+            _ => None,
+        }
+    }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Grid {
+    pub width: u16,
+    pub height: u16,
+    pub center: i32,
+}
+
+pub const RING_ART: [&str; 7] = [
+    "     ,-----.     ",
+    "   ,'       `.   ",
+    "  /           \\  ",
+    " (             ) ",
+    "  \\           /  ",
+    "   `.       ,'   ",
+    "     '-----'     ",
+];
+pub const RING_WIDTH: u16 = 17;
+pub const RING_HEIGHT: u16 = 7;
+pub const RING_CENTER_ROW: i32 = 3;
+const RING_CENTER_COL: f32 = 8.0;
+const RING_ASPECT: f32 = 2.0;
+const RING_TAIL_CELLS: usize = 3;
+const RING_TAIL_TIP: char = ',';
+const RING_HEAD: [char; 3] = ['(', EYE_ROUND, ')'];
+
+pub const ABSENCE_MASK: [&str; 3] = ["  ######   # ", " ############", "  ######   # "];
+pub const ABSENCE_WIDTH: u16 = 13;
+pub const ABSENCE_HEIGHT: u16 = 3;
+pub const ABSENCE_CENTER_ROW: i32 = 1;
+const ABSENCE_CELL: char = '#';
+
+fn ring_path() -> Vec<(usize, usize, char)> {
+    let mut cells: Vec<(usize, usize, char)> = RING_ART
+        .iter()
+        .enumerate()
+        .flat_map(|(y, row)| {
+            row.chars()
+                .enumerate()
+                .filter(|&(_, ch)| ch != ' ')
+                .map(move |(x, ch)| (x, y, ch))
+        })
+        .collect();
+    let angle = |&(x, y, _): &(usize, usize, char)| {
+        (y as f32 - RING_CENTER_ROW as f32).atan2((x as f32 - RING_CENTER_COL) / RING_ASPECT)
+    };
+    cells.sort_by(|a, b| angle(a).partial_cmp(&angle(b)).unwrap());
+    cells
+}
+
+fn taper(glyph: char) -> char {
+    match glyph {
+        '(' | ')' => ':',
+        _ => '.',
+    }
+}
+
+pub struct RingFrame {
+    pub rows: Vec<Vec<char>>,
+    pub eye: (usize, usize),
+}
+
+pub fn ring_frame(turn: f32) -> RingFrame {
+    let path = ring_path();
+    let mut rows: Vec<Vec<char>> = RING_ART.iter().map(|row| row.chars().collect()).collect();
+    let head = (turn.max(0.0) as usize) % path.len();
+    for ahead in 1..=RING_TAIL_CELLS {
+        let (x, y, glyph) = path[(head + ahead) % path.len()];
+        rows[y][x] = if ahead == 1 {
+            RING_TAIL_TIP
+        } else {
+            taper(glyph)
+        };
+    }
+    let (x, y, _) = path[head];
+    for (offset, glyph) in RING_HEAD.iter().enumerate() {
+        let col = (x + offset).saturating_sub(1);
+        if let Some(cell) = rows[y].get_mut(col) {
+            *cell = *glyph;
+        }
+    }
+    RingFrame { rows, eye: (x, y) }
+}
+
+pub fn absence_cells(facing_left: bool) -> Vec<(usize, usize)> {
+    ABSENCE_MASK
+        .iter()
+        .enumerate()
+        .flat_map(|(y, row)| {
+            let width = row.chars().count();
+            row.chars()
+                .enumerate()
+                .filter(|&(_, ch)| ch == ABSENCE_CELL)
+                .map(move |(x, _)| {
+                    let col = if facing_left { x } else { width - 1 - x };
+                    (col, y)
+                })
+        })
+        .collect()
+}
+
+pub const DEFAULT_BODY_SIZE: usize = 5;
 
 pub const SPAWNABLE_UNFISH: &[UnfishKind] = &[
     UnfishKind::Reversed,
@@ -81,6 +261,21 @@ pub const SPAWNABLE_UNFISH: &[UnfishKind] = &[
     UnfishKind::Ball,
     UnfishKind::Skull,
     UnfishKind::Worm,
+    UnfishKind::Absence,
+    UnfishKind::Leech,
+    UnfishKind::Bones,
+    UnfishKind::Signal,
+    UnfishKind::Ouroboros,
+    UnfishKind::Negative,
+    UnfishKind::Forgetting,
+    UnfishKind::Verso,
+    UnfishKind::Fault,
+    UnfishKind::Anagram,
+    UnfishKind::Reflection,
+    UnfishKind::Molt,
+    UnfishKind::Face,
+    UnfishKind::Graeae,
+    UnfishKind::Still,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -329,7 +524,7 @@ pub const SLIME_GLISTEN_SPEED_FAST: f32 = 22.0;
 pub const SLIME_GLISTEN_SPEED_SLOW: f32 = 4.0;
 
 pub fn is_multi_row(kind: UnfishKind) -> bool {
-    matches!(kind, UnfishKind::Ball | UnfishKind::Skull)
+    kind.grid().is_some()
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -473,6 +668,8 @@ pub struct UnfishState {
     pub body_extension: Option<BodyExtension>,
     #[serde(default)]
     pub adornments: Adornments,
+    #[serde(default)]
+    pub quirk: Quirk,
 }
 
 impl UnfishState {
@@ -553,6 +750,30 @@ impl UnfishState {
             feet: None,
             body_extension: None,
             adornments: Adornments::default(),
+            quirk: Quirk::new(kind, rng),
+        }
+    }
+
+    pub fn born_body_size(&self) -> Option<usize> {
+        match &self.quirk {
+            Quirk::Forgetting(forgetting) => Some(borrowed_size(forgetting.body)),
+            Quirk::Verso(verso) => Some(verso.side.size),
+            _ => None,
+        }
+    }
+
+    pub fn body_chars(&self) -> BodyChars {
+        match &self.quirk {
+            Quirk::Forgetting(forgetting) => chars_of(forgetting.body, FORGETTING_EYE),
+            Quirk::Verso(verso) => chars_of(verso.side.body, EYE_ROUND),
+            _ => match self.kind {
+                UnfishKind::Bones => BONES_CHARS,
+                UnfishKind::Leech => LEECH_CHARS,
+                _ => match FishSpecies::Unfish.config().body {
+                    BodyTemplate::Standard(chars) | BodyTemplate::Alternating(chars, _) => chars,
+                    BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => BONES_CHARS,
+                },
+            },
         }
     }
 
@@ -727,6 +948,7 @@ impl UnfishState {
             self.slime_glisten_phase =
                 (self.slime_glisten_phase + dt * self.slime_glisten_speed).rem_euclid(TAU);
         }
+        self.quirk.tick(dt, rng);
     }
 
     fn eye_interior(&self) -> Option<EyeInterior> {

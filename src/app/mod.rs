@@ -14,6 +14,7 @@ use crate::{
     consumable::{ActiveConsumable, ActiveMilkStatus, Buff, Caster, ConsumeTarget},
     economy::Purse,
     fishes::{fish::Fish, graveyard::Graveyard, species::FishSpecies},
+    keyboard::Keyboard,
     ledger::{Flow, Ledger},
     loot::{ConsumableKind, CowCounts, JUNK_PER_JUNKFISH, LootKind, LootPool, StockItem},
     names,
@@ -55,6 +56,7 @@ mod input;
 mod lessons;
 mod money;
 mod news;
+mod oddities;
 mod persistence;
 mod room;
 mod snapshot;
@@ -337,6 +339,10 @@ impl App {
                 None
             }
         }
+    }
+
+    pub fn feel_the_keyboard(&mut self, keyboard: Box<dyn Keyboard>) {
+        self.held_keys.feel(keyboard);
     }
 
     fn set_overlay(&mut self, overlay: Overlay) {
@@ -746,6 +752,9 @@ impl App {
             }
             Some(Overlay::Shop(shop)) => {
                 shop.tick(self.settings.fps);
+                if self.held_keys.is_scrolling() {
+                    shop.reset_blink();
+                }
                 return;
             }
             Some(Overlay::Fishing(_)) => return,
@@ -784,6 +793,8 @@ impl App {
 
         let coffee = self.coffee_stacks();
         let sky = self.day_clock.sky(self.zen);
+        self.watch_the_current_tank();
+        self.settle_graeae();
         for i in 0..self.tanks.len() {
             let events = self.tanks[i].tick(&self.settings, coffee, sky);
             let star_cash = std::mem::take(&mut self.tanks[i].pending_star_cash);
@@ -873,7 +884,7 @@ impl App {
             active_statuses: &self.active_statuses,
             cash: self.purse.shown(),
             food_supply: self.food_supply,
-            fish_count: self.tank().fish.len(),
+            fish_count: self.tank().seated(),
             fish_capacity: self.tank().shown_capacity(),
             modes,
             tank_name: &self.tank().name,
@@ -995,7 +1006,8 @@ impl App {
             let mut tv = TankView::new(self.tank())
                 .with_names(self.settings.show_names && !self.zen)
                 .with_nets(self.settings.show_nets && !self.zen)
-                .with_epitaphs(!self.zen);
+                .with_epitaphs(!self.zen)
+                .with_typing(!self.editor.text.is_empty());
             if ritual_blocking {
                 let text = void_ritual::wish_display_text(&self.void_ritual, self.next_prayer);
                 tv = tv.with_ritual(text);

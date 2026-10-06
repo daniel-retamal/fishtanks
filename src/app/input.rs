@@ -13,6 +13,7 @@ use crate::{
     fishes::fish::{Fed, Fish},
     fishes::parts::{RIG_WAIT_MAX_SECS, RIG_WAIT_MIN_SECS},
     fishes::species::FishSpecies,
+    fishes::unfish::UnfishKind,
     ledger::Flow,
     loot::{ConsumableKind, LootKind, MilkVariant, NameTarget, StockItem},
     names,
@@ -21,6 +22,7 @@ use crate::{
         Blueprint, FEED_PORTION, FRESH_SPEECH, Fabrication, FabricationQuote, FabricationRefusal,
         Selector, StageBudget, Tank, TankKind, Workshop, WorldSignal, WorldView,
     },
+    tanks::soul_wall::SoulWall,
     ui::{
         circuit_overlay::{CircuitFish, CircuitState},
         fields,
@@ -28,7 +30,8 @@ use crate::{
         fishtanks_overlay::FishtanksState,
         foundry_overlay::FoundryState,
         index_overlay::IndexState,
-        input_action::{InputAction, classify, hold},
+        index_query::IndexQuery,
+        input_action::{Hold, InputAction, SCROLL_KEYS, classify, hold},
         ledger_overlay::LedgerState,
         shop_overlay::{
             BuyCategory, BuyList, BuyListState, BuyTankPopup, Counter, FishNamePopup, Purchase,
@@ -101,6 +104,7 @@ impl App {
             return;
         }
         let is_key_press = matches!(&event, Event::Key(k) if k.kind == KeyEventKind::Press);
+        let is_key_down = matches!(&event, Event::Key(k) if k.kind != KeyEventKind::Release);
         if is_key_press {
             self.tanks[self.current_tank].startle();
         }
@@ -131,7 +135,10 @@ impl App {
         } else if matches!(self.active_overlay, Some(Overlay::ConsumePicker(_))) {
             self.handle_consume_picker_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Shop(_))) {
+            let held = hold(&event);
             self.handle_shop_input(event);
+            self.hold_a_scroll_key(held);
+            self.settle_shop();
         } else if matches!(self.active_overlay, Some(Overlay::Circuit(_))) {
             self.handle_circuit_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Wiring { .. })) {
@@ -144,7 +151,7 @@ impl App {
             self.handle_command_input(event);
         }
         self.settle_arrivals();
-        if is_key_press {
+        if is_key_down {
             self.reset_blink();
         }
     }
@@ -365,6 +372,13 @@ impl App {
         let Some(action) = classify(&event) else {
             return;
         };
+        if !matches!(action, InputAction::Quit)
+            && let Some(s) = self.index_state_mut()
+            && s.is_editing()
+        {
+            s.edit(&action);
+            return;
+        }
         match action {
             InputAction::Quit => {
                 self.running = false;
@@ -390,6 +404,21 @@ impl App {
             InputAction::Right => {
                 if let Some(s) = self.index_state_mut() {
                     s.scroll_right();
+                }
+            }
+            InputAction::Char('s' | 'S') => {
+                if let Some(s) = self.index_state_mut() {
+                    s.sort_focused();
+                }
+            }
+            InputAction::Char('f' | 'F' | '/') => {
+                if let Some(s) = self.index_state_mut() {
+                    s.edit_focused();
+                }
+            }
+            InputAction::Char('c' | 'C') => {
+                if let Some(s) = self.index_state_mut() {
+                    s.clear();
                 }
             }
             InputAction::Confirm => {
@@ -1209,12 +1238,8 @@ impl App {
                         InputAction::Cancel | InputAction::Char('q') => {
                             *buy_popup = None;
                         }
-                        InputAction::Left if popup.qty > 1 => {
-                            popup.qty -= 1;
-                        }
-                        InputAction::Right if popup.qty < popup.max_qty => {
-                            popup.qty += 1;
-                        }
+                        InputAction::Left => popup.fewer(),
+                        InputAction::Right => popup.more(),
                         InputAction::Confirm => {
                             let bought = buy_popup.take().expect("the popup is open");
                             self.take_qty_purchase(&bought);
@@ -1405,12 +1430,8 @@ impl App {
                         InputAction::Cancel | InputAction::Char('q') => {
                             pl.popup = None;
                         }
-                        InputAction::Left if popup.qty > 1 => {
-                            popup.qty -= 1;
-                        }
-                        InputAction::Right if popup.qty < popup.max_qty => {
-                            popup.qty += 1;
-                        }
+                        InputAction::Left => popup.fewer(),
+                        InputAction::Right => popup.more(),
                         InputAction::Confirm => {
                             let bought = pl.popup.take().expect("the popup is open");
                             self.take_qty_purchase(&bought);
@@ -1525,7 +1546,9 @@ impl App {
                             self.earn(earned, flow);
 
                             match self.build_sell_menu_state() {
-                                Some(new_sm) => shop.page = ShopPage::Sell(new_sm),
+                                Some(new_sm) => {
+                                    shop.page = ShopPage::Sell(new_sm.keeping_place(sm))
+                                }
                                 None => {
                                     shop.page = ShopPage::Main {
                                         selected: Counter::Sell.index(),
@@ -1561,6 +1584,49 @@ impl App {
         }
 
         self.set_overlay(Overlay::Shop(shop));
+    }
+
+    fn hold_a_scroll_key(&mut self, held: Option<Hold>) {
+        let Some(held) = held else { return };
+        if !SCROLL_KEYS.contains(&held.code) {
+            return;
+        }
+        if held.down {
+            self.held_keys.press(held.code);
+        } else {
+            self.held_keys.release(held.code);
+        }
+    }
+
+    fn open_index(&mut self, query: IndexQuery) {
+        let all_names: Vec<String> = self
+            .tanks
+            .iter()
+            .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
+            .collect();
+        let mut rng = rand::rng();
+        for fish in self.tanks.iter_mut().flat_map(|t| t.fish.iter_mut()) {
+            fields::populate_field_cache(fish, &all_names, &mut rng);
+        }
+        let living: Vec<(&str, &Fish)> = self
+            .tanks
+            .iter()
+            .flat_map(|t| t.fish.iter().map(|f| (t.name.as_str(), f)))
+            .collect();
+        let walls: Vec<(&str, &SoulWall)> = self
+            .tanks
+            .iter()
+            .filter_map(|t| t.soul_wall().map(|wall| (t.name.as_str(), wall)))
+            .collect();
+        let state = IndexState::new(&living, &walls, query);
+        self.set_overlay(Overlay::Index(state));
+    }
+
+    fn settle_shop(&mut self) {
+        let access = self.shop_access();
+        if let Some(Overlay::Shop(shop)) = &mut self.active_overlay {
+            shop.page.settle(access);
+        }
     }
 
     pub(super) fn build_sell_menu_state(&self) -> Option<SellMenuState> {
@@ -1728,7 +1794,7 @@ impl App {
                         self.tanks.iter().map(|t| t.name.as_str()).collect();
                     let action = commands::parse(&input, &fish_names_ref, &tank_names_ref);
                     match action {
-                        commands::Action::Index { .. }
+                        commands::Action::Index(_)
                         | commands::Action::Show { .. }
                         | commands::Action::Fishtanks
                         | commands::Action::ToggleNames
@@ -1822,6 +1888,8 @@ impl App {
             }
             WishAction::Nothing => {
                 self.nothing_stacks += 1;
+                let mut rng = rand::rng();
+                self.tanks[self.current_tank].spawn_unfish_of(UnfishKind::Absence, &mut rng);
             }
             WishAction::Restore { name } => {
                 self.restore_entity(&name);
@@ -1956,9 +2024,7 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, f)| {
-                f.unfish_state.is_none()
-                    && f.ability_stacks(FishSpecies::Holyfish) == 0
-                    && f.is_sellable()
+                !f.is_unfish() && f.ability_stacks(FishSpecies::Holyfish) == 0 && f.is_sellable()
             })
             .map(|(i, _)| i)
             .collect();
@@ -2681,51 +2747,8 @@ impl App {
             commands::Action::SetFrozen { name, frozen } => self.set_frozen(&name, frozen),
             commands::Action::Nudge { name, dx, dy } => self.nudge_fish(&name, dx, dy),
             commands::Action::Flip(name) => self.flip_fish(&name),
-            commands::Action::Index { all, tank_filter } => {
-                let all_names: Vec<String> = self
-                    .tanks
-                    .iter()
-                    .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
-                    .collect();
-                let mut rng = rand::rng();
-                if let Some(filter) = tank_filter {
-                    let tank_idx = self
-                        .tanks
-                        .iter()
-                        .position(|t| t.name.eq_ignore_ascii_case(&filter));
-                    if let Some(idx) = tank_idx {
-                        for fish in &mut self.tanks[idx].fish {
-                            fields::populate_field_cache(fish, &all_names, &mut rng);
-                        }
-                        let tank = &self.tanks[idx];
-                        let fish_with_tanks: Vec<(&str, &Fish)> =
-                            tank.fish.iter().map(|f| (tank.name.as_str(), f)).collect();
-                        let souls = tank.soul_wall().map(|wall| (tank.name.as_str(), wall));
-                        self.set_overlay(Overlay::Index(IndexState::new(
-                            &fish_with_tanks,
-                            souls,
-                            all,
-                            false,
-                        )));
-                    }
-                } else {
-                    for tank in &mut self.tanks {
-                        for fish in &mut tank.fish {
-                            fields::populate_field_cache(fish, &all_names, &mut rng);
-                        }
-                    }
-                    let fish_with_tanks: Vec<(&str, &Fish)> = self
-                        .tanks
-                        .iter()
-                        .flat_map(|t| t.fish.iter().map(|f| (t.name.as_str(), f)))
-                        .collect();
-                    self.set_overlay(Overlay::Index(IndexState::new(
-                        &fish_with_tanks,
-                        None,
-                        all,
-                        true,
-                    )));
-                }
+            commands::Action::Index(query) => {
+                self.open_index(query);
                 true
             }
             commands::Action::Inventory => {
@@ -2859,13 +2882,16 @@ impl App {
             commands::Action::Import(path) => self.import_game(&path),
             commands::Action::Cowsay(text) => self.cowsay(text),
             commands::Action::Say(text) => self.say(None, text),
-            commands::Action::VoidSpawn => {
+            commands::Action::VoidSpawn(kind) => {
                 if !self.tanks[self.current_tank].kind.config().spawns_unfish {
                     return false;
                 }
                 let mut rng = rand::rng();
-                self.tanks[self.current_tank].spawn_unfish(&mut rng);
-                true
+                let tank = &mut self.tanks[self.current_tank];
+                match kind {
+                    Some(kind) => tank.spawn_unfish_of(kind, &mut rng),
+                    None => tank.spawn_unfish(&mut rng),
+                }
             }
             commands::Action::StartVoidWish { skip } => {
                 if !self.tanks[self.current_tank].kind.config().hosts_ritual {
