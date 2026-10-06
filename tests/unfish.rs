@@ -349,7 +349,7 @@ fn a_signal_spells_its_cheat_code_on_a_channel_named_after_it() {
 }
 
 #[test]
-fn whatever_swims_into_the_ring_comes_out_of_the_far_wall() {
+fn a_fish_swims_through_the_ring_as_through_water() {
     let mut tank = lab();
     add(&mut tank, unfish(UnfishKind::Ouroboros, "Ring"), 20.0, 6.0);
     let s = add(&mut tank, fish(FishSpecies::Salmon, "Traveller"), 26.0, 6.0);
@@ -358,7 +358,11 @@ fn whatever_swims_into_the_ring_comes_out_of_the_far_wall() {
     tank.fish[s].velocity.dy = 0.0;
     tick(&mut tank);
     let traveller = &tank.fish[index_of(&tank, "Traveller")];
-    assert!(traveller.position.x > 40.0, "{}", traveller.position.x);
+    assert!(
+        (25.0..=26.0).contains(&traveller.position.x),
+        "{}",
+        traveller.position.x
+    );
 }
 
 #[test]

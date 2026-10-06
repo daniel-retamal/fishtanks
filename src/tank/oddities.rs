@@ -15,7 +15,7 @@ use crate::fishes::quirk::{
     GRAEAE_PASS_REST_SECS, LEECH_BITE_MEAN_SECS, MOLT_MEAN_SECS, Quirk,
 };
 use crate::fishes::species::{EYE_CIRCLE, EYE_ROUND, SizeCategory};
-use crate::fishes::unfish::{RING_HOLE_COLS, RING_HOLE_ROWS, UnfishKind};
+use crate::fishes::unfish::UnfishKind;
 use crate::names;
 use crate::util::sample_exponential;
 
@@ -126,7 +126,6 @@ impl Tank {
         self.tick_negatives(rng);
         self.tick_forgetting(rng);
         self.tick_graeae();
-        self.tick_rings();
         self.tick_molts(dt, rng);
         self.tick_anagrams(rng);
     }
@@ -450,46 +449,6 @@ impl Tank {
                 graeae.sighted = sight;
                 graeae.rest = GRAEAE_PASS_REST_SECS;
             }
-        }
-    }
-
-    fn tick_rings(&mut self) {
-        let width = self.width as f32;
-        let holes: Vec<(f32, f32, f32, f32)> = self
-            .fish
-            .iter()
-            .filter(|fish| fish.unfish_kind() == Some(UnfishKind::Ouroboros))
-            .filter_map(|ring| {
-                let grid = UnfishKind::Ouroboros.grid()?;
-                let top = ring.position.y - grid.center as f32;
-                Some((
-                    ring.position.x + RING_HOLE_COLS.0 as f32,
-                    ring.position.x + RING_HOLE_COLS.1 as f32,
-                    top + RING_HOLE_ROWS.0 as f32,
-                    top + RING_HOLE_ROWS.1 as f32,
-                ))
-            })
-            .collect();
-        if holes.is_empty() {
-            return;
-        }
-        for fish in &mut self.fish {
-            if fish.is_unfish() || fish.is_pinned() {
-                continue;
-            }
-            let head = fish.head_x() as f32;
-            let y = fish.position.y.round();
-            let inside = holes
-                .iter()
-                .any(|&(x0, x1, y0, y1)| head >= x0 && head <= x1 && y >= y0 && y <= y1);
-            if !inside {
-                continue;
-            }
-            fish.position.x = if fish.velocity.dx < 0.0 {
-                (width - fish.display_width as f32).max(0.0)
-            } else {
-                0.0
-            };
         }
     }
 

@@ -173,8 +173,6 @@ pub const RING_CENTER_ROW: i32 = 3;
 const RING_CENTER_COL: f32 = 8.0;
 const RING_ASPECT: f32 = 2.0;
 const RING_TAIL_CELLS: usize = 3;
-pub const RING_HOLE_COLS: (i32, i32) = (4, 12);
-pub const RING_HOLE_ROWS: (i32, i32) = (2, 4);
 const RING_TAIL_TIP: char = ',';
 const RING_HEAD: [char; 3] = ['(', EYE_ROUND, ')'];
 
