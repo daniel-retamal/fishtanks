@@ -6,7 +6,7 @@ use fishtank::{
     testing::Tui,
 };
 
-const JUNKFISH_FLOOR: u64 = 100_000;
+const JUNKFISH_FLOOR: fishtank::economy::Money = 100_000;
 const LEFT_OVER: u32 = 1;
 
 fn junkfish() -> FishSpecies {

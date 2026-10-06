@@ -1611,7 +1611,7 @@ impl Widget for JunkfishPopupWidget<'_> {
             fish,
             header: format!(
                 "Worth ${}: a {species} made of {JUNK_PER_JUNKFISH} Junk!",
-                grouped(u128::from(fish.sell_value()))
+                grouped(fish.sell_value())
             ),
             title: format!(" Junk to the {species}! "),
             confirm: HINT_ENTER_ASSEMBLE,

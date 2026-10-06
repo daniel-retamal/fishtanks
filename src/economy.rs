@@ -175,7 +175,7 @@ mod tests {
     }
 }
 
-pub type Money = u64;
+pub type Money = u128;
 
 pub fn reading(money: Money) -> u32 {
     u32::try_from(money).unwrap_or(u32::MAX)
@@ -265,6 +265,21 @@ mod purse_tests {
         let mut purse = Purse::holding(Money::from(u32::MAX));
         purse.earn(1);
         assert_eq!(purse.balance(), Money::from(u32::MAX) + 1);
+    }
+
+    #[test]
+    fn a_purse_past_every_u64_is_saved_and_read_back_whole() {
+        let fortune = Money::from(u64::MAX) * 1_000;
+        let text = ron::to_string(&Purse::holding(fortune)).expect("a purse is written");
+        let back: Purse = ron::from_str(&text).expect("and read back");
+        assert_eq!(back.balance(), fortune);
+    }
+
+    #[test]
+    fn a_purse_written_as_a_u64_still_reads() {
+        let old: Purse = ron::from_str("(balance: 18446744073709551615, bottomless: false)")
+            .expect("an old save's purse");
+        assert_eq!(old.balance(), Money::from(u64::MAX));
     }
 
     #[test]

@@ -50,7 +50,7 @@ impl Amount {
         match self {
             Amount::Nothing => NOTHING.to_string(),
             Amount::Money(value) => {
-                let magnitude = Money::try_from(value.unsigned_abs()).unwrap_or(Money::MAX);
+                let magnitude = value.unsigned_abs();
                 format!("{}${}", sign(value), metric(magnitude))
             }
         }
@@ -97,10 +97,14 @@ fn net(tally: &Tally, flows_in: &[Flow], flows_out: &[Flow]) -> i128 {
     let side = |direction: Direction, flows: &[Flow]| -> i128 {
         flows
             .iter()
-            .map(|&flow| i128::from(tally.line(direction, flow)))
+            .map(|&flow| signed(tally.line(direction, flow)))
             .sum()
     };
     side(Direction::In, flows_in) - side(Direction::Out, flows_out)
+}
+
+fn signed(money: Money) -> i128 {
+    i128::try_from(money).unwrap_or(i128::MAX)
 }
 
 fn per_minute(net: i128, minutes: f32) -> Amount {
@@ -133,8 +137,8 @@ impl LedgerState {
             for &flow in flows.iter() {
                 rows.push(Row::Line {
                     label: flow.label().to_string(),
-                    hour: Amount::Money(i128::from(hour.line(direction, flow))),
-                    launch: Amount::Money(i128::from(launch.line(direction, flow))),
+                    hour: Amount::Money(signed(hour.line(direction, flow))),
+                    launch: Amount::Money(signed(launch.line(direction, flow))),
                     total: false,
                 });
             }

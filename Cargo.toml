@@ -20,7 +20,7 @@ crossterm = "0.29.0"
 dirs = "7.0.0"
 rand = "0.10.1"
 ratatui = { version = "0.30.0", features = ["serde"] }
-ron = "0.12.2"
+ron = { version = "0.12.2", features = ["integer128"] }
 semver = "1"
 serde = { version = "1.0.229", features = ["derive"] }
 unicode-width = "0.2"
