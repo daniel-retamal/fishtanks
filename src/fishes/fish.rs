@@ -1451,13 +1451,37 @@ impl Fish {
         }
     }
 
+    pub(crate) fn unfish_hydra_room(&self) -> usize {
+        let Some(us) = self.unfish_state.as_deref() else {
+            return 0;
+        };
+        let (segs, _, anchor) = self.unfish_body_cells(us, Direction::Left);
+        line_hydra_room(segs.len(), anchor)
+    }
+
+    pub(crate) fn unfish_patch_cells(&self) -> Option<Vec<usize>> {
+        let us = self.unfish_state.as_deref()?;
+        if is_multi_row(us.kind) || us.kind == UnfishKind::Worm {
+            return None;
+        }
+        let (segs, eyes, _) = self.unfish_body_cells(us, Direction::Left);
+        Some(
+            (MOUTH_WIDTH as usize..segs.len())
+                .filter(|cell| !eyes.contains(cell))
+                .collect(),
+        )
+    }
+
     fn plain_unfish_cells(&self, us: &UnfishState, facing: Direction) -> LineCells {
         let (mut segs, eyes, anchor) = self.unfish_body_cells(us, facing);
         let n = segs.len();
+        let head_left = matches!(facing, Direction::Left);
         for &(pos, color) in &us.slime_color_patches {
-            if pos < n {
-                segs[pos].1 = color;
+            if pos >= n {
+                continue;
             }
+            let at = if head_left { pos } else { n - 1 - pos };
+            segs[at].1 = color;
         }
         if n < 2 {
             return (segs, None);
@@ -2955,12 +2979,8 @@ fn insert_line_appendages(
     for _ in 0..ears {
         inserts.push((ear_at, (ear_glyph(head_left), ear_color)));
     }
-    let (body_start, body_end) = if head_left {
-        (eye_idx + 1, n.saturating_sub(LINE_TAIL_W))
-    } else {
-        (LINE_TAIL_W, eye_idx)
-    };
-    let avail = body_end.saturating_sub(body_start).saturating_sub(1);
+    let (body_start, body_end) = line_body_span(n, eye_idx);
+    let avail = line_hydra_room(n, eye_idx);
     let hydra_used = hydra.min(avail);
     for (pos, _eye_start, size) in hydra_cluster_slots(body_start, avail, hydra_used) {
         for _ in 0..size {
@@ -2981,6 +3001,19 @@ fn insert_line_appendages(
         (body_start, body_end - 1 + hydra_used)
     };
     Some(span)
+}
+
+fn line_body_span(n: usize, eye_idx: usize) -> (usize, usize) {
+    if eye_idx * 2 < n {
+        (eye_idx + 1, n.saturating_sub(LINE_TAIL_W))
+    } else {
+        (LINE_TAIL_W, eye_idx)
+    }
+}
+
+fn line_hydra_room(n: usize, eye_idx: usize) -> usize {
+    let (body_start, body_end) = line_body_span(n, eye_idx);
+    body_end.saturating_sub(body_start).saturating_sub(1)
 }
 
 fn hydra_cluster_slots(
