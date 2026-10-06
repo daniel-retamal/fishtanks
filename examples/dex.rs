@@ -18,7 +18,9 @@ use fishtank::fishes::species::{
 use fishtank::fishes::unfish::{SPAWNABLE_UNFISH, UnfishKind, is_multi_row};
 use fishtank::settings::{DEFAULT_FPS, Settings};
 use fishtank::sprite::TRANSPARENT;
-use fishtank::tank::{PLANT_HEIGHT_MAX, PLANT_HEIGHT_MIN, Sky, Tank, TankBackground, TankKind};
+use fishtank::tank::{
+    PLANT_HEIGHT_MAX, PLANT_HEIGHT_MIN, SHED_SINK_PER_SEC, Sky, Tank, TankBackground, TankKind,
+};
 use fishtank::testing::{Reel, Still};
 use fishtank::ui::tank_view::{TankView, render_cow};
 use fishtank::ui::{draw_fish_centred, fish_art_height, render_fish_sprite};
@@ -125,15 +127,15 @@ const COW_PADS: Pads = Pads {
 const BOWL_SPOT: (f32, f32) = (40.0, 16.0);
 const STACK_STEP: f32 = (1 + PAD_Y) as f32;
 const ALGAE_EVERY: usize = 2;
+const GRAEAE_SIGHT: [bool; 3] = [true, false, false];
 const SPELL: usize = 60;
 const TURN_TICKS: usize = 4 * SPELL;
 const SHAPE_TICKS: usize = 5 * SPELL;
 const SCATTER_SECS: f32 = 3.0;
 const SCATTER_TICKS: usize = 5 * SPELL / 2;
 const FAULT_TICKS: usize = SPELL + (FAULT_SLIP_SECS * DEFAULT_FPS) as usize;
-const MOLT_EVERY: usize = 2 * SPELL;
 const MOLT_DROP: f32 = 4.0;
-const MOLT_WARMUP_TICKS: usize = 5 * SPELL;
+const MOLT_EVERY: usize = ((MOLT_DROP + 1.0) / SHED_SINK_PER_SEC * DEFAULT_FPS) as usize;
 
 struct Shot {
     slug: String,
@@ -738,14 +740,16 @@ fn unfish_shot(kind: UnfishKind, rng: &mut impl rand::RngExt) -> (Shot, Fish) {
             })
         }
         UnfishKind::Molt => molt_shot(&slug, rng),
-        UnfishKind::Graeae => Bowl::of(kind, 2, rng).film(&slug, 0, PORTRAIT_TICKS, |tank, _| {
-            for (sister, sighted) in tank.fish.iter_mut().zip([true, false]) {
-                if let Some(Quirk::Graeae(graeae)) = sister.quirk_mut() {
-                    graeae.sighted = sighted;
-                    graeae.rest = GRAEAE_PASS_REST_SECS;
+        UnfishKind::Graeae => {
+            Bowl::of(kind, GRAEAE_SIGHT.len(), rng).film(&slug, 0, PORTRAIT_TICKS, |tank, _| {
+                for (sister, sighted) in tank.fish.iter_mut().zip(GRAEAE_SIGHT) {
+                    if let Some(Quirk::Graeae(graeae)) = sister.quirk_mut() {
+                        graeae.sighted = sighted;
+                        graeae.rest = GRAEAE_PASS_REST_SECS;
+                    }
                 }
-            }
-        }),
+            })
+        }
         UnfishKind::Leech | UnfishKind::Negative | UnfishKind::Still => {
             Bowl::of(kind, 1, rng).film(&slug, 0, PORTRAIT_TICKS, |_, _| {})
         }
@@ -888,7 +892,7 @@ fn bones_shot(slug: &str, rng: &mut impl rand::RngExt) -> Shot {
 fn molt_shot(slug: &str, rng: &mut impl rand::RngExt) -> Shot {
     let bowl = Bowl::of(UnfishKind::Molt, 1, rng);
     let lowest = bowl.rows[0] + MOLT_DROP + 1.0;
-    bowl.film(slug, MOLT_WARMUP_TICKS, 2 * MOLT_EVERY, |tank, tick| {
+    bowl.film(slug, MOLT_EVERY, MOLT_EVERY, |tank, tick| {
         tank.sheddings.retain(|shed| shed.y < lowest);
         if let Some(Quirk::Molt(molt)) = tank.fish[0].quirk_mut() {
             molt.clock = if tick % MOLT_EVERY == 0 {

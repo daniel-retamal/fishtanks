@@ -53,7 +53,7 @@ pub use mothership::{
     speech_ink,
 };
 pub use netlist::{Netlist, Settling};
-pub use oddities::Shedding;
+pub use oddities::{SHED_SINK_PER_SEC, Shedding};
 pub use record::TankRecord;
 pub use relay::{Link, Transmission};
 pub use world::{
