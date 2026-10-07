@@ -105,6 +105,7 @@ The bar at the bottom takes commands. Type `/`, press `Tab` to complete, `↑` a
 | `/index`                  | Every fish in this tank. `/show "<name>"` looks at one closely         |
 | `/names`                  | Show or hide the fishes' names                                         |
 | `/ledger`                 | Where your money came from, and where it went                          |
+| `/casino`                 | Six tables run by Tollomind. Bet cash, or bet a fish's life            |
 | `/zen`                    | Just the water. Any key brings the rest back                           |
 | `/exit`                   | Leave. The game is saved, and it will be there when you come back      |
 
@@ -123,6 +124,14 @@ Fishing is where catches come from: fish, cash, food, and stranger things.
 5. When the catch bar on the right is full, the fish is yours. Name it and press `Enter`.
 
 The [wiki](https://github.com/daniel-retamal/fishtanks/wiki/Fishing) has the long version.
+
+### The casino
+
+Where fished money goes to get stupid. `/casino` opens Tollomind's lobby: Blackjack, Spins with its Pearl Dive, a Pufferfish that puffs until it pops, Bubble Up, the Derby and the Mystery Net. Bet cash, or put a fish on the line: it plays for more than it is worth, and it dies if it loses. Every win offers double or nothing, and nothing has a ceiling. The house always wins.
+
+<img src="https://raw.githubusercontent.com/daniel-retamal/fishtanks/main/.github/assets/casino.gif" alt="Bubble Up on the Stupid board: a bubble climbs to the ×1,000 shell and an Absolutely Stupid Win card counts up" width="720" />
+
+Every table, its odds and its keys are on the [wiki](https://github.com/daniel-retamal/fishtanks/wiki/Casino).
 
 ### Getting started
 

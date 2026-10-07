@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **The casino.** `/casino` opens Tollomind's lobby, six tables where your fished money goes: Blackjack, Spins with its Pearl Dive bonus, the Pufferfish (cash out before it pops), Bubble Up, the Derby and the Mystery Net. Every table prints what it pays back, and the house always wins.
+- **Bet a fish.** Put a fish on the line and it plays for a quarter more than its worth. It swims home with its winnings on a win; on a tie or worse, Tollomind eats it.
+- **Double or nothing**, after any win and as often as you dare: the money doubles, and so does every fish on the line.
+- **Net a fish** in the Mystery Net, Legendaries included.
+- **No ceiling on money.** Fortunes past a sextillion are written like 1.2e24.
+
 ## 1.3.0 - 2026-10-06
 
 - **Sort and filter the index.** In `/index`, `←`/`→` pick a column, `S` sorts by it (up, down, off) and `F` filters it as you type; `C` clears it all. The command bar asks the same questions: `/index species:koi sort:-worth`, `/index weight:>1kg`, `/index "Coral"`. The table shows the command it is answering, so the words come by using it.
