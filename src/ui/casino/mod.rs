@@ -260,8 +260,20 @@ pub fn tollomind() -> &'static LineSprite {
     })
 }
 
+fn tollomind_facing_left() -> &'static LineSprite {
+    static SPRITE: OnceLock<LineSprite> = OnceLock::new();
+    SPRITE.get_or_init(|| mirrored(tollomind()))
+}
+
 pub fn draw_tollomind(buf: &mut Buffer, x: i32, top: i32, clip: Rect) -> (u16, u16) {
-    let sprite = tollomind();
+    draw_dealer(buf, tollomind(), x, top, clip)
+}
+
+pub fn draw_tollomind_facing_left(buf: &mut Buffer, x: i32, top: i32, clip: Rect) -> (u16, u16) {
+    draw_dealer(buf, tollomind_facing_left(), x, top, clip)
+}
+
+fn draw_dealer(buf: &mut Buffer, sprite: &LineSprite, x: i32, top: i32, clip: Rect) -> (u16, u16) {
     draw_sprite(buf, sprite, x, top, clip);
     let eye = sprite.rows[sprite.body_row]
         .iter()

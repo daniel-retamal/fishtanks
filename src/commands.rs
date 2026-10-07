@@ -187,7 +187,6 @@ const SELL_ARG: &str = "<item>";
 const NAME_ARG: &str = "<name>";
 const QUANTITY_ARG: &str = "<quantity>";
 const FILE_ARG: &str = "\"<file>\"";
-const TABLE_ARG: &str = "[table]";
 
 static COMMAND_NAMES: &[(&str, Clearance)] = &[
     ("add", Clearance::Debug),
@@ -269,11 +268,7 @@ pub fn autocomplete(input: &str, ctx: &CompletionCtx) -> Option<Completion> {
         Some((cmd, rest)) => match cmd.to_ascii_lowercase().as_str() {
             "add" => complete_add_subtract("add", rest),
             "buy" => complete_buy(rest),
-            "casino" => {
-                let tokens: Vec<String> = Game::ALL.iter().map(|game| game.token()).collect();
-                let tables: Vec<&str> = tokens.iter().map(String::as_str).collect();
-                complete_name_arg("casino", rest, TABLE_ARG, &tables)
-            }
+            "casino" => complete_casino(rest),
             "consume" => complete_consume(rest, ctx.consumable_names),
             "fps" => complete_single_arg(rest, FPS_ARG),
             "clock" => complete_single_arg(rest, CLOCK_ARG),
@@ -368,6 +363,15 @@ fn complete_command(partial: &str, ctx: &CompletionCtx) -> Option<Completion> {
     };
 
     Some(Completion { ghost, tab_result })
+}
+
+fn complete_casino(rest: &str) -> Option<Completion> {
+    if rest.trim().is_empty() {
+        return None;
+    }
+    let tokens: Vec<String> = Game::ALL.iter().map(|game| game.token()).collect();
+    let tables: Vec<&str> = tokens.iter().map(String::as_str).collect();
+    complete_name_arg("casino", rest, "", &tables)
 }
 
 fn complete_single_arg(rest: &str, placeholder: &str) -> Option<Completion> {
@@ -1365,7 +1369,6 @@ fn command_args_placeholder(cmd: &str) -> &'static str {
     match cmd {
         "add" | "subtract" => "<resource> <amount>",
         "buy" => "<item>",
-        "casino" => TABLE_ARG,
         "consume" => "<consumable>",
         "cowsay" => "\"<text>\"",
         "say" => "\"<text>\"",
@@ -2975,6 +2978,19 @@ mod tests {
         let named = autocomplete("/console P", &ctx).unwrap();
         assert_eq!(named.tab_result.as_deref(), Some("/console Pad"));
         assert!(autocomplete("/console N", &ctx).is_none());
+    }
+
+    #[test]
+    fn the_casino_completes_its_name_bare_and_offers_a_table_only_once_one_is_begun() {
+        let ctx = CompletionCtx::default();
+        let begun = autocomplete("/cas", &ctx).unwrap();
+        assert_eq!(begun.ghost, "ino");
+        assert_eq!(begun.tab_result.as_deref(), Some("/casino "));
+        assert!(autocomplete("/casino", &ctx).is_none());
+        assert!(autocomplete("/casino ", &ctx).is_none());
+        let table = autocomplete("/casino s", &ctx).unwrap();
+        assert_eq!(table.ghost, "pins");
+        assert_eq!(table.tab_result.as_deref(), Some("/casino spins"));
     }
 
     #[test]

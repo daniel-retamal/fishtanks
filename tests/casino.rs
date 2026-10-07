@@ -4,12 +4,12 @@ use rand::{SeedableRng, rngs::SmallRng};
 use fishtank::casino::blackjack::{Blackjack, Phase};
 use fishtank::casino::bubble::Risk;
 use fishtank::casino::derby::{CHANCES_PER_MILLE, PAYS_BACK_PER_MILLE, odds};
-use fishtank::casino::flip::{FlipPhase, Landing, Side};
+use fishtank::casino::flip::{FLIGHT_SECS, FlipPhase, LOSS_SHOWN_SECS, Landing, SWIM_SECS, Side};
 use fishtank::casino::net::Net;
 use fishtank::casino::pufferfish::{PuffPhase, reach_chance};
 use fishtank::casino::seat::Verdict;
 use fishtank::casino::spins;
-use fishtank::casino::state::{CasinoState, Game, Play, Popup, View};
+use fishtank::casino::state::{CasinoState, Game, Play, Popup, REVEAL_SECS, View};
 use fishtank::casino::{COMP_EVERY, FISH_PREMIUM, Multiple, POT_SHARE_PER_CENT, premium};
 use fishtank::economy::Money;
 use fishtank::ledger::{Direction, Flow};
@@ -76,6 +76,10 @@ fn a_fish_hand_at_blackjack_doubles_and_splits_like_any_other() {
         game.total_bet() > value
     });
     assert!(doubled);
+}
+
+fn ticks(tui: &Tui, secs: f32) -> usize {
+    (secs * tui.app.settings.fps).ceil() as usize
 }
 
 fn open(tui: &mut Tui, line: &str) {
@@ -203,6 +207,28 @@ fn walking_away_from_a_fish_on_the_table_buries_it_when_the_game_comes_back() {
 }
 
 #[test]
+fn quitting_on_a_win_card_keeps_the_fish_that_won_it() {
+    let mut tui = Tui::new();
+    open(&mut tui, "/casino pufferfish");
+    stake_adam(&mut tui);
+    tui.key(KeyCode::Enter);
+    if let View::Table(table) = &mut casino(&mut tui).view
+        && let Play::Pufferfish(puffer) = &mut table.play
+    {
+        puffer.phase = PuffPhase::Puffing {
+            clock: 28.0,
+            pops_at: Multiple::whole(50),
+        };
+    }
+    tui.key(KeyCode::Enter);
+    tui.tick_n(ticks(&tui, REVEAL_SECS) + 1);
+    assert!(matches!(casino(&mut tui).popup, Some(Popup::Banner(_))));
+    let back = Tui::resumed(tui.app.snapshot(), 100, 30);
+    assert_eq!(living(&back, "Adam"), 1);
+    assert!(!graves(&back).contains(&"Adam".to_string()));
+}
+
+#[test]
 fn the_pot_and_the_best_win_are_saved() {
     let mut tui = Tui::new();
     tui.app.casino.pot = 12_345;
@@ -299,13 +325,53 @@ fn a_lost_double_or_nothing_closes_by_itself_and_takes_the_fish() {
             t: 0.0,
         };
     }
-    tui.tick_n(120);
+    let swimming = ticks(&tui, FLIGHT_SECS + LOSS_SHOWN_SECS + SWIM_SECS / 2.0);
+    tui.tick_n(swimming);
+    assert!(
+        matches!(casino(&mut tui).popup, Some(Popup::Flip(_))),
+        "Tollomind is still crossing the stage"
+    );
+    let Some(Popup::Flip(flip)) = &casino(&mut tui).popup else {
+        unreachable!();
+    };
+    let swim = flip.tollomind().expect("Tollomind swims in");
+    assert_eq!(
+        swim.from,
+        Side::Right,
+        "he comes from the side nobody called"
+    );
+    tui.tick_n(ticks(&tui, SWIM_SECS / 2.0) + 1);
     assert!(
         casino(&mut tui).popup.is_none(),
-        "the flip closes by itself"
+        "the flip closes once Tollomind has left the stage"
     );
     assert!(graves(&tui).contains(&"Adam".to_string()));
     tui.screen().expect_absent("keeps it");
+}
+
+#[test]
+fn a_big_win_card_waits_for_the_table_to_show_what_won() {
+    let mut tui = Tui::new();
+    open(&mut tui, "/casino pufferfish");
+    tui.key(KeyCode::Enter);
+    if let View::Table(table) = &mut casino(&mut tui).view
+        && let Play::Pufferfish(puffer) = &mut table.play
+    {
+        puffer.phase = PuffPhase::Puffing {
+            clock: 28.0,
+            pops_at: Multiple::whole(50),
+        };
+    }
+    tui.key(KeyCode::Enter);
+    assert!(
+        casino(&mut tui).popup.is_none(),
+        "the card is still face down"
+    );
+    tui.key(KeyCode::Enter);
+    tui.tick_n(ticks(&tui, REVEAL_SECS / 2.0));
+    assert!(casino(&mut tui).popup.is_none(), "keys wait for the card");
+    tui.tick_n(ticks(&tui, REVEAL_SECS / 2.0) + 1);
+    assert!(matches!(casino(&mut tui).popup, Some(Popup::Banner(_))));
 }
 
 #[test]
@@ -473,6 +539,27 @@ fn every_table_and_popup_is_filmed_whole_at_every_size() {
             }),
             "double or nothing",
         );
+        let half_way = LOSS_SHOWN_SECS + SWIM_SECS / 2.0 - 40.0 / tui.app.settings.fps;
+        for (swum, label) in [
+            (-0.3, "tollomind comes for the goldfish"),
+            (0.0, "the goldfish is eaten"),
+        ] {
+            with_popup(
+                &mut tui,
+                Popup::Flip(Flip {
+                    line: line.clone(),
+                    base: 500,
+                    base_fish: 0,
+                    rung: 0,
+                    phase: FlipPhase::Lost {
+                        landing: Landing::Facing(Side::Right),
+                        call: Side::Left,
+                        t: half_way + swum * SWIM_SECS,
+                    },
+                }),
+                label,
+            );
+        }
         with_popup(
             &mut tui,
             Popup::Banner(Banner {

@@ -2,6 +2,7 @@ use rand::RngExt;
 
 use crate::economy::Money;
 use crate::fishes::fish::Fish;
+use crate::fishes::species::FishSpecies;
 use crate::ui::input_action::InputAction;
 use crate::ui::text_input::TextInput;
 
@@ -18,6 +19,7 @@ use super::{Entrant, House, Multiple, Teller};
 pub const FLASH_SECS: f32 = 0.9;
 pub const BANNER_COUNT_SECS: f32 = 1.2;
 const BANNER_READY_SECS: f32 = 0.35;
+pub const REVEAL_SECS: f32 = 1.2;
 const PAYTABLE_ROWS: usize = 16;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -110,6 +112,31 @@ pub enum Play {
     Net(Cast),
 }
 
+#[derive(Clone, Debug)]
+pub enum Card {
+    Win(Banner),
+    Catch(FishSpecies),
+}
+
+impl Card {
+    fn outranks(&self, other: &Card) -> bool {
+        match (self, other) {
+            (Card::Win(new), Card::Win(old)) => new.multiple > old.multiple,
+            _ => false,
+        }
+    }
+
+    fn turn_over(self, rng: &mut impl RngExt) -> Popup {
+        match self {
+            Card::Win(banner) => Popup::Banner(banner),
+            Card::Catch(species) => Popup::Prize(PrizeCard {
+                fish: Fish::new(species, String::new(), 0.0, 0.0, rng),
+                name: TextInput::new(),
+            }),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Table {
     pub game: Game,
@@ -121,6 +148,7 @@ pub struct Table {
     pub play: Play,
     pub bait: Option<String>,
     pub clock: f32,
+    pub face_down: Option<(Card, f32)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -256,12 +284,6 @@ impl CasinoState {
         if let Some(Popup::Flip(flip)) = &self.popup {
             names.extend(flip.at_risk());
         }
-        if let Some(Popup::Banner(Banner {
-            line: Some(line), ..
-        })) = &self.popup
-        {
-            names.extend(line.fish.iter().cloned());
-        }
         names
     }
 
@@ -300,6 +322,9 @@ impl CasinoState {
                 _ => {}
             },
             View::Table(table) => {
+                if table.face_down.is_some() {
+                    return Leave::Stay;
+                }
                 if matches!(action, InputAction::Cancel | InputAction::Char('q')) {
                     if table.game == Game::Pufferfish && table.is_live() {
                         table.cash_out(house);
@@ -538,6 +563,7 @@ impl Table {
             play,
             bait: None,
             clock: 0.0,
+            face_down: None,
         }
     }
 
@@ -677,7 +703,8 @@ impl Table {
             return None;
         };
         let at = puffer.cash_out()?;
-        self.settle_multiple(at, format!("cashed out at {}", at.label()), house)
+        self.settle_multiple(at, format!("cashed out at {}", at.label()), house);
+        None
     }
 
     fn begin(&mut self, house: &mut dyn House, rng: &mut impl RngExt) -> Option<Popup> {
@@ -763,18 +790,49 @@ impl Table {
                 self.flash = None;
             }
         }
+        self.tick_play(dt, house, rng);
+        let (_, wait) = self.face_down.as_mut()?;
+        *wait -= dt;
+        if *wait > 0.0 {
+            return None;
+        }
+        let (card, _) = self.face_down.take()?;
+        Some(card.turn_over(rng))
+    }
+
+    fn deal_face_down(&mut self, card: Card) {
+        let keep = self
+            .face_down
+            .as_ref()
+            .is_some_and(|(held, _)| !card.outranks(held));
+        if keep {
+            return;
+        }
+        let wait = self.face_down.take().map_or(REVEAL_SECS, |(_, wait)| wait);
+        self.face_down = Some((card, wait));
+    }
+
+    fn tick_play(&mut self, dt: f32, house: &mut dyn House, rng: &mut impl RngExt) {
         match &mut self.play {
             Play::Blackjack(Some(game)) => {
-                self.round.as_ref()?;
+                if self.round.is_none() {
+                    return;
+                }
                 game.tick(dt, rng);
-                let returned = game.returned()?;
+                let Some(returned) = game.returned() else {
+                    return;
+                };
                 let label = game.label();
-                self.settle_money(returned, label, house)
+                self.settle_money(returned, label, house);
             }
-            Play::Blackjack(None) => None,
+            Play::Blackjack(None) => {}
             Play::Spins(spins) => {
-                let outcome = spins.tick(dt, rng)?;
-                let round = self.round.as_ref()?;
+                let Some(outcome) = spins.tick(dt, rng) else {
+                    return;
+                };
+                let Some(round) = self.round.as_ref() else {
+                    return;
+                };
                 let value = round.staked.value();
                 let mut returned = outcome.multiple().of(value);
                 let jackpot = outcome.full;
@@ -782,21 +840,21 @@ impl Table {
                     returned = returned.saturating_add(house.casino().empty_the_pot());
                 }
                 let label = outcome.label();
-                let popup = self.settle_money(returned, label, house);
-                if jackpot && let Some(Popup::Banner(mut banner)) = popup {
+                self.settle_money(returned, label, house);
+                if jackpot && let Some((Card::Win(banner), _)) = &mut self.face_down {
                     banner.jackpot = true;
-                    return Some(Popup::Banner(banner));
                 }
-                popup
             }
             Play::Pufferfish(puffer) => {
-                let paid = puffer.tick(dt)?;
+                let Some(paid) = puffer.tick(dt) else {
+                    return;
+                };
                 let label = if paid == Multiple::ZERO {
                     format!("popped at {}", puffer.now().label())
                 } else {
                     format!("cashed out at {}", paid.label())
                 };
-                self.settle_multiple(paid, label, house)
+                self.settle_multiple(paid, label, house);
             }
             Play::BubbleUp { bubbles, lit, .. } => {
                 for (_, _, t) in lit.iter_mut() {
@@ -809,41 +867,44 @@ impl Table {
                 let (landed, flying): (Vec<Bubble>, Vec<Bubble>) =
                     bubbles.drain(..).partition(Bubble::has_landed);
                 *bubbles = flying;
-                let mut popup = None;
+                let mut cards = Vec::new();
                 for bubble in landed {
                     lit.push((bubble.risk, bubble.shell(), SHELL_FLASH_SECS));
                     let pays = bubble.pays();
                     let returned = pays.of(bubble.round.staked.value());
                     let result = bubble.round.settle(returned, pays.label(), house);
                     self.flash = Some((flash_of(&result), FLASH_SECS));
-                    if result.is_big() && popup.is_none() {
-                        popup = Some(Popup::Banner(banner_of(&result)));
+                    if result.is_big() {
+                        cards.push(Card::Win(banner_of(&result)));
                     }
                     self.result = Some(result);
                 }
-                popup
+                for card in cards {
+                    self.deal_face_down(card);
+                }
             }
             Play::Derby(derby) => {
-                let won = derby.tick(dt)?;
-                self.round.as_ref()?;
+                let Some(won) = derby.tick(dt) else {
+                    return;
+                };
+                if self.round.is_none() {
+                    return;
+                }
                 let odds = derby.picked().odds();
                 let label = derby
                     .winner()
                     .map(|w| format!("{} wins", derby.lanes[w].name()))
                     .unwrap_or_default();
                 let pays = if won { odds } else { Multiple::ZERO };
-                self.settle_multiple(pays, label, house)
+                self.settle_multiple(pays, label, house);
             }
-            Play::Net(cast) => match cast.tick(dt)? {
-                Prize::Food => {
+            Play::Net(cast) => match cast.tick(dt) {
+                None => {}
+                Some(Prize::Food) => {
                     house.give_food(super::net::food_portion());
                     self.netted(None);
-                    None
                 }
-                Prize::Fish(species) => Some(Popup::Prize(PrizeCard {
-                    fish: Fish::new(species, String::new(), 0.0, 0.0, rng),
-                    name: TextInput::new(),
-                })),
+                Some(Prize::Fish(species)) => self.deal_face_down(Card::Catch(species)),
             },
         }
     }
@@ -878,32 +939,26 @@ impl Table {
         });
     }
 
-    fn settle_multiple(
-        &mut self,
-        pays: Multiple,
-        label: String,
-        house: &mut dyn House,
-    ) -> Option<Popup> {
-        let value = self.round.as_ref()?.on_the_line();
-        self.settle_money(pays.of(value), label, house)
+    fn settle_multiple(&mut self, pays: Multiple, label: String, house: &mut dyn House) {
+        let Some(round) = self.round.as_ref() else {
+            return;
+        };
+        let value = round.on_the_line();
+        self.settle_money(pays.of(value), label, house);
     }
 
-    fn settle_money(
-        &mut self,
-        returned: Money,
-        label: String,
-        house: &mut dyn House,
-    ) -> Option<Popup> {
-        let round = self.round.take()?;
+    fn settle_money(&mut self, returned: Money, label: String, house: &mut dyn House) {
+        let Some(round) = self.round.take() else {
+            return;
+        };
         let result = round.settle(returned, label, house);
         self.flash = Some((flash_of(&result), FLASH_SECS));
         self.double = result.on_the_line();
-        let popup = result.is_big().then(|| Popup::Banner(banner_of(&result)));
-        if popup.is_some() {
+        if result.is_big() {
             self.double = None;
+            self.deal_face_down(Card::Win(banner_of(&result)));
         }
         self.result = Some(result);
-        popup
     }
 
     fn forfeit(&mut self, house: &mut dyn House) {

@@ -10,7 +10,8 @@ pub const WIN_PER_MILLE: u32 = 475;
 pub const BELLY_UP_PER_MILLE: u32 = 50;
 const PER_MILLE: u32 = 1000;
 pub const FLIGHT_SECS: f32 = 1.25;
-pub const LOSS_SHOWN_SECS: f32 = 1.4;
+pub const LOSS_SHOWN_SECS: f32 = 0.7;
+pub const SWIM_SECS: f32 = 2.2;
 const BIG_LADDER_RUNG: u32 = 3;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -64,8 +65,15 @@ pub enum FlipPhase {
     },
     Lost {
         landing: Landing,
+        call: Side,
         t: f32,
     },
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Swim {
+    pub from: Side,
+    pub swum: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -157,13 +165,17 @@ impl Flip {
                     self.phase = FlipPhase::Won { landing };
                 } else {
                     self.lose(house);
-                    self.phase = FlipPhase::Lost { landing, t: 0.0 };
+                    self.phase = FlipPhase::Lost {
+                        landing,
+                        call,
+                        t: 0.0,
+                    };
                 }
                 None
             }
             FlipPhase::Lost { t, .. } => {
                 *t += dt;
-                (*t >= LOSS_SHOWN_SECS).then_some(FlipEnd::Lost)
+                (*t >= LOSS_SHOWN_SECS + SWIM_SECS).then_some(FlipEnd::Lost)
             }
             _ => None,
         }
@@ -188,6 +200,17 @@ impl Flip {
         }
         house.casino().lost(self.base);
         self.line.cash = 0;
+    }
+
+    pub fn tollomind(&self) -> Option<Swim> {
+        let FlipPhase::Lost { call, t, .. } = self.phase else {
+            return None;
+        };
+        let swum = ((t - LOSS_SHOWN_SECS) / SWIM_SECS).min(1.0);
+        (swum >= 0.0).then_some(Swim {
+            from: call.other(),
+            swum,
+        })
     }
 
     pub fn ends_big(end: FlipEnd) -> bool {

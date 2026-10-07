@@ -23,10 +23,19 @@ const SUSPENSE_SECS: f32 = 1.3;
 const SUSPENSE_FROM_SECS: f32 = 1.2;
 const SUSPENSE_SLOWDOWN: f32 = 0.55;
 const SETTLE_SECS: f32 = 0.38;
+const SUSPENSE_SETTLE_SECS: f32 = 1.4;
 const OVERSHOOT: f32 = 1.8;
 const LANDING_STOPS: f32 = 4.0;
+const SUSPENSE_LANDING_STOPS: f32 = 5.0;
+const GLIDE: Glide = Glide {
+    stops: LANDING_STOPS,
+    secs: SETTLE_SECS,
+};
+const SUSPENSE_GLIDE: Glide = Glide {
+    stops: SUSPENSE_LANDING_STOPS,
+    secs: SUSPENSE_SETTLE_SECS,
+};
 pub const RESPIN_SECS: f32 = 0.9;
-const DIVE_CLOSE_SECS: f32 = 1.2;
 const PEARL_GLOW_SECS: f32 = 1.4;
 const PEARL_OPEN_SECS: f32 = 0.5;
 const DIVE_RULES_SECS: f32 = 1.8;
@@ -201,11 +210,18 @@ pub fn mean_pearl() -> f64 {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
+struct Glide {
+    stops: f32,
+    secs: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Reel {
     pub pos: f32,
     pub spinning: bool,
     stop_at: f32,
     settling: Option<(f32, f32, f32)>,
+    glide: Glide,
     speed: f32,
     pub target: usize,
 }
@@ -217,6 +233,7 @@ impl Reel {
             spinning: false,
             stop_at: 0.0,
             settling: None,
+            glide: GLIDE,
             speed: REEL_SPEED,
             target: stop,
         }
@@ -345,6 +362,7 @@ pub enum SpinPhase {
     Idle,
     Spinning,
     Diving(Box<Dive>),
+    Surfaced(Box<Dive>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -397,7 +415,11 @@ pub const LEVER_SECS: f32 = 0.5;
 
 impl Spins {
     pub fn is_idle(&self) -> bool {
-        self.phase == SpinPhase::Idle
+        matches!(self.phase, SpinPhase::Idle | SpinPhase::Surfaced(_))
+    }
+
+    pub fn is_diving(&self) -> bool {
+        matches!(self.phase, SpinPhase::Diving(_))
     }
 
     pub fn spin(&mut self, rng: &mut impl RngExt) {
@@ -414,6 +436,11 @@ impl Spins {
             reel.target = targets[i];
             reel.speed = REEL_SPEED + REEL_SPEED_STEP * i as f32;
             let last = i == REELS - 1;
+            reel.glide = if last && self.suspense {
+                SUSPENSE_GLIDE
+            } else {
+                GLIDE
+            };
             reel.stop_at = FIRST_STOP_SECS
                 + STOP_GAP_SECS * i as f32
                 + if last && self.suspense {
@@ -444,7 +471,7 @@ impl Spins {
     pub fn tick(&mut self, dt: f32, rng: &mut impl RngExt) -> Option<SpinOutcome> {
         self.lever = (self.lever - dt).max(0.0);
         match &mut self.phase {
-            SpinPhase::Idle => None,
+            SpinPhase::Idle | SpinPhase::Surfaced(_) => None,
             SpinPhase::Spinning => {
                 self.clock += dt;
                 let clock = self.clock;
@@ -463,24 +490,26 @@ impl Spins {
                     return None;
                 }
                 dive.timer += dt;
-                if dive.over {
-                    if dive.timer < DIVE_CLOSE_SECS {
-                        return None;
-                    }
-                    let outcome = SpinOutcome {
-                        line: self.line.0,
-                        line_label: self.line.1.clone(),
-                        dive: Some(dive.total()),
-                        full: dive.is_full(),
-                    };
-                    self.phase = SpinPhase::Idle;
-                    return Some(outcome);
+                if dive.timer < RESPIN_SECS {
+                    return None;
                 }
-                if dive.timer >= RESPIN_SECS {
-                    dive.timer = 0.0;
-                    dive.respin(rng);
+                dive.timer = 0.0;
+                dive.respin(rng);
+                if !dive.over {
+                    return None;
                 }
-                None
+                let outcome = SpinOutcome {
+                    line: self.line.0,
+                    line_label: self.line.1.clone(),
+                    dive: Some(dive.total()),
+                    full: dive.is_full(),
+                };
+                let SpinPhase::Diving(dive) = std::mem::replace(&mut self.phase, SpinPhase::Idle)
+                else {
+                    return None;
+                };
+                self.phase = SpinPhase::Surfaced(dive);
+                Some(outcome)
             }
         }
     }
@@ -504,7 +533,7 @@ impl Spins {
 
     pub fn dive(&self) -> Option<&Dive> {
         match &self.phase {
-            SpinPhase::Diving(dive) => Some(dive),
+            SpinPhase::Diving(dive) | SpinPhase::Surfaced(dive) => Some(dive),
             _ => None,
         }
     }
@@ -518,15 +547,16 @@ fn turn(reel: &mut Reel, slow: bool, clock: f32, dt: f32) {
         None => {
             reel.pos += reel.speed * dt * if slow { SUSPENSE_SLOWDOWN } else { 1.0 };
             if clock >= reel.stop_at {
-                let mut to = (reel.pos + LANDING_STOPS).floor();
+                let mut to = (reel.pos + reel.glide.stops).ceil();
                 while (to as isize).rem_euclid(STOPS as isize) as usize != reel.target {
                     to += 1.0;
                 }
+                reel.pos = to - reel.glide.stops;
                 reel.settling = Some((reel.pos, to, 0.0));
             }
         }
         Some((from, to, t)) => {
-            *t += dt / SETTLE_SECS;
+            *t += dt / reel.glide.secs;
             let e = t.min(1.0) - 1.0;
             let eased = 1.0 + (OVERSHOOT + 1.0) * e.powi(3) + OVERSHOOT * e.powi(2);
             reel.pos = *from + (*to - *from) * eased;
@@ -677,6 +707,60 @@ mod tests {
             assert_eq!(landed, aimed);
             spins.phase = SpinPhase::Idle;
         }
+    }
+
+    #[test]
+    fn a_suspense_reel_crawls_into_its_stop_one_symbol_at_a_time() {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(5);
+        let mut spins = Spins::default();
+        while !spins.suspense {
+            spins.spin(&mut rng);
+        }
+        let dt = 1.0 / 30.0;
+        let last = REELS - 1;
+        let mut gliding = 0.0;
+        let mut shown: Option<isize> = None;
+        while spins.reels[last].spinning {
+            spins.tick(dt, &mut rng);
+            let reel = spins.reels[last];
+            if reel.is_blurred() {
+                continue;
+            }
+            gliding += dt;
+            if let Some(before) = shown {
+                assert!(
+                    (reel.stop() - before).abs() <= 1,
+                    "a symbol is never skipped"
+                );
+            }
+            shown = Some(reel.stop());
+        }
+        let shown = shown.expect("the reel glides");
+        assert!(gliding >= SUSPENSE_SETTLE_SECS - dt, "{gliding}");
+        assert_eq!(
+            shown.rem_euclid(STOPS as isize) as usize,
+            spins.reels[last].target
+        );
+    }
+
+    #[test]
+    fn a_finished_dive_stays_on_the_board_until_the_next_spin() {
+        let mut rng = rand::rng();
+        let window = [[Symbol::Pearl, Symbol::Bubbles, Symbol::Bubbles]; REELS];
+        let mut dive = Dive::start(&window, &mut rng);
+        dive.intro = dive.intro_secs();
+        dive.respins = 1;
+        let mut spins = Spins {
+            phase: SpinPhase::Diving(Box::new(dive)),
+            ..Spins::default()
+        };
+        let outcome = (0..400).find_map(|_| spins.tick(1.0 / 30.0, &mut rng));
+        assert!(outcome.is_some_and(|o| o.dive.is_some()));
+        assert!(spins.is_idle() && !spins.is_diving());
+        assert!(spins.dive().is_some_and(|d| d.over));
+        spins.spin(&mut rng);
+        assert!(spins.dive().is_none());
     }
 
     #[test]

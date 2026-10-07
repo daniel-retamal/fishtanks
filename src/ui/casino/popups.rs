@@ -4,7 +4,7 @@ use rand::{SeedableRng, rngs::SmallRng};
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 
 use crate::casino::bubble::Risk;
-use crate::casino::flip::{Flip, FlipPhase, Landing, Side};
+use crate::casino::flip::{Flip, FlipPhase, Landing, Side, Swim};
 use crate::casino::spins::{self, PEARLS_TO_DIVE, Symbol};
 use crate::casino::state::{Banner, Picker, Play, Popup, PrizeCard, Purpose, Table};
 use crate::casino::{Multiple, premium};
@@ -24,7 +24,8 @@ use crate::ui::text_input::TextInput;
 
 use super::{
     BACKGROUND, BIG_ROWS, Room, TOLLOMIND, big_fits, big_width, bold, cash, cash_within, centred,
-    draw_big, draw_sprite, glisten, mirrored, multiple_color, put, sprite_width, style, tier,
+    draw_big, draw_sprite, draw_tollomind, draw_tollomind_facing_left, glisten, mirrored,
+    multiple_color, put, sprite_width, style, tier, tollomind, tollomind_size,
 };
 
 const PICKER_W: u16 = 54;
@@ -42,6 +43,7 @@ const BIG_MARGIN: u16 = 2;
 const COIN_SPEED: f32 = 0.7;
 const CONFIRM_W: u16 = 40;
 const GOLDFISH_SEED: u64 = 7;
+const LAST_BUBBLE: &str = "°";
 const STAKE_NOTE: &str = "it comes home unless it loses; then Tollomind eats it";
 
 pub fn draw(buf: &mut Buffer, room: &Room, popup: &Popup, table: Option<&Table>) {
@@ -282,7 +284,19 @@ fn draw_flip(buf: &mut Buffer, room: &Room, flip: &Flip) {
     let x = stage.x + stage.width.saturating_sub(width) / 2;
     let face_left = matches!(landing, Some(Landing::Facing(Side::Left))) || frame_index == 2;
     let edge_on = frame_index % 2 == 1;
-    if edge_on {
+    let body_y = top + goldfish().body_row as u16;
+    let swim = flip.tollomind();
+    let eaten = swim.is_some_and(|swim| swim.has_passed(stage, (x + width / 2) as i32));
+    if eaten {
+        put(
+            buf,
+            (x + width / 2) as i32,
+            body_y as i32 - 1,
+            LAST_BUBBLE,
+            style(DARK_GRAY),
+            stage,
+        );
+    } else if edge_on {
         for row in 0..rows {
             put(
                 buf,
@@ -346,6 +360,42 @@ fn draw_flip(buf: &mut Buffer, room: &Room, flip: &Flip) {
         right_style,
         stage,
     );
+    if let Some(swim) = swim {
+        draw_swim(buf, stage, swim, body_y);
+    }
+}
+
+trait Swimming {
+    fn left_edge(&self, stage: Rect) -> i32;
+    fn has_passed(&self, stage: Rect, x: i32) -> bool;
+}
+
+impl Swimming for Swim {
+    fn left_edge(&self, stage: Rect) -> i32 {
+        let width = tollomind_size().0 as i32;
+        let travelled = (self.swum * (stage.width as i32 + width) as f32).round() as i32;
+        match self.from {
+            Side::Left => stage.x as i32 - width + travelled,
+            Side::Right => stage.right() as i32 - travelled,
+        }
+    }
+
+    fn has_passed(&self, stage: Rect, x: i32) -> bool {
+        let left = self.left_edge(stage);
+        match self.from {
+            Side::Left => left + tollomind_size().0 as i32 > x,
+            Side::Right => left <= x,
+        }
+    }
+}
+
+fn draw_swim(buf: &mut Buffer, stage: Rect, swim: Swim, body_y: u16) {
+    let x = swim.left_edge(stage);
+    let top = body_y as i32 - tollomind().body_row as i32;
+    match swim.from {
+        Side::Left => draw_tollomind(buf, x, top, stage),
+        Side::Right => draw_tollomind_facing_left(buf, x, top, stage),
+    };
 }
 
 fn rule_the_flip(buf: &mut Buffer, modal: &Modal, column: Option<u16>, border: Color) {

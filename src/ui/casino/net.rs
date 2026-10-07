@@ -15,8 +15,8 @@ use crate::ui::hints::{
 };
 
 use super::{
-    Room, bold, cash, centred, draw_parts_centred, flash_color, glisten, open_frame, put,
-    result_text, status_row, style,
+    Room, bold, cash, draw_parts_centred, flash_color, glisten, open_frame, put, result_text,
+    status_row, style,
 };
 
 const BASIS: (u16, u16) = (70, 16);
@@ -103,12 +103,7 @@ pub fn draw(buf: &mut Buffer, room: &Room, table: &Table, cast: &Cast) {
     } else {
         NARROW_CARD
     };
-    let header = u16::from(art.height >= FULL_FROM_ROWS + 3);
-    if header > 0 {
-        let odds = format!("pays back {:.1}%", cast.net.pays_back() * 100.0);
-        centred(buf, art, art.y, &odds, style(DARK_GRAY));
-    }
-    let strip_top = art.y + header + art.height.saturating_sub(header + 6) / 2 + 1;
+    let strip_top = art.y + art.height.saturating_sub(6) / 2 + 1;
     let centre = art.x as i32 + art.width as i32 / 2;
     let base = cast.offset;
     let frac = base - base.floor();

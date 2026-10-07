@@ -19,8 +19,8 @@ Films the wiki's casino pictures, one reel per scene (<out>/reels/casino-<scene>
 screen so every hint bar fits on one line: the lobby, a hand of blackjack with a seahorse on the
 line, a spin, a spin that lands three pearls and dives, a Pufferfish that puffs to a pop, a sky of
 bubbles on the Stupid board, a Derby with a fish on the line, a Golden Net, a fish doubled at double
-or nothing, and a Stupid Win. The rare moments are set up by hand; everything after the setup plays
-out on its own.";
+or nothing until Tollomind eats it, and a Stupid Win. The rare moments are set up by hand;
+everything after the setup plays out on its own.";
 const COLS: u16 = 120;
 const ROWS: u16 = 40;
 
@@ -153,7 +153,7 @@ fn net(dir: &Path) {
         assert_eq!(cast.net, Net::Golden);
         cast.strip[LANDS_AT] = Prize::Fish(FishSpecies::Cashfish);
     }
-    tui.record(150, 2, "cast");
+    tui.record(180, 2, "cast");
     tui.typewrite("Midas", 3);
     tui.record(10, 2, "named");
 }
@@ -176,16 +176,21 @@ fn double(dir: &Path) {
     tui.record(20, 2, "home");
     tui.key(KeyCode::Char('d'));
     tui.record(20, 2, "call");
-    for call in [Side::Left, Side::Right] {
+    for (call, landing) in [
+        (Side::Left, Landing::Facing(Side::Left)),
+        (Side::Right, Landing::Facing(Side::Right)),
+        (Side::Left, Landing::Facing(Side::Right)),
+    ] {
         if let Some(Popup::Flip(flip)) = &mut state(&mut tui).popup {
             flip.phase = FlipPhase::Flying {
                 call,
-                landing: Landing::Facing(call),
+                landing,
                 t: 0.0,
             };
         }
         tui.record(60, 2, "flip");
     }
+    tui.record(80, 2, "eaten");
 }
 
 fn stupid_win(dir: &Path) {
