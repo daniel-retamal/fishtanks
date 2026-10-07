@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 - 2026-10-07
 
 - **The casino.** `/casino` opens Tollomind's lobby, six tables where your fished money goes: Blackjack, Spins with its Pearl Dive bonus, the Pufferfish (cash out before it pops), Bubble Up, the Derby and the Mystery Net. Every table prints what it pays back, and the house always wins.
-- **Bet a fish.** Put a fish on the line and it plays for a quarter more than its worth. It swims home with its winnings on a win; on a tie or worse, Tollomind eats it.
+- **Bet a fish.** Put a fish on the line and it plays for a quarter more than its worth, at every table but the Mystery Net. Win or tie and it swims home with its winnings; lose and Tollomind eats it.
 - **Double or nothing**, after any win and as often as you dare: the money doubles, and so does every fish on the line.
 - **Net a fish** in the Mystery Net, Legendaries included.
 - **No ceiling on money.** Fortunes past a sextillion are written like 1.2e24.
