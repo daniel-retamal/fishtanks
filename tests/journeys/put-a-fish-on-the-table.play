@@ -1,0 +1,27 @@
+# JOURNEY · staking a fish: Ann plays a hand of blackjack for a quarter more than her worth, and the
+# player walks away mid-hand, so Tollomind keeps her. A fish on the table is lost when its round is
+# left, which is what keeps quitting from undoing a bad hand.
+
+clear
+include scenes/start-with-a-stake.play
+include scenes/buy-a-fish.play Merluza Ann
+run /casino blackjack
+expect Tollomind
+expect TAB fish
+key tab
+expect Fishes to the Table!
+select Ann
+snap Ann on the stake list, her worth and what she plays for
+key enter
+expect Ann plays for
+key enter
+expect Ann on the line
+key esc
+expect Leave the table?
+expect Ann stays with Tollomind
+snap leaving mid-hand costs the fish
+key enter
+expect ENTER sit down
+key esc
+run /index
+absent Ann

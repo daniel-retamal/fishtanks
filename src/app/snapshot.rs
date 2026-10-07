@@ -64,6 +64,8 @@ pub struct SaveFile {
     catch: Option<PendingCatch>,
     #[serde(default)]
     lessons: Lessons,
+    #[serde(default)]
+    casino: crate::casino::Casino,
 }
 
 impl SaveFile {
@@ -98,6 +100,7 @@ impl SaveFile {
             day_clock: DayClock::new(),
             catch: None,
             lessons: Lessons::default(),
+            casino: crate::casino::Casino::default(),
         }
     }
 
@@ -176,6 +179,7 @@ impl App {
             zen: _,
             newer_release: _,
             lessons,
+            casino,
         } = self;
         let food_in_the_water: u32 = tanks.iter().map(TankRecord::food_in_the_water).sum();
         let catch = match active_overlay {
@@ -214,6 +218,10 @@ impl App {
             day_clock: day_clock.clone(),
             catch,
             lessons: *lessons,
+            casino: crate::casino::Casino {
+                on_the_table: self.fish_on_the_table(),
+                ..casino.clone()
+            },
         }
     }
 
@@ -258,8 +266,13 @@ impl App {
             zen: false,
             newer_release: false,
             lessons: save.lessons,
+            casino: crate::casino::Casino {
+                on_the_table: Vec::new(),
+                ..save.casino.clone()
+            },
         };
         app.hang_the_souls();
+        app.walk_away_from_the_table(&save.casino.on_the_table);
         if let Some(catch) = save.catch {
             let card = CatchState::holding(catch.loot, catch.fish, &mut rand::rng());
             app.active_overlay = Some(Overlay::Catch(app.counted(card)));

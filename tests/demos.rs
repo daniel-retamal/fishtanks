@@ -1598,3 +1598,96 @@ fn the_rare_shoal_demo_runs_keystroke_for_keystroke() {
 
     assert_no_broken_borders(&tui);
 }
+
+fn leave_the_casino_table(tui: &mut Tui) {
+    tui.key(KeyCode::Esc);
+    if tui.screen().contains("Leave the table?") {
+        tui.key(KeyCode::Enter);
+    }
+}
+
+#[test]
+fn the_casino_demo_runs_keystroke_for_keystroke() {
+    let mut tui = filmed("casino-demo");
+    tui.run("/spawn merluza \"Adam\"");
+    tui.run("/spawn seahorsefish \"Pegaso\"");
+    tui.run("/casino");
+    tui.screen().expect_find("ENTER sit down");
+    tui.snap("1 the lobby");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Tab);
+    tui.select("Pegaso");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Pegaso plays for");
+    tui.key(KeyCode::Enter);
+    tui.tick_n(60);
+    tui.snap("2 a seahorse at blackjack");
+    tui.key(KeyCode::Enter);
+    tui.tick_n(200);
+    tui.snap("3 the hand is over");
+    if tui.screen().contains("ENTER collect") {
+        tui.key(KeyCode::Enter);
+    }
+    leave_the_casino_table(&mut tui);
+    tui.key(KeyCode::Down);
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("↓ spin");
+    for _ in 0..3 {
+        tui.key(KeyCode::Down);
+        tui.tick_n(400);
+        if tui.screen().contains("ENTER collect") {
+            tui.key(KeyCode::Enter);
+        }
+    }
+    tui.snap("4 three spins");
+    tui.key(KeyCode::Char('p'));
+    tui.screen().expect_find("Spins#paytable");
+    tui.key(KeyCode::Esc);
+    leave_the_casino_table(&mut tui);
+    tui.select("Pufferfish");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Up);
+    tui.screen().expect_find("Auto ×1.5");
+    tui.key(KeyCode::Enter);
+    tui.tick_n(150);
+    tui.snap("5 the puffer cashed out or popped");
+    leave_the_casino_table(&mut tui);
+    tui.select("Bubble Up");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Up);
+    tui.key(KeyCode::Up);
+    tui.screen().expect_find("Risk Stupid");
+    for _ in 0..5 {
+        tui.key(KeyCode::Enter);
+        tui.tick_n(4);
+    }
+    tui.tick_n(20);
+    tui.snap("6 five bubbles in the air");
+    tui.tick_n(200);
+    if tui.screen().contains("ENTER collect") {
+        tui.key(KeyCode::Enter);
+    }
+    leave_the_casino_table(&mut tui);
+    tui.select("Derby");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Tab);
+    tui.select("Adam");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Adam plays for");
+    tui.key(KeyCode::Enter);
+    tui.tick_n(120);
+    tui.snap("7 Adam rides on a wild racer");
+    tui.tick_n(300);
+    leave_the_casino_table(&mut tui);
+    tui.select("Mystery Net");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Right);
+    tui.screen().expect_find("Big Net");
+    tui.key(KeyCode::Enter);
+    tui.tick_n(60);
+    tui.snap("8 the net is out");
+    tui.tick_n(200);
+    tui.snap("9 what the net brought up");
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}

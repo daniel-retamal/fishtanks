@@ -49,6 +49,7 @@ use crate::{
     void_ritual::{self, VoidRitualState},
 };
 
+mod casino;
 mod cheats;
 mod console;
 mod heaven;
@@ -101,6 +102,7 @@ enum Overlay {
     Cheat(TextInput),
     Notice(NoticeState),
     Ledger(LedgerState),
+    Casino(Box<crate::casino::state::CasinoState>),
 }
 
 pub const CAJETANS_GRACE_SECS: f32 = 3.0 * 60.0 + 33.0;
@@ -143,6 +145,7 @@ pub struct App {
     zen: bool,
     newer_release: bool,
     lessons: Lessons,
+    pub casino: crate::casino::Casino,
 }
 
 impl Default for App {
@@ -758,6 +761,10 @@ impl App {
                 return;
             }
             Some(Overlay::Fishing(_)) => return,
+            Some(Overlay::Casino(_)) => {
+                self.tick_casino();
+                return;
+            }
             Some(Overlay::Circuit(_))
             | Some(Overlay::ConsumePicker(_))
             | Some(Overlay::Console(_))
@@ -1113,6 +1120,21 @@ impl App {
             }
             Some(Overlay::Ledger(state)) => {
                 frame.render_widget(LedgerOverlay::new(state, screen), full_area)
+            }
+            Some(Overlay::Casino(state)) => {
+                let busy = state.at_risk();
+                let lens = self.casino_lens(&busy);
+                frame.render_widget(
+                    crate::ui::casino::CasinoOverlay::new(
+                        state,
+                        &lens,
+                        &self.casino,
+                        self.purse.shown(),
+                        self.editor.visible,
+                        screen,
+                    ),
+                    full_area,
+                )
             }
             Some(Overlay::Console(_)) | None => {}
         }

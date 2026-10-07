@@ -1,3 +1,4 @@
+pub mod casino;
 pub mod catch_overlay;
 pub mod cheat_popup;
 pub mod circuit_overlay;
