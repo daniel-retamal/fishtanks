@@ -141,7 +141,7 @@ pub fn format_weight(g: u32) -> String {
 }
 
 pub fn format_money(amount: Money) -> String {
-    format!("${}", grouped(u128::from(amount)))
+    format!("${}", grouped(amount))
 }
 
 pub fn format_fed(fed: Fed) -> String {

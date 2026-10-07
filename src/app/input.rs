@@ -147,6 +147,8 @@ impl App {
             self.handle_foundry_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Console(_))) {
             self.handle_console_input(event);
+        } else if matches!(self.active_overlay, Some(Overlay::Casino(_))) {
+            self.handle_casino_input(event);
         } else {
             self.handle_command_input(event);
         }
@@ -2751,6 +2753,7 @@ impl App {
                 self.open_index(query);
                 true
             }
+            commands::Action::Casino(game) => self.open_casino(game),
             commands::Action::Inventory => {
                 if let Some(state) = self.inventory_listing() {
                     self.set_overlay(Overlay::Inventory(state));
@@ -3059,7 +3062,7 @@ impl App {
         true
     }
 
-    fn part_with(&mut self, fish: Fish) {
+    pub(super) fn part_with(&mut self, fish: Fish) {
         for keepsake in fish.keepsakes() {
             self.stock_up(keepsake, 1);
         }
@@ -3138,4 +3141,14 @@ fn bot_action_allowed(action: &commands::Action) -> bool {
             | Print(_)
             | Etch { .. }
     )
+}
+
+#[cfg(test)]
+mod casino_tests {
+    use super::*;
+
+    #[test]
+    fn the_casino_is_never_a_bot_verb() {
+        assert!(!bot_action_allowed(&commands::Action::Casino(None)));
+    }
 }

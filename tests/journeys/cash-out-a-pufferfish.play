@@ -1,0 +1,21 @@
+# JOURNEY · the Pufferfish: puff, and cash out before it has grown at all, which hands the stake
+# straight back. Cashing out is ENTER, the key that puffed it.
+
+clear
+include scenes/start-with-a-stake.play
+run /casino pufferfish
+expect Pufferfish
+expect ENTER puff
+key up
+expect Auto ×1.5
+key down
+expect Auto off
+key enter
+expect ENTER cash out
+key enter
+expect cashed out at ×1
+expect stake back
+snap cashed out at once, the stake comes back
+key esc
+key esc
+absent ENTER puff

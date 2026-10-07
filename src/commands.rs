@@ -1,3 +1,4 @@
+use crate::casino::state::Game;
 use crate::entities::cow::CowVariant;
 use crate::fishes::mutations::Mutation;
 use crate::fishes::species::{ALL_SPECIES, FishSpecies};
@@ -186,11 +187,13 @@ const SELL_ARG: &str = "<item>";
 const NAME_ARG: &str = "<name>";
 const QUANTITY_ARG: &str = "<quantity>";
 const FILE_ARG: &str = "\"<file>\"";
+const TABLE_ARG: &str = "[table]";
 
 static COMMAND_NAMES: &[(&str, Clearance)] = &[
     ("add", Clearance::Debug),
     ("bless", Clearance::God),
     ("buy", Clearance::Player),
+    ("casino", Clearance::Player),
     ("cheat", Clearance::Player),
     ("circuit", Clearance::Player),
     ("clock", Clearance::Player),
@@ -266,6 +269,11 @@ pub fn autocomplete(input: &str, ctx: &CompletionCtx) -> Option<Completion> {
         Some((cmd, rest)) => match cmd.to_ascii_lowercase().as_str() {
             "add" => complete_add_subtract("add", rest),
             "buy" => complete_buy(rest),
+            "casino" => {
+                let tokens: Vec<String> = Game::ALL.iter().map(|game| game.token()).collect();
+                let tables: Vec<&str> = tokens.iter().map(String::as_str).collect();
+                complete_name_arg("casino", rest, TABLE_ARG, &tables)
+            }
             "consume" => complete_consume(rest, ctx.consumable_names),
             "fps" => complete_single_arg(rest, FPS_ARG),
             "clock" => complete_single_arg(rest, CLOCK_ARG),
@@ -1357,6 +1365,7 @@ fn command_args_placeholder(cmd: &str) -> &'static str {
     match cmd {
         "add" | "subtract" => "<resource> <amount>",
         "buy" => "<item>",
+        "casino" => TABLE_ARG,
         "consume" => "<consumable>",
         "cowsay" => "\"<text>\"",
         "say" => "\"<text>\"",
@@ -1432,6 +1441,7 @@ pub enum Action {
     },
     Fishtanks,
     Ledger,
+    Casino(Option<Game>),
     Circuit,
     Foundry,
     Exit,
@@ -1793,6 +1803,10 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
         }
         "fishtanks" => Action::Fishtanks,
         "ledger" => Action::Ledger,
+        "casino" => match rest.trim() {
+            "" => Action::Casino(None),
+            word => Game::parse(word).map_or(Action::Unknown, |game| Action::Casino(Some(game))),
+        },
         "circuit" => Action::Circuit,
         "foundry" => Action::Foundry,
         "inventory" => Action::Inventory,
@@ -1842,6 +1856,7 @@ impl Action {
             | Move { .. }
             | Fishtanks
             | Ledger
+            | Casino(_)
             | Circuit
             | Foundry
             | Exit

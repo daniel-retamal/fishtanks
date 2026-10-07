@@ -1,5 +1,6 @@
 pub mod abduction;
 pub mod app;
+pub mod casino;
 pub mod cheats;
 pub mod cli;
 pub mod closing;

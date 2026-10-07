@@ -104,6 +104,7 @@ impl Direction {
     }
 }
 
+#[derive(Clone)]
 pub struct LineSprite {
     pub rows: Vec<Vec<(char, Color)>>,
     pub body_row: usize,

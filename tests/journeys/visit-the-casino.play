@@ -1,0 +1,38 @@
+# JOURNEY · the casino: walk into /casino, read the lobby under Tollomind, sit at the Spins and read
+# its paytable, blow a bubble and walk away from it, then leave. Every table is a modal over the
+# paused tank and every outcome is random, so the journey expects only what is true either way.
+
+clear
+include scenes/start-with-a-stake.play
+run /casino
+expect Casino
+expect Blackjack
+expect Mystery Net
+expect ENTER sit down
+snap the lobby, Tollomind in his bow tie above the line
+key down
+key enter
+expect Spins
+expect ↓ spin
+snap the reels at rest
+key p
+expect Spins#paytable
+expect Pearl Dive
+snap the paytable names the bonus first
+key esc
+absent Spins#paytable
+key esc
+expect ENTER sit down
+select Bubble Up
+key enter
+expect Risk High
+key up
+expect Risk Stupid
+key enter
+key esc
+expect Leave the table?
+snap a bubble in the air stays on the table
+key enter
+expect ENTER sit down
+key esc
+absent ENTER sit down

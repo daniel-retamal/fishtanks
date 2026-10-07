@@ -18,7 +18,7 @@ const RULE_ROWS: u16 = 2;
 const EDITOR_ROWS: u16 = 1;
 const ITEM_GAP: &str = "  ";
 const TINY_GAP: &str = " ";
-const METRIC_UNITS: [(u64, &str); 6] = [
+const METRIC_UNITS: [(Money, &str); 6] = [
     (1_000_000_000_000_000_000, "Qi"),
     (1_000_000_000_000_000, "Qa"),
     (1_000_000_000_000, "T"),
@@ -26,7 +26,8 @@ const METRIC_UNITS: [(u64, &str); 6] = [
     (1_000_000, "M"),
     (1_000, "k"),
 ];
-const TENTHS: u64 = 10;
+const TENTHS: Money = 10;
+const SCIENTIFIC_FROM: Money = 1_000_000_000_000_000_000_000;
 const SECS_PER_MINUTE: u32 = 60;
 const NAME_KEPT_W: usize = 16;
 const TINY_FOOD: &str = "•";
@@ -268,7 +269,10 @@ fn stacked(label: &str, stacks: u32, density: Density) -> String {
     }
 }
 
-pub fn metric(n: u64) -> String {
+pub fn metric(n: Money) -> String {
+    if n >= SCIENTIFIC_FROM {
+        return scientific(n);
+    }
     for (unit, suffix) in METRIC_UNITS {
         if n >= unit {
             return format!("{}.{}{suffix}", n / unit, (n % unit) / (unit / TENTHS));
@@ -277,14 +281,20 @@ pub fn metric(n: u64) -> String {
     n.to_string()
 }
 
-fn rounded_metric(n: u64) -> String {
-    let tenth = u128::from(TENTHS);
+pub fn scientific(n: Money) -> String {
+    format!("{:.1e}", n as f64)
+}
+
+fn rounded_metric(n: Money) -> String {
+    if n >= SCIENTIFIC_FROM {
+        return scientific(n);
+    }
+    let tenth = TENTHS;
     for (unit, suffix) in METRIC_UNITS {
         if n < unit {
             continue;
         }
-        let unit = u128::from(unit);
-        let tenths = (u128::from(n) * tenth + unit / 2) / unit;
+        let tenths = (n * tenth + unit / 2) / unit;
         if tenths < tenth * tenth && !tenths.is_multiple_of(tenth) {
             return format!("{}.{}{suffix}", tenths / tenth, tenths % tenth);
         }
@@ -517,10 +527,11 @@ mod tests {
     #[test]
     fn a_fortune_past_a_billion_keeps_its_compact_form() {
         assert_eq!(metric(1_230_000_000_000), "1.2T");
-        assert_eq!(metric(u64::from(u32::MAX) * 1_000), "4.2T");
+        assert_eq!(metric(Money::from(u32::MAX) * 1_000), "4.2T");
         assert_eq!(rounded_metric(7_500_000_000_000_000), "7.5Qa");
-        assert_eq!(metric(u64::MAX), "18.4Qi");
-        assert_eq!(rounded_metric(u64::MAX), "18Qi");
+        assert_eq!(metric(Money::from(u64::MAX)), "18.4Qi");
+        assert_eq!(rounded_metric(Money::from(u64::MAX)), "18Qi");
+        assert_eq!(metric(Money::MAX), "3.4e38");
     }
 
     fn bait(casts_left: u32) -> ActiveConsumable {

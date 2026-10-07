@@ -257,7 +257,7 @@ fn an_empty_heaven_sells_like_a_found_legendary_tank_and_frees_the_pearl() {
     assert_eq!(heavens(&tui), 0);
     assert_eq!(
         tui.app.purse.balance() - cash,
-        u64::from(Rarity::Legendary.catch_worth())
+        fishtank::economy::Money::from(Rarity::Legendary.catch_worth())
     );
     assert!(
         tui.app.graveyard.iter().any(|f| f.name == "Ann"),
