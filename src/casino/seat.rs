@@ -223,9 +223,8 @@ pub enum Verdict {
         name: String,
         returned: Money,
     },
-    Netted {
-        fish: Option<String>,
-        price: Money,
+    Clawed {
+        prize: Option<String>,
     },
     Doubled {
         cash: Money,
@@ -267,7 +266,7 @@ impl RoundResult {
         match &self.verdict {
             Verdict::Cash { net, .. } => *net > 0,
             Verdict::FishHome { .. } => true,
-            Verdict::Netted { fish, .. } => fish.is_some(),
+            Verdict::Clawed { prize } => prize.is_some(),
             Verdict::Doubled { collected, .. } => *collected,
             Verdict::FishEaten { .. } => false,
         }

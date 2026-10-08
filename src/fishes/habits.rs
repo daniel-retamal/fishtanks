@@ -93,4 +93,5 @@ pub struct Habits {
     pub bumped: bool,
     pub mimed: bool,
     pub occupied: Vec<(i32, i32)>,
+    pub toy_clock: f32,
 }

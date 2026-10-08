@@ -208,6 +208,7 @@ static COMMAND_NAMES: &[(&str, Clearance)] = &[
     ("fish", Clearance::Player),
     ("fishtanks", Clearance::Player),
     ("ledger", Clearance::Player),
+    ("toybox", Clearance::Player),
     ("flip", Clearance::Player),
     ("foundry", Clearance::Player),
     ("fps", Clearance::Player),
@@ -1444,6 +1445,7 @@ pub enum Action {
     },
     Fishtanks,
     Ledger,
+    Toybox,
     Casino(Option<Game>),
     Circuit,
     Foundry,
@@ -1806,6 +1808,7 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
         }
         "fishtanks" => Action::Fishtanks,
         "ledger" => Action::Ledger,
+        "toybox" => Action::Toybox,
         "casino" => match rest.trim() {
             "" => Action::Casino(None),
             word => Game::parse(word).map_or(Action::Unknown, |game| Action::Casino(Some(game))),
@@ -1859,6 +1862,7 @@ impl Action {
             | Move { .. }
             | Fishtanks
             | Ledger
+            | Toybox
             | Casino(_)
             | Circuit
             | Foundry

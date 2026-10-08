@@ -16,6 +16,22 @@ pub enum Rarity {
     Legendary,
 }
 
+impl Rarity {
+    pub const ALL: [Rarity; 3] = [Rarity::Common, Rarity::Rare, Rarity::Legendary];
+
+    pub fn roll(rng: &mut impl rand::RngExt) -> Rarity {
+        let total: u32 = Rarity::ALL.iter().map(|r| r.catch_weight()).sum();
+        let mut draw = rng.random_range(0..total);
+        for rarity in Rarity::ALL {
+            if draw < rarity.catch_weight() {
+                return rarity;
+            }
+            draw -= rarity.catch_weight();
+        }
+        Rarity::Common
+    }
+}
+
 const THOUSANDS: usize = 3;
 
 pub fn grouped(value: u128) -> String {

@@ -68,6 +68,19 @@ pub const TAN: Color = Color::Rgb(200, 160, 120);
 pub const KHAKI: Color = Color::Rgb(220, 180, 50);
 pub const TERRACOTTA: Color = Color::Rgb(220, 100, 80);
 
+pub const CORAL: Color = Color::Rgb(255, 127, 110);
+pub const TANGERINE: Color = Color::Rgb(255, 160, 60);
+pub const LEMON: Color = Color::Rgb(255, 224, 102);
+pub const LIME: Color = Color::Rgb(170, 225, 80);
+pub const MINT: Color = Color::Rgb(142, 240, 200);
+pub const SKY: Color = Color::Rgb(116, 192, 252);
+pub const LILAC: Color = Color::Rgb(190, 150, 255);
+pub const BUBBLEGUM: Color = Color::Rgb(255, 150, 205);
+pub const COCOA: Color = Color::Rgb(190, 140, 100);
+pub const SNOW: Color = Color::Rgb(242, 244, 247);
+pub const CHARCOAL: Color = Color::Rgb(100, 108, 120);
+pub const CHERRY: Color = Color::Rgb(240, 60, 70);
+
 const CHANNEL_MAX: u8 = u8::MAX;
 
 pub fn rgb_of(color: Color) -> (u8, u8, u8) {

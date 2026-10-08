@@ -7,7 +7,7 @@ include scenes/start-with-a-stake.play
 run /casino
 expect Casino
 expect Blackjack
-expect Mystery Net
+expect Claw
 expect ENTER sit down
 snap the lobby, Tollomind in his bow tie above the line
 key down

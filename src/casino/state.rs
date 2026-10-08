@@ -2,15 +2,15 @@ use rand::RngExt;
 
 use crate::economy::Money;
 use crate::fishes::fish::Fish;
-use crate::fishes::species::FishSpecies;
+use crate::fishes::toy::Shelf;
 use crate::ui::input_action::InputAction;
 use crate::ui::text_input::TextInput;
 
 use super::blackjack::{Blackjack, Move};
 use super::bubble::{Bubble, MAX_IN_FLIGHT, Risk, SHELL_FLASH_SECS};
+use super::claw::{Claw, Won};
 use super::derby::Derby;
 use super::flip::{Flip, FlipEnd, Side};
-use super::net::{Cast, Net, Prize};
 use super::pufferfish::Pufferfish;
 use super::seat::{OnTheLine, Round, RoundResult, Seat, Verdict};
 use super::spins::Spins;
@@ -29,7 +29,7 @@ pub enum Game {
     Pufferfish,
     BubbleUp,
     Derby,
-    MysteryNet,
+    Claw,
 }
 
 impl Game {
@@ -39,7 +39,7 @@ impl Game {
         Game::Pufferfish,
         Game::BubbleUp,
         Game::Derby,
-        Game::MysteryNet,
+        Game::Claw,
     ];
 
     pub fn name(self) -> &'static str {
@@ -49,7 +49,7 @@ impl Game {
             Game::Pufferfish => "Pufferfish",
             Game::BubbleUp => "Bubble Up",
             Game::Derby => "Derby",
-            Game::MysteryNet => "Mystery Net",
+            Game::Claw => "Claw",
         }
     }
 
@@ -60,7 +60,7 @@ impl Game {
             Game::Pufferfish => "cash out before it pops",
             Game::BubbleUp => "every bubble finds a shell",
             Game::Derby => "five fish, one winner",
-            Game::MysteryNet => "a fish in every net",
+            Game::Claw => "claw your favorite Toyfish",
         }
     }
 
@@ -76,16 +76,12 @@ impl Game {
     }
 
     pub fn takes_fish(self) -> bool {
-        self != Game::MysteryNet
+        self != Game::Claw
     }
 
     pub fn is_open(self, house: &dyn Teller) -> bool {
         match self {
-            Game::MysteryNet => {
-                house.room_for_a_prize()
-                    && (house.spendable() >= Net::Small.price()
-                        || house.entrants().iter().any(|e| e.stakeable))
-            }
+            Game::Claw => house.spendable() >= super::claw::price(),
             _ => house.spendable() >= 1 || house.entrants().iter().any(|e| e.stakeable),
         }
     }
@@ -109,13 +105,13 @@ pub enum Play {
         lit: Vec<(Risk, usize, f32)>,
     },
     Derby(Derby),
-    Net(Cast),
+    Claw(Box<Claw>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Card {
     Win(Banner),
-    Catch(FishSpecies),
+    Catch(Box<Fish>),
 }
 
 impl Card {
@@ -126,11 +122,11 @@ impl Card {
         }
     }
 
-    fn turn_over(self, rng: &mut impl RngExt) -> Popup {
+    fn turn_over(self) -> Popup {
         match self {
             Card::Win(banner) => Popup::Banner(banner),
-            Card::Catch(species) => Popup::Prize(PrizeCard {
-                fish: Fish::new(species, String::new(), 0.0, 0.0, rng),
+            Card::Catch(fish) => Popup::Prize(PrizeCard {
+                fish: *fish,
                 name: TextInput::new(),
             }),
         }
@@ -146,26 +142,18 @@ pub struct Table {
     pub flash: Option<(Flash, f32)>,
     pub double: Option<OnTheLine>,
     pub play: Play,
-    pub bait: Option<String>,
     pub clock: f32,
     pub face_down: Option<(Card, f32)>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Purpose {
-    Stake,
-    Bait,
-}
-
 #[derive(Clone)]
 pub struct Picker {
-    pub purpose: Purpose,
     pub rows: Vec<Entrant>,
     pub selected: usize,
 }
 
 impl Picker {
-    fn new(purpose: Purpose, house: &dyn Teller) -> Option<Picker> {
+    fn new(house: &dyn Teller) -> Option<Picker> {
         let mut rows = house.entrants();
         rows.sort_by(|a, b| {
             b.stakeable
@@ -174,11 +162,7 @@ impl Picker {
                 .then(a.name.cmp(&b.name))
         });
         let selected = rows.iter().position(|e| e.stakeable)?;
-        Some(Picker {
-            purpose,
-            rows,
-            selected,
-        })
+        Some(Picker { rows, selected })
     }
 
     pub fn is_usable(&self, row: usize) -> bool {
@@ -253,6 +237,7 @@ pub struct CasinoState {
     pub view: View,
     pub popup: Option<Popup>,
     pub clock: f32,
+    glass: Option<Box<Claw>>,
 }
 
 impl CasinoState {
@@ -261,12 +246,35 @@ impl CasinoState {
             view: View::Lobby { selected: 0 },
             popup: None,
             clock: 0.0,
+            glass: None,
         };
         state.settle_lobby(house);
         if let Some(game) = game {
-            state.view = View::Table(Box::new(Table::new(game, rng)));
+            state.sit(game, house, rng);
         }
         state
+    }
+
+    fn sit(&mut self, game: Game, house: &dyn Teller, rng: &mut impl RngExt) {
+        let mut table = Table::new(game, rng);
+        if game == Game::Claw {
+            let claw = self
+                .glass
+                .take()
+                .unwrap_or_else(|| Box::new(Claw::stock(&house.shelf(), rng)));
+            table.play = Play::Claw(claw);
+        }
+        self.view = View::Table(Box::new(table));
+    }
+
+    fn stand(&mut self, game: Game) {
+        let selected = Game::ALL.iter().position(|g| *g == game).unwrap_or(0);
+        let lobby = View::Lobby { selected };
+        if let View::Table(table) = std::mem::replace(&mut self.view, lobby)
+            && let Play::Claw(claw) = table.play
+        {
+            self.glass = Some(claw);
+        }
     }
 
     pub fn table(&self) -> Option<&Table> {
@@ -315,7 +323,7 @@ impl CasinoState {
                 InputAction::Confirm => {
                     let game = Game::ALL[*selected];
                     if game.is_open(house) {
-                        self.view = View::Table(Box::new(Table::new(game, rng)));
+                        self.sit(game, house, rng);
                     }
                 }
                 InputAction::Cancel | InputAction::Char('q') => return Leave::Close,
@@ -326,15 +334,15 @@ impl CasinoState {
                     return Leave::Stay;
                 }
                 if matches!(action, InputAction::Cancel | InputAction::Char('q')) {
-                    if table.game == Game::Pufferfish && table.is_live() {
+                    let game = table.game;
+                    if game == Game::Pufferfish && table.is_live() {
                         table.cash_out(house);
-                        self.view = View::Lobby { selected: 0 };
+                        self.stand(game);
                     } else if table.is_live() {
                         self.popup = Some(Popup::Confirm);
                         return Leave::Stay;
                     } else {
-                        let selected = Game::ALL.iter().position(|g| *g == table.game).unwrap_or(0);
-                        self.view = View::Lobby { selected };
+                        self.stand(game);
                     }
                     self.settle_lobby(house);
                     return Leave::Stay;
@@ -371,7 +379,7 @@ impl CasinoState {
                         && let Some(table) = table
                     {
                         let entrant = picker.rows[picker.selected].clone();
-                        table.picked(picker.purpose, entrant);
+                        table.seat.pick_fish(entrant.name);
                     }
                     true
                 }
@@ -439,8 +447,8 @@ impl CasinoState {
                 InputAction::Confirm => {
                     if let Some(table) = table {
                         table.forfeit(house);
-                        let selected = Game::ALL.iter().position(|g| *g == table.game).unwrap_or(0);
-                        self.view = View::Lobby { selected };
+                        let game = table.game;
+                        self.stand(game);
                     }
                     true
                 }
@@ -472,7 +480,7 @@ impl CasinoState {
                     let fish = card.fish.clone();
                     let landed = house.land(fish, name);
                     if let Some(table) = table {
-                        table.netted(landed);
+                        table.caught(landed);
                     }
                     true
                 }
@@ -551,7 +559,7 @@ impl Table {
                 lit: Vec::new(),
             },
             Game::Derby => Play::Derby(Derby::new(rng)),
-            Game::MysteryNet => Play::Net(Cast::new(Net::Small, rng)),
+            Game::Claw => Play::Claw(Box::new(Claw::stock(&Shelf::default(), rng))),
         };
         Self {
             game,
@@ -561,7 +569,6 @@ impl Table {
             flash: None,
             double: None,
             play,
-            bait: None,
             clock: 0.0,
             face_down: None,
         }
@@ -571,6 +578,7 @@ impl Table {
         match &self.play {
             Play::BubbleUp { bubbles, .. } => !bubbles.is_empty(),
             Play::Spins(spins) => !spins.is_idle(),
+            Play::Claw(claw) => claw.is_busy(),
             _ => self.round.is_some(),
         }
     }
@@ -613,16 +621,17 @@ impl Table {
             return self.play_key(action, house, rng);
         }
         let purse = house.spendable();
+        if self.game == Game::Claw {
+            return match action {
+                InputAction::Char('p') => Some(Popup::Paytable(0)),
+                InputAction::Confirm => self.begin(house, rng),
+                _ => None,
+            };
+        }
         match action {
-            InputAction::Left => match &mut self.play {
-                Play::Net(cast) => *cast = Cast::new(cast.net.cheaper(), rng),
-                _ => self.seat.lower(purse),
-            },
-            InputAction::Right => match &mut self.play {
-                Play::Net(cast) => *cast = Cast::new(cast.net.dearer(), rng),
-                _ => self.seat.raise(purse),
-            },
-            InputAction::Char('a') if self.game != Game::MysteryNet => self.seat.all_in(purse),
+            InputAction::Left => self.seat.lower(purse),
+            InputAction::Right => self.seat.raise(purse),
+            InputAction::Char('a') => self.seat.all_in(purse),
             InputAction::Up => match &mut self.play {
                 Play::Pufferfish(puffer) => puffer.raise_target(),
                 Play::BubbleUp { risk, .. } => *risk = risk.riskier(),
@@ -637,11 +646,7 @@ impl Table {
                 _ => {}
             },
             InputAction::Tab => {
-                let purpose = match self.game {
-                    Game::MysteryNet => Purpose::Bait,
-                    _ => Purpose::Stake,
-                };
-                return Picker::new(purpose, house).map(Popup::Picker);
+                return Picker::new(house).map(Popup::Picker);
             }
             InputAction::Char('p') if matches!(self.game, Game::Spins | Game::BubbleUp) => {
                 return Some(Popup::Paytable(0));
@@ -694,6 +699,15 @@ impl Table {
                 }
                 None
             }
+            Play::Claw(claw) => {
+                match action {
+                    InputAction::Left => claw.steer(-1),
+                    InputAction::Right => claw.steer(1),
+                    InputAction::Down => claw.drop_hand(),
+                    _ => {}
+                }
+                None
+            }
             _ => None,
         }
     }
@@ -708,8 +722,14 @@ impl Table {
     }
 
     fn begin(&mut self, house: &mut dyn House, rng: &mut impl RngExt) -> Option<Popup> {
-        if let Play::Net(_) = self.play {
-            return self.cast_the_net(house, rng);
+        if let Play::Claw(claw) = &mut self.play {
+            if claw.is_busy() || !house.wager(super::claw::price()) {
+                return None;
+            }
+            house.casino().lost(super::claw::price());
+            self.result = None;
+            claw.paid();
+            return None;
         }
         if let Play::BubbleUp { bubbles, .. } = &self.play
             && bubbles.len() >= MAX_IN_FLIGHT
@@ -740,46 +760,10 @@ impl Table {
                 return None;
             }
             Play::Derby(derby) => derby.start(rng),
-            Play::Net(_) => {}
+            Play::Claw(_) => {}
         }
         self.round = Some(round);
         None
-    }
-
-    fn cast_the_net(&mut self, house: &mut dyn House, rng: &mut impl RngExt) -> Option<Popup> {
-        let Play::Net(cast) = &mut self.play else {
-            return None;
-        };
-        if !house.room_for_a_prize() {
-            return None;
-        }
-        let price = cast.net.price();
-        if let Some(bait) = self.bait.take() {
-            let worth = house.entrant(&bait).map_or(0, |e| e.worth);
-            if house.spendable().saturating_add(worth) < price {
-                self.bait = Some(bait);
-                return None;
-            }
-            house.sell_as_bait(&bait);
-        }
-        if !house.wager(price) {
-            return None;
-        }
-        self.result = None;
-        self.double = None;
-        cast.cast(rng);
-        self.round = Some(Round {
-            staked: super::seat::Staked::Cash(price),
-            extra: 0,
-        });
-        None
-    }
-
-    fn picked(&mut self, purpose: Purpose, entrant: Entrant) {
-        match purpose {
-            Purpose::Stake => self.seat.pick_fish(entrant.name),
-            Purpose::Bait => self.bait = Some(entrant.name),
-        }
     }
 
     fn tick(&mut self, dt: f32, house: &mut dyn House, rng: &mut impl RngExt) -> Option<Popup> {
@@ -797,7 +781,7 @@ impl Table {
             return None;
         }
         let (card, _) = self.face_down.take()?;
-        Some(card.turn_over(rng))
+        Some(card.turn_over())
     }
 
     fn deal_face_down(&mut self, card: Card) {
@@ -898,44 +882,42 @@ impl Table {
                 let pays = if won { odds } else { Multiple::ZERO };
                 self.settle_multiple(pays, label, house);
             }
-            Play::Net(cast) => match cast.tick(dt) {
-                None => {}
-                Some(Prize::Food) => {
-                    house.give_food(super::net::food_portion());
-                    self.netted(None);
+            Play::Claw(claw) => {
+                let shelf = house.shelf();
+                let room = house.room_for_a_prize();
+                match claw.tick(dt, &shelf, room, rng) {
+                    None => {}
+                    Some(Won::Toy(fish)) => {
+                        if let Some(toy) = fish.toy.as_deref() {
+                            house.shelve(toy);
+                        }
+                        self.deal_face_down(Card::Catch(fish));
+                    }
+                    Some(Won::Part(part)) => {
+                        house.stock_part(part);
+                        self.flash = Some((Flash::Win, FLASH_SECS));
+                        self.result = Some(RoundResult {
+                            label: format!("{} to the Toybox", part.name()),
+                            multiple: Multiple::ZERO,
+                            verdict: Verdict::Clawed {
+                                prize: Some(part.name()),
+                            },
+                        });
+                    }
                 }
-                Some(Prize::Fish(species)) => self.deal_face_down(Card::Catch(species)),
-            },
+            }
         }
     }
 
-    fn netted(&mut self, landed: Option<String>) {
-        let Some(round) = self.round.take() else {
-            return;
-        };
-        let label = match &landed {
-            Some(name) => format!("{name} in the net"),
-            None => format!("{} pellets of food", super::net::food_portion()),
-        };
+    fn caught(&mut self, landed: Option<String>) {
+        self.flash = Some((Flash::Win, FLASH_SECS));
         self.result = Some(RoundResult {
-            label,
+            label: match &landed {
+                Some(name) => format!("{name} to the Fishtank"),
+                None => String::new(),
+            },
             multiple: Multiple::ZERO,
-            verdict: Verdict::Netted {
-                fish: landed.clone(),
-                price: round.staked.value(),
-            },
-        });
-        self.flash = Some((
-            if landed.is_some() {
-                Flash::Win
-            } else {
-                Flash::Loss
-            },
-            FLASH_SECS,
-        ));
-        self.double = landed.map(|name| OnTheLine {
-            cash: 0,
-            fish: vec![name],
+            verdict: Verdict::Clawed { prize: landed },
         });
     }
 
@@ -968,11 +950,10 @@ impl Table {
             }
         }
         if let Some(round) = self.round.take() {
-            if let Play::Net(_) = self.play {
-                house.casino().lost(round.staked.value());
-            } else {
-                round.settle(0, String::new(), house);
-            }
+            round.settle(0, String::new(), house);
+        }
+        if let Play::Claw(claw) = &mut self.play {
+            claw.abandon();
         }
         if let Play::Spins(spins) = &mut self.play {
             *spins = Spins::default();

@@ -61,6 +61,7 @@ mod oddities;
 mod persistence;
 mod room;
 mod snapshot;
+mod toybox;
 mod zen;
 
 pub use cheats::Launch;
@@ -103,6 +104,7 @@ enum Overlay {
     Notice(NoticeState),
     Ledger(LedgerState),
     Casino(Box<crate::casino::state::CasinoState>),
+    Toybox(Box<crate::ui::toybox::ToyboxState>),
 }
 
 pub const CAJETANS_GRACE_SECS: f32 = 3.0 * 60.0 + 33.0;
@@ -749,6 +751,10 @@ impl App {
                 state.tick_animation(1.0 / self.settings.fps);
                 return;
             }
+            Some(Overlay::Toybox(state)) => {
+                state.tick(1.0 / self.settings.fps);
+                return;
+            }
             Some(Overlay::Index(idx)) => {
                 idx.tick_animation(1.0 / self.settings.fps);
                 return;
@@ -1136,6 +1142,10 @@ impl App {
                     full_area,
                 )
             }
+            Some(Overlay::Toybox(state)) => frame.render_widget(
+                crate::ui::toybox::ToyboxOverlay::new(state, &self.casino.toybox, screen),
+                full_area,
+            ),
             Some(Overlay::Console(_)) | None => {}
         }
     }

@@ -26,9 +26,9 @@ use crate::ui::{overdraw, table};
 
 mod blackjack;
 mod bubble;
+mod claw;
 mod derby;
 mod lobby;
-mod net;
 mod popups;
 mod pufferfish;
 mod spins;
@@ -107,7 +107,7 @@ impl Widget for CasinoOverlay<'_> {
                     bubble::draw(buf, &room, table, *risk, bubbles, lit)
                 }
                 crate::casino::state::Play::Derby(derby) => derby::draw(buf, &room, table, derby),
-                crate::casino::state::Play::Net(cast) => net::draw(buf, &room, table, cast),
+                crate::casino::state::Play::Claw(glass) => claw::draw(buf, &room, table, glass),
             },
         }
         if let Some(popup) = &self.state.popup {
@@ -635,8 +635,8 @@ pub fn result_text(table: &crate::casino::state::Table) -> Option<Vec<(String, S
                 ));
             }
         }
-        Verdict::Netted { fish, .. } => {
-            parts = match fish {
+        Verdict::Clawed { prize } => {
+            parts = match prize {
                 Some(_) => vec![(result.label.clone(), bold(LIGHT_GREEN))],
                 None => vec![(result.label.clone(), style(WHITE))],
             };

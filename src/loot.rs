@@ -1623,7 +1623,9 @@ mod tests {
     #[test]
     fn a_species_the_shop_does_not_sell_lives_in_a_tank_the_shop_does() {
         for &species in ALL_SPECIES {
-            if species.config().buyable || species.config().habitat == Habitat::Nowhere {
+            if species.config().buyable
+                || matches!(species.config().habitat, Habitat::Nowhere | Habitat::Claw)
+            {
                 continue;
             }
             if species.config().habitat == Habitat::Junkpile {

@@ -1679,15 +1679,21 @@ fn the_casino_demo_runs_keystroke_for_keystroke() {
     tui.snap("7 Adam rides on a wild racer");
     tui.tick_n(300);
     leave_the_casino_table(&mut tui);
-    tui.select("Mystery Net");
+    tui.select("Claw");
     tui.key(KeyCode::Enter);
-    tui.key(KeyCode::Right);
-    tui.screen().expect_find("Big Net");
+    tui.screen().expect_find("a go");
     tui.key(KeyCode::Enter);
-    tui.tick_n(60);
-    tui.snap("8 the net is out");
+    for _ in 0..6 {
+        tui.key(KeyCode::Right);
+    }
+    tui.snap("8 the claw over the glass");
+    tui.key(KeyCode::Down);
     tui.tick_n(200);
-    tui.snap("9 what the net brought up");
+    tui.snap("9 what the claw brought up");
+    if tui.screen().contains("to the Fishtank!") {
+        tui.type_text("Pip");
+        tui.key(KeyCode::Enter);
+    }
     tui.write_reel();
     assert_no_broken_borders(&tui);
 }

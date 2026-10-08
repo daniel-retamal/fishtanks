@@ -122,6 +122,8 @@ impl App {
             self.handle_notice_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Ledger(_))) {
             self.handle_ledger_input(event);
+        } else if matches!(self.active_overlay, Some(Overlay::Toybox(_))) {
+            self.handle_toybox_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Fishing(_))) {
             self.handle_fishing_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Show { .. })) {
@@ -2819,6 +2821,7 @@ impl App {
             }
             commands::Action::Move { fish, tank } => self.move_entity(&fish, &tank),
             commands::Action::Ledger => self.open_ledger(),
+            commands::Action::Toybox => self.open_toybox(),
             commands::Action::Fishtanks => {
                 self.set_overlay(Overlay::Fishtanks(FishtanksState::new(
                     &self.tanks,

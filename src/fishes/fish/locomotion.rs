@@ -31,6 +31,7 @@ pub const SHY_HIDING_SECS: f32 = 8.0;
 
 impl Fish {
     pub(super) fn locomote(&mut self, dt: f32, speed_mult: f32, width: u16, height: u16) {
+        let speed_mult = speed_mult * self.toy_pace();
         match self.locomotion() {
             Locomotion::Swim => self.swim(dt, speed_mult, width, height),
             Locomotion::Through => self.swim_through(dt, speed_mult, width, height),
@@ -49,6 +50,7 @@ impl Fish {
         self.position.x += self.velocity.dx * dt * speed_mult;
         self.position.y += (self.velocity.dy + sink_dy) * dt * speed_mult;
         self.bounce_walls(width, height);
+        self.keep_to_depth(width, height);
         self.keep_backwards(dt);
     }
 

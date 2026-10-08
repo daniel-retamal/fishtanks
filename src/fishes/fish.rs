@@ -15,8 +15,10 @@ use super::mutations::{grow_birthmarks, native_eyes, tail_kind_to_mutant_tail};
 use super::quirk::{BLIND_EYE, FACE_EYES, FACE_OPEN, FACE_SHUT, Quirk};
 use super::species::{
     BodyChars, BodyFill, BodySource, BodyTemplate, Cycle, EYE_CIRCLE, EYE_ROUND, EyeAt,
-    FishSpecies, Habit, Locomotion, PatternKind, Sin, SizeCategory, Skin, TailKind, Zoomie,
+    FishSpecies, Habit, Habitat, Locomotion, PatternKind, Sin, SizeCategory, Skin, TailKind,
+    Zoomie,
 };
+use super::toy::{Depth, ToyState};
 use super::unfish::{
     BLINKER_BASE_COLOR, BLINKER_GLISTEN_MID, BLINKER_GLISTEN_PEAK, BLINKER_MID_COLOR,
     BLINKER_PEAK_COLOR, UNFISH_BODY_COLOR, UnfishKind, UnfishState, WORM_DEFAULT_SEGMENTS,
@@ -96,7 +98,7 @@ pub enum Direction {
 }
 
 impl Direction {
-    fn flip(self) -> Self {
+    pub fn flip(self) -> Self {
         match self {
             Direction::Left => Direction::Right,
             Direction::Right => Direction::Left,
@@ -182,6 +184,7 @@ pub struct Fish {
     pub devil_marked: bool,
     pub unfish_state: Option<Box<UnfishState>>,
     pub botfish_state: Option<Box<BotfishState>>,
+    pub toy: Option<Box<ToyState>>,
     pub sell_price_bonus_pct: u32,
     pub abduction_lock: bool,
     pub frozen: bool,
@@ -202,17 +205,6 @@ pub struct Fish {
 pub const BLESSING_INTERVAL_SECS: f32 = 33.0 * 60.0;
 pub const BLESSING_GLOW_SECS: f32 = 3.0;
 const BLESSING_GLOW_SPEED: f32 = 14.0;
-
-fn roll_size_category(rng: &mut impl RngExt) -> SizeCategory {
-    let mut v = rng.random_range(0..SizeCategory::ODDS_TOTAL);
-    for size in SizeCategory::ALL {
-        if v < size.odds() {
-            return size;
-        }
-        v -= size.odds();
-    }
-    SizeCategory::XL
-}
 
 struct BodyFields {
     body_size: usize,
@@ -235,6 +227,10 @@ fn random_heading(speed: f32, dy_fraction: f32, rng: &mut impl RngExt) -> (Veloc
         Direction::Right
     };
     (Velocity { dx, dy }, facing)
+}
+
+fn toy_state(species: FishSpecies, rng: &mut impl RngExt) -> Option<Box<ToyState>> {
+    (species.config().habitat == Habitat::Claw).then(|| Box::new(ToyState::random(rng)))
 }
 
 fn programmable_state(species: FishSpecies) -> Option<Box<BotfishState>> {
@@ -287,7 +283,7 @@ impl Fish {
     pub fn new(species: FishSpecies, name: String, x: f32, y: f32, rng: &mut impl RngExt) -> Self {
         let size_cat = match species.born_sizes() {
             [only] => *only,
-            _ => roll_size_category(rng),
+            _ => SizeCategory::roll(rng),
         };
         let fields = init_body_fields(species, size_cat, rng);
         let botfish_state = programmable_state(species);
@@ -319,6 +315,7 @@ impl Fish {
             devil_marked: false,
             unfish_state: None,
             botfish_state,
+            toy: toy_state(species, rng),
             sell_price_bonus_pct: 0,
             abduction_lock: false,
             frozen: false,
@@ -333,6 +330,7 @@ impl Fish {
             leeched: false,
         };
         grow_birthmarks(&mut fish, rng);
+        fish.fit_the_toy();
         fish
     }
 
@@ -368,6 +366,7 @@ impl Fish {
             devil_marked: false,
             unfish_state: None,
             botfish_state: programmable_state(species),
+            toy: toy_state(species, rng),
             sell_price_bonus_pct: 0,
             abduction_lock: false,
             frozen: false,
@@ -382,6 +381,7 @@ impl Fish {
             leeched: false,
         };
         grow_birthmarks(&mut fish, rng);
+        fish.fit_the_toy();
         fish
     }
 
@@ -431,6 +431,7 @@ impl Fish {
             devil_marked: false,
             unfish_state: Some(Box::new(state)),
             botfish_state: None,
+            toy: None,
             sell_price_bonus_pct: 0,
             abduction_lock: false,
             frozen: false,
@@ -448,6 +449,44 @@ impl Fish {
             fish.display_width = fish.unfish_line_width();
         }
         fish
+    }
+
+    pub fn new_toy(toy: ToyState, size: SizeCategory, rng: &mut impl RngExt) -> Fish {
+        let mut fish = Fish::new(FishSpecies::Toyfish, String::new(), 0.0, 0.0, rng);
+        fish.toy = Some(Box::new(toy));
+        fish.size_category = size;
+        fish.weight_g = FishSpecies::Toyfish.config().weight_base[size as usize];
+        fish.fit_the_toy();
+        fish
+    }
+
+    pub fn fit_the_toy(&mut self) {
+        if let Some(toy) = self.toy.as_ref() {
+            self.display_width = toy.width(self.size_category);
+        }
+    }
+
+    pub fn toy_pace(&self) -> f32 {
+        self.toy
+            .as_ref()
+            .map_or(1.0, |toy| toy.pace(self.habits.toy_clock))
+    }
+
+    pub(super) fn keep_to_depth(&mut self, width: u16, height: u16) {
+        let Some(depth) = self.toy.as_ref().map(|toy| toy.depth()) else {
+            return;
+        };
+        let (_, _, min_y, max_y) = self.position_bounds(width, height);
+        let max_y = max_y.max(min_y);
+        let reach = match depth {
+            Depth::Surface => min_y,
+            Depth::Upper(share) => min_y + (max_y - min_y) * share,
+            Depth::Anywhere | Depth::Floor => max_y,
+        };
+        if self.position.y > reach {
+            self.position.y = reach;
+            self.velocity.dy = -self.velocity.dy.abs();
+        }
     }
 
     pub fn portrait(&self) -> Fish {
@@ -474,12 +513,18 @@ impl Fish {
     }
 
     pub fn zoomie(&self) -> Zoomie {
+        if let Some(toy) = self.toy.as_ref() {
+            return toy.zoomie();
+        }
         self.unfish_kind()
             .and_then(UnfishKind::zoomie)
             .unwrap_or(self.species.config().zoomie)
     }
 
     pub fn locomotion(&self) -> Locomotion {
+        if let Some(toy) = self.toy.as_ref() {
+            return toy.locomotion();
+        }
         self.species.config().locomotion
     }
 
@@ -731,6 +776,9 @@ impl Fish {
         if self.sells_for_nothing() {
             return 0;
         }
+        if let Some(toy) = self.toy.as_ref() {
+            return toy.worth(self.size_category, crate::casino::claw::price());
+        }
         let base = Money::from(self.species.sell_value(weight_g, self.size_category))
             + self
                 .species
@@ -942,6 +990,19 @@ impl Fish {
     }
 
     fn body_sprite(&self) -> (LineSprite, Option<(usize, usize)>) {
+        if let Some(toy) = self.toy.as_ref() {
+            let drawn = toy.sprite(
+                self.facing_left(),
+                self.size_category,
+                self.habits.toy_clock,
+                self.pattern_seed,
+            );
+            let sprite = LineSprite {
+                rows: drawn.rows,
+                body_row: drawn.body_row,
+            };
+            return (sprite, Some(drawn.span));
+        }
         if let Some(bot) = self.botfish_state.as_ref() {
             let sprite = self.botfish_line_sprite(bot.eye_color(), bot.tip_color());
             let span = self.botfish_body_span();
@@ -2289,6 +2350,9 @@ impl Fish {
     }
 
     fn tick_habit_clocks(&mut self, dt: f32) {
+        if self.toy.is_some() {
+            self.habits.toy_clock += dt;
+        }
         let habits = &mut self.habits;
         for clock in [
             &mut habits.puffed,
@@ -2362,6 +2426,9 @@ impl Fish {
 
     pub fn tick_animation(&mut self, dt: f32) {
         tick_sway(&mut self.sway, self.sway_speed);
+        if self.toy.is_some() {
+            self.habits.toy_clock += dt;
+        }
         let daylight = self.sky.daylight;
         if let Some(ref mut mutant) = self.mutant {
             mutant.tick_eyes(dt, daylight);
@@ -2385,6 +2452,10 @@ impl Fish {
     }
 
     fn static_left_body(&self) -> Vec<(char, Color)> {
+        if let Some(toy) = self.toy.as_ref() {
+            let still = toy.sprite(true, self.size_category, 0.0, self.pattern_seed);
+            return still.rows[still.body_row].clone();
+        }
         let config = self.species.config();
         if let BodyTemplate::Figure(_) = config.body {
             let mut still = self.clone();
@@ -3198,6 +3269,12 @@ mod tests {
                 "{} bought from the shop lost the circuit a spawned one keeps",
                 species.display_name()
             );
+            let toy = species.config().habitat == Habitat::Claw;
+            assert_eq!(spawned.toy.is_some(), toy, "{}", species.display_name());
+            assert_eq!(bought.toy.is_some(), toy, "{}", species.display_name());
+            if let Some(toy) = spawned.toy.as_ref() {
+                assert_eq!(spawned.display_width, toy.width(spawned.size_category));
+            }
             assert_eq!(
                 spawned.adornments(),
                 bought.adornments(),

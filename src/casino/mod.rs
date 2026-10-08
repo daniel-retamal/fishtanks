@@ -2,12 +2,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::economy::{Money, grouped};
 use crate::fishes::fish::Fish;
+use crate::fishes::toy::{FittedPart, Shelf, ToyState};
 
 pub mod blackjack;
 pub mod bubble;
+pub mod claw;
 pub mod derby;
 pub mod flip;
-pub mod net;
 pub mod pufferfish;
 pub mod seat;
 pub mod spins;
@@ -100,6 +101,8 @@ pub struct Casino {
     pub comp_progress: Money,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub on_the_table: Vec<String>,
+    #[serde(default)]
+    pub toybox: crate::fishes::toy::Toybox,
     #[serde(skip)]
     pub tonight: i128,
 }
@@ -152,6 +155,7 @@ pub trait Teller {
     }
     fn room_for_copies(&self, names: &[String]) -> bool;
     fn room_for_a_prize(&self) -> bool;
+    fn shelf(&self) -> Shelf;
 }
 
 pub trait House: Teller {
@@ -160,9 +164,9 @@ pub trait House: Teller {
     fn bury(&mut self, name: &str);
     fn copy(&mut self, name: &str) -> Option<String>;
     fn casino(&mut self) -> &mut Casino;
-    fn give_food(&mut self, pellets: u32);
     fn land(&mut self, fish: Fish, name: String) -> Option<String>;
-    fn sell_as_bait(&mut self, name: &str) -> Option<Money>;
+    fn shelve(&mut self, toy: &ToyState);
+    fn stock_part(&mut self, part: FittedPart);
 }
 
 #[cfg(test)]

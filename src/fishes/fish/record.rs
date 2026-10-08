@@ -12,6 +12,7 @@ use crate::entities::components::{Position, SwayState};
 use crate::fishes::botfish::BotfishState;
 use crate::fishes::mutant::{MutantState, MutationRecord};
 use crate::fishes::species::{FishSpecies, SizeCategory};
+use crate::fishes::toy::ToyState;
 use crate::fishes::unfish::UnfishState;
 use crate::tank::Sky;
 
@@ -43,6 +44,8 @@ pub struct FishRecord {
     unfish_state: Option<Box<UnfishState>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     botfish_state: Option<Box<BotfishState>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    toy: Option<Box<ToyState>>,
     #[serde(default, skip_serializing_if = "is_default")]
     sell_price_bonus_pct: u32,
     #[serde(default, skip_serializing_if = "is_default")]
@@ -90,6 +93,7 @@ impl From<Fish> for FishRecord {
             devil_marked,
             unfish_state,
             botfish_state,
+            toy,
             sell_price_bonus_pct,
             abduction_lock: _,
             frozen,
@@ -122,6 +126,7 @@ impl From<Fish> for FishRecord {
             devil_marked,
             unfish_state,
             botfish_state,
+            toy,
             sell_price_bonus_pct,
             frozen,
             engulf_timer,
@@ -173,6 +178,7 @@ impl From<FishRecord> for Fish {
             devil_marked: record.devil_marked,
             unfish_state: record.unfish_state,
             botfish_state: record.botfish_state,
+            toy: record.toy,
             sell_price_bonus_pct: record.sell_price_bonus_pct,
             abduction_lock: false,
             frozen: record.frozen,

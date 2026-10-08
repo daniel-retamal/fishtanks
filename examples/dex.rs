@@ -379,6 +379,7 @@ fn weight_and_worth(species: FishSpecies, config: &SpeciesConfig) -> [String; 4]
 fn habitat(config: &SpeciesConfig) -> String {
     match config.habitat {
         Habitat::Native(kind) => kind.display_name().to_string(),
+        Habitat::Claw => "Claw".to_string(),
         Habitat::Everywhere | Habitat::Junkpile | Habitat::Nowhere => NOTHING.to_string(),
     }
 }

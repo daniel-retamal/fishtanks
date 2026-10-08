@@ -3,9 +3,9 @@ use rand::{SeedableRng, rngs::SmallRng};
 
 use fishtank::casino::blackjack::{Blackjack, Phase};
 use fishtank::casino::bubble::Risk;
+use fishtank::casino::claw::{self, MAX_GRIP, MIN_GRIP};
 use fishtank::casino::derby::{CHANCES_PER_MILLE, PAYS_BACK_PER_MILLE, odds};
 use fishtank::casino::flip::{FLIGHT_SECS, FlipPhase, LOSS_SHOWN_SECS, Landing, SWIM_SECS, Side};
-use fishtank::casino::net::Net;
 use fishtank::casino::pufferfish::{PuffPhase, reach_chance};
 use fishtank::casino::seat::Verdict;
 use fishtank::casino::spins;
@@ -32,9 +32,6 @@ fn every_table_pays_back_less_than_it_takes_in_cash() {
             "pufferfish at {target}"
         );
     }
-    for net in Net::ALL {
-        assert!(net.pays_back() < 0.92, "{net:?}");
-    }
     assert!(Landing::pays_back() < 1.0);
     for chance in CHANCES_PER_MILLE {
         let rtp = odds(chance, PAYS_BACK_PER_MILLE).as_f64() * f64::from(chance) / 1000.0;
@@ -57,8 +54,23 @@ fn a_fish_plays_for_a_quarter_more_than_its_worth_at_every_table_that_takes_one(
             Game::BubbleUp,
             Game::Derby
         ],
-        "a net is bought, and bait is a sale"
+        "the claw has one price"
     );
+}
+
+#[test]
+fn the_claw_grips_between_its_floor_and_its_ceiling_and_never_sells_cheap() {
+    for worth in [1, 50, 120, 500, 5_000, 1_000_000] {
+        let grip = claw::best_grip(worth);
+        assert!((MIN_GRIP..=MAX_GRIP).contains(&grip), "{worth}: {grip}");
+    }
+    let mut tui = Tui::new();
+    tui.run("/give toyfish");
+    for tank in &tui.app.tanks {
+        for fish in tank.fish.iter().filter(|f| f.toy.is_some()) {
+            assert!(fish.sell_value() >= claw::price(), "{}", fish.name);
+        }
+    }
 }
 
 #[test]
@@ -414,27 +426,32 @@ fn a_big_bubble_win_keeps_its_double_or_nothing_while_other_bubbles_land() {
 }
 
 #[test]
-fn a_net_lands_its_fish_in_a_tank_or_food_in_the_bag() {
+fn a_go_at_the_claw_costs_one_price_and_lands_its_toy_by_name() {
+    use fishtank::casino::state::Card;
+    use fishtank::fishes::fish::Fish;
+    use fishtank::fishes::species::SizeCategory;
+    use fishtank::fishes::toy::{Material, ToyColor, ToyState};
     let mut tui = Tui::new();
-    open(&mut tui, "/casino mysterynet");
-    let fish_before: usize = tui.app.tanks.iter().map(|t| t.fish.len()).sum();
-    let food_before = tui.app.food_supply;
+    open(&mut tui, "/casino claw");
+    let before = tui.app.purse.spendable();
     tui.key(KeyCode::Enter);
-    tui.tick_n(200);
-    let prize = matches!(casino(&mut tui).popup, Some(Popup::Prize(_)));
-    if prize {
-        tui.type_text("Nemo");
-        tui.key(KeyCode::Enter);
-        let fish_after: usize = tui.app.tanks.iter().map(|t| t.fish.len()).sum();
-        assert_eq!(fish_after, fish_before + 1);
-        assert_eq!(living(&tui, "Nemo"), 1);
-    } else {
-        assert!(tui.app.food_supply > food_before);
+    assert_eq!(tui.app.purse.spendable(), before - claw::price());
+    tui.key(KeyCode::Enter);
+    assert_eq!(tui.app.purse.spendable(), before - claw::price());
+    let toy = ToyState::plain(ToyColor::Galaxy, Material::Metallic);
+    let fish = Fish::new_toy(toy, SizeCategory::L, &mut rand::rng());
+    if let View::Table(table) = &mut casino(&mut tui).view {
+        table.face_down = Some((Card::Catch(Box::new(fish)), 0.0));
     }
+    tui.tick_n(2);
+    assert!(matches!(casino(&mut tui).popup, Some(Popup::Prize(_))));
+    tui.type_text("Pip");
+    tui.key(KeyCode::Enter);
+    assert_eq!(living(&tui, "Pip"), 1);
     if let View::Table(table) = &casino(&mut tui).view {
         assert!(matches!(
             table.result.as_ref().map(|r| &r.verdict),
-            Some(Verdict::Netted { .. })
+            Some(Verdict::Clawed { prize: Some(_) })
         ));
     }
 }

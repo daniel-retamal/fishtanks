@@ -4,9 +4,10 @@ use rand::{SeedableRng, rngs::SmallRng};
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 
 use crate::casino::bubble::Risk;
+use crate::casino::claw::{Claw, Goods as ClawGoods, Motion, Prize as ClawPrize};
 use crate::casino::flip::{Flip, FlipPhase, Landing, Side, Swim};
 use crate::casino::spins::{self, PEARLS_TO_DIVE, Symbol};
-use crate::casino::state::{Banner, Picker, Play, Popup, PrizeCard, Purpose, Table};
+use crate::casino::state::{Banner, Picker, Play, Popup, PrizeCard, Table};
 use crate::casino::{Multiple, premium};
 use crate::colors::{DARK_GRAY, GOLD, LIGHT_GREEN, LIGHT_RED, LIGHT_YELLOW, WHITE};
 use crate::fishes::fish::{Fish, LineSprite};
@@ -15,9 +16,8 @@ use crate::loot::LootKind;
 use crate::ui::catch_overlay::{CatchOverlay, CatchState};
 use crate::ui::hint_bar::HintBar;
 use crate::ui::hints::{
-    HINT_CALL_IT, HINT_CANCEL, HINT_CLOSE, HINT_DOUBLE_OR_NOTHING, HINT_ENTER_BAIT,
-    HINT_ENTER_COLLECT, HINT_ENTER_LEAVE, HINT_ENTER_STAKE, HINT_ESC_STAY, HINT_FLIP_AGAIN,
-    HINT_NAV, HINT_SCROLL,
+    HINT_CALL_IT, HINT_CANCEL, HINT_CLOSE, HINT_DOUBLE_OR_NOTHING, HINT_ENTER_COLLECT,
+    HINT_ENTER_LEAVE, HINT_ENTER_STAKE, HINT_ESC_STAY, HINT_FLIP_AGAIN, HINT_NAV, HINT_SCROLL,
 };
 use crate::ui::modal::{Frame, Modal};
 use crate::ui::text_input::TextInput;
@@ -57,39 +57,32 @@ pub fn draw(buf: &mut Buffer, room: &Room, popup: &Popup, table: Option<&Table>)
     }
 }
 
-fn picker_title(purpose: Purpose) -> &'static str {
-    match purpose {
-        Purpose::Stake => " Fishes to the Table! ",
-        Purpose::Bait => " Bait to the Net! ",
-    }
-}
+const STRENGTH_W: u16 = 52;
+const STRENGTH_NOTE: &str = "The best grip on each prize, by its weight";
+const PICKER_TITLE: &str = " Fishes to the Table! ";
 
 fn draw_picker(buf: &mut Buffer, room: &Room, picker: &Picker) {
-    let action = match picker.purpose {
-        Purpose::Stake => HINT_ENTER_STAKE,
-        Purpose::Bait => HINT_ENTER_BAIT,
-    };
+    let action = HINT_ENTER_STAKE;
     let rows = picker.rows.len();
     let hints = |overflowing: bool| {
         let bar = HintBar::new(HINT_CANCEL)
             .counted(HINT_NAV, overflowing.then_some((picker.selected + 1, rows)))
             .action(action);
-        if picker.purpose == Purpose::Stake && room.screen.whole.height >= NOTE_FROM_ROWS {
+        if room.screen.whole.height >= NOTE_FROM_ROWS {
             bar.aside(STAKE_NOTE)
         } else {
             bar
         }
     };
     let frame = Frame {
-        title: picker_title(picker.purpose),
+        title: PICKER_TITLE,
         border: WHITE,
         background: BACKGROUND,
     };
     let (modal, _) =
         Modal::open_fitting(buf, room.screen, &frame, (PICKER_W, rows as u16 + 1), hints);
     let body = modal.body;
-    let stake = picker.purpose == Purpose::Stake;
-    let both = stake && body.width >= TWO_COLUMNS_FROM;
+    let both = body.width >= TWO_COLUMNS_FROM;
     let money_x = body.right() as i32 - 2;
     let second_x = money_x - MONEY_W as i32 - 1;
     let header = u16::from(body.height >= 2);
@@ -102,7 +95,7 @@ fn draw_picker(buf: &mut Buffer, room: &Room, picker: &Picker) {
             bold(WHITE),
             body,
         );
-        let head = if stake { "Plays For" } else { "Worth" };
+        let head = "Plays For";
         put(
             buf,
             money_x - head.len() as i32 + 1,
@@ -156,34 +149,23 @@ fn draw_picker(buf: &mut Buffer, room: &Room, picker: &Picker) {
         } else {
             "unsellable".to_string()
         };
-        if stake {
-            let plays = if entrant.stakeable {
-                cash_within(premium(entrant.worth), MONEY_W)
-            } else {
-                crate::ui::table::NOTHING.to_string()
-            };
-            put(
-                buf,
-                money_x - plays.chars().count() as i32 + 1,
-                y,
-                &plays,
-                style(color),
-                body,
-            );
-            if both {
-                put(
-                    buf,
-                    second_x - worth.chars().count() as i32 + 1,
-                    y,
-                    &worth,
-                    style(color),
-                    body,
-                );
-            }
+        let plays = if entrant.stakeable {
+            cash_within(premium(entrant.worth), MONEY_W)
         } else {
+            crate::ui::table::NOTHING.to_string()
+        };
+        put(
+            buf,
+            money_x - plays.chars().count() as i32 + 1,
+            y,
+            &plays,
+            style(color),
+            body,
+        );
+        if both {
             put(
                 buf,
-                money_x - worth.chars().count() as i32 + 1,
+                second_x - worth.chars().count() as i32 + 1,
                 y,
                 &worth,
                 style(color),
@@ -694,8 +676,37 @@ fn draw_lines(
 fn draw_paytable(buf: &mut Buffer, room: &Room, table: Option<&Table>, scroll: usize) {
     match table.map(|t| &t.play) {
         Some(Play::BubbleUp { risk, .. }) => draw_shells(buf, room, *risk, scroll),
+        Some(Play::Claw(claw)) => draw_strength(buf, room, claw, scroll),
         _ => draw_reels(buf, room, scroll),
     }
+}
+
+fn draw_strength(buf: &mut Buffer, room: &Room, claw: &Claw, scroll: usize) {
+    let mut prizes: Vec<&ClawPrize> = claw
+        .prizes
+        .iter()
+        .filter(|p| p.motion == Motion::Resting)
+        .collect();
+    prizes.sort_by_key(|p| std::cmp::Reverse(p.goods.worth()));
+    let mut lines = vec![Line::text(STRENGTH_NOTE, style(DARK_GRAY))];
+    for prize in prizes {
+        let (label, color) = match &prize.goods {
+            ClawGoods::Toy(fish) => {
+                let size = crate::fishes::toy::size_name(fish.size_category);
+                let color = fish.toy.as_ref().map_or(WHITE, |t| t.paints().0.color());
+                (format!("{} ({size})", prize.goods.name()), color)
+            }
+            ClawGoods::Part(part) => (prize.goods.name(), part.paint.color()),
+        };
+        let worth = prize.goods.worth();
+        let grip = (crate::casino::claw::best_grip(worth) * 100.0).round();
+        lines.push(Line::priced(
+            vec![(label, style(color))],
+            format!("{} {grip}%", super::claw::pips(worth)),
+            style(WHITE),
+        ));
+    }
+    draw_lines(buf, room, " Claw#paytable ", STRENGTH_W, &lines, scroll);
 }
 
 fn draw_reels(buf: &mut Buffer, room: &Room, scroll: usize) {
