@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.1 - 2026-10-08
+
+- **Toys move their feet.** Wheels spin, treads roll and feet step while a Toyfish is on the go, and stop when a wind-up toy runs down.
+- **Two kinds of boots.** Small Boots and Boots join the parts you can win at the Claw. They walk your toy along the gravel, a little slower than bare feet.
+- **See your parts while you dress.** In `/toybox`, the slot you are changing lists every part you have for it and how many, and follows your choice as you go.
+- **One mouth on the drill.** A drill is the toy's mouth now, spinning right in front of its eye.
+- **A slower shine.** Metallic toys gleam at an easier pace.
+
 ## 1.5.0 - 2026-10-08
 
 - **The Claw replaces the Mystery Net.** One price a go, $50 for everyone. Steer, let the claw settle, drop it, and watch your prize ride to the chute, if it holds on. The middle of a prize grips best, heavy prizes slip more, and `P` shows how heavy everything in the glass is. Win something and a new prize drops in; come back to the casino and the glass is different. A steady hand can come out ahead.

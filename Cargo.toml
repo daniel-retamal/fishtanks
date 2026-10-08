@@ -1,6 +1,6 @@
 [package]
 name = "fishtanks"
-version = "1.5.0"
+version = "1.5.1"
 edition = "2024"
 description = "An aquarium for your terminal: ASCII fishes, fishing, a shop, mutations, heaven, hell and computers made of fish."
 license = "MIT"
