@@ -15,6 +15,7 @@ use fishtank::fishes::quirk::{
 use fishtank::fishes::species::{
     ALL_SPECIES, FishSpecies, Habit, Habitat, Locomotion, SizeCategory, SpeciesConfig, Zoomie,
 };
+use fishtank::fishes::toy::{FittedPart, Line, Material, Paint, ToyColor, ToyPart, ToyState};
 use fishtank::fishes::unfish::{SPAWNABLE_UNFISH, UnfishKind, is_multi_row};
 use fishtank::settings::{DEFAULT_FPS, Settings};
 use fishtank::sprite::TRANSPARENT;
@@ -111,7 +112,11 @@ const TRIMMED: [(FishSpecies, Margin); 5] = [
     (FishSpecies::Crabfish, ON_THE_FLOOR),
     (FishSpecies::Snailfish, ON_THE_FLOOR),
 ];
-const HIDDEN: [FishSpecies; 2] = [FishSpecies::Cheatfish, FishSpecies::Junkfish];
+const HIDDEN: [FishSpecies; 3] = [
+    FishSpecies::Cheatfish,
+    FishSpecies::Junkfish,
+    FishSpecies::Toyfish,
+];
 const RING_TICKS: usize = 240;
 const SIGNAL_EVERY: usize = 3;
 const FISH_PADS: Pads = Pads {
@@ -379,6 +384,7 @@ fn weight_and_worth(species: FishSpecies, config: &SpeciesConfig) -> [String; 4]
 fn habitat(config: &SpeciesConfig) -> String {
     match config.habitat {
         Habitat::Native(kind) => kind.display_name().to_string(),
+        Habitat::Claw => "Claw".to_string(),
         Habitat::Everywhere | Habitat::Junkpile | Habitat::Nowhere => NOTHING.to_string(),
     }
 }
@@ -449,6 +455,83 @@ fn unfish_row(kind: UnfishKind, fish: &Fish) -> String {
     row.extend((0..13).map(|_| NOTHING.to_string()));
     row.push(sprite_text(fish));
     row.join("\t")
+}
+
+const TOY_PART_BODY: ToyColor = ToyColor::White;
+const TOY_PART_PAINT: Paint = Paint::Sky;
+const TOY_MATERIAL_COLOR: ToyColor = ToyColor::Sky;
+
+fn toy_shot(slug: &str, toy: ToyState, size: SizeCategory) -> Shot {
+    let mut rng = rand::rng();
+    let fish = posed(&Fish::new_toy(toy, size, &mut rng), Direction::Left);
+    shoot(
+        slug,
+        Margin::EVEN,
+        vec![(vec![fish], PORTRAIT_TICKS)],
+        |_, _, _| {},
+    )
+}
+
+fn toy_shots(tsv: &mut String, shots: &mut Vec<Shot>) {
+    for line in Line::ALL {
+        for signature in line.signatures() {
+            let slug = format!("toy-{}", slug_of(signature.name()));
+            let parts: Vec<&str> = signature
+                .fittings(false)
+                .worn()
+                .iter()
+                .map(|fitted| fitted.part.name())
+                .collect();
+            let name = format!(
+                "{}:{}:{}:{}",
+                signature.name(),
+                line.name(),
+                signature.material().name(),
+                parts.join(",")
+            );
+            let _ = writeln!(tsv, "{}", bare_row("signature", &slug, &name));
+            shots.push(toy_shot(
+                &slug,
+                ToyState::signature(signature, false),
+                ToyState::signature_size(),
+            ));
+        }
+    }
+    for color in ToyColor::ALL {
+        let slug = format!("toy-color-{}", slug_of(color.name()));
+        let rarity = format!("{:?}", color.rarity());
+        let name = format!("{}:{rarity}", color.name());
+        let _ = writeln!(tsv, "{}", bare_row("toycolor", &slug, &name));
+        shots.push(toy_shot(
+            &slug,
+            ToyState::plain(color, Material::Plastic),
+            SizeCategory::M,
+        ));
+    }
+    for material in Material::ALL {
+        let slug = format!("toy-material-{}", slug_of(material.name()));
+        let name = format!("{}:{:?}", material.name(), material.rarity());
+        let _ = writeln!(tsv, "{}", bare_row("material", &slug, &name));
+        shots.push(toy_shot(
+            &slug,
+            ToyState::plain(TOY_MATERIAL_COLOR, material),
+            SizeCategory::L,
+        ));
+    }
+    for part in ToyPart::ALL {
+        let slug = format!("toy-part-{}", slug_of(part.name()));
+        let name = format!("{}:{}:{:?}", part.name(), part.slot().name(), part.rarity());
+        let _ = writeln!(tsv, "{}", bare_row("toypart", &slug, &name));
+        let mut toy = ToyState::plain(TOY_PART_BODY, Material::Plastic);
+        toy.fittings.set(
+            part.slot(),
+            Some(FittedPart {
+                part,
+                paint: TOY_PART_PAINT,
+            }),
+        );
+        shots.push(toy_shot(&slug, toy, SizeCategory::L));
+    }
 }
 
 fn bare_row(kind: &str, slug: &str, name: &str) -> String {
@@ -1326,6 +1409,7 @@ fn main() -> ExitCode {
         shots.push(shot);
     }
     shots.push(engulfment_scene());
+    toy_shots(&mut tsv, &mut shots);
     for shot in &shots {
         if let Err(error) = shot.save(&out) {
             eprintln!("cannot write {}: {error}", shot.slug);

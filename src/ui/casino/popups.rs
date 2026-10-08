@@ -4,9 +4,10 @@ use rand::{SeedableRng, rngs::SmallRng};
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 
 use crate::casino::bubble::Risk;
-use crate::casino::flip::{Flip, FlipPhase, Landing, Side};
+use crate::casino::claw::{Claw, Goods as ClawGoods, Motion, Prize as ClawPrize};
+use crate::casino::flip::{Flip, FlipPhase, Landing, Side, Swim};
 use crate::casino::spins::{self, PEARLS_TO_DIVE, Symbol};
-use crate::casino::state::{Banner, Picker, Play, Popup, PrizeCard, Purpose, Table};
+use crate::casino::state::{Banner, Picker, Play, Popup, PrizeCard, Table};
 use crate::casino::{Multiple, premium};
 use crate::colors::{DARK_GRAY, GOLD, LIGHT_GREEN, LIGHT_RED, LIGHT_YELLOW, WHITE};
 use crate::fishes::fish::{Fish, LineSprite};
@@ -15,16 +16,16 @@ use crate::loot::LootKind;
 use crate::ui::catch_overlay::{CatchOverlay, CatchState};
 use crate::ui::hint_bar::HintBar;
 use crate::ui::hints::{
-    HINT_CALL_IT, HINT_CANCEL, HINT_CLOSE, HINT_DOUBLE_OR_NOTHING, HINT_ENTER_BAIT,
-    HINT_ENTER_COLLECT, HINT_ENTER_LEAVE, HINT_ENTER_STAKE, HINT_ESC_STAY, HINT_FLIP_AGAIN,
-    HINT_NAV, HINT_SCROLL,
+    HINT_CALL_IT, HINT_CANCEL, HINT_CLOSE, HINT_DOUBLE_OR_NOTHING, HINT_ENTER_COLLECT,
+    HINT_ENTER_LEAVE, HINT_ENTER_STAKE, HINT_ESC_STAY, HINT_FLIP_AGAIN, HINT_NAV, HINT_SCROLL,
 };
 use crate::ui::modal::{Frame, Modal};
 use crate::ui::text_input::TextInput;
 
 use super::{
     BACKGROUND, BIG_ROWS, Room, TOLLOMIND, big_fits, big_width, bold, cash, cash_within, centred,
-    draw_big, draw_sprite, glisten, mirrored, multiple_color, put, sprite_width, style, tier,
+    draw_big, draw_sprite, draw_tollomind, draw_tollomind_facing_left, glisten, mirrored,
+    multiple_color, put, sprite_width, style, tier, tollomind, tollomind_size,
 };
 
 const PICKER_W: u16 = 54;
@@ -42,6 +43,7 @@ const BIG_MARGIN: u16 = 2;
 const COIN_SPEED: f32 = 0.7;
 const CONFIRM_W: u16 = 40;
 const GOLDFISH_SEED: u64 = 7;
+const LAST_BUBBLE: &str = "°";
 const STAKE_NOTE: &str = "it comes home unless it loses; then Tollomind eats it";
 
 pub fn draw(buf: &mut Buffer, room: &Room, popup: &Popup, table: Option<&Table>) {
@@ -55,39 +57,32 @@ pub fn draw(buf: &mut Buffer, room: &Room, popup: &Popup, table: Option<&Table>)
     }
 }
 
-fn picker_title(purpose: Purpose) -> &'static str {
-    match purpose {
-        Purpose::Stake => " Fishes to the Table! ",
-        Purpose::Bait => " Bait to the Net! ",
-    }
-}
+const STRENGTH_W: u16 = 52;
+const STRENGTH_NOTE: &str = "The best grip on each prize, by its weight";
+const PICKER_TITLE: &str = " Fishes to the Table! ";
 
 fn draw_picker(buf: &mut Buffer, room: &Room, picker: &Picker) {
-    let action = match picker.purpose {
-        Purpose::Stake => HINT_ENTER_STAKE,
-        Purpose::Bait => HINT_ENTER_BAIT,
-    };
+    let action = HINT_ENTER_STAKE;
     let rows = picker.rows.len();
     let hints = |overflowing: bool| {
         let bar = HintBar::new(HINT_CANCEL)
             .counted(HINT_NAV, overflowing.then_some((picker.selected + 1, rows)))
             .action(action);
-        if picker.purpose == Purpose::Stake && room.screen.whole.height >= NOTE_FROM_ROWS {
+        if room.screen.whole.height >= NOTE_FROM_ROWS {
             bar.aside(STAKE_NOTE)
         } else {
             bar
         }
     };
     let frame = Frame {
-        title: picker_title(picker.purpose),
+        title: PICKER_TITLE,
         border: WHITE,
         background: BACKGROUND,
     };
     let (modal, _) =
         Modal::open_fitting(buf, room.screen, &frame, (PICKER_W, rows as u16 + 1), hints);
     let body = modal.body;
-    let stake = picker.purpose == Purpose::Stake;
-    let both = stake && body.width >= TWO_COLUMNS_FROM;
+    let both = body.width >= TWO_COLUMNS_FROM;
     let money_x = body.right() as i32 - 2;
     let second_x = money_x - MONEY_W as i32 - 1;
     let header = u16::from(body.height >= 2);
@@ -100,7 +95,7 @@ fn draw_picker(buf: &mut Buffer, room: &Room, picker: &Picker) {
             bold(WHITE),
             body,
         );
-        let head = if stake { "Plays For" } else { "Worth" };
+        let head = "Plays For";
         put(
             buf,
             money_x - head.len() as i32 + 1,
@@ -154,34 +149,23 @@ fn draw_picker(buf: &mut Buffer, room: &Room, picker: &Picker) {
         } else {
             "unsellable".to_string()
         };
-        if stake {
-            let plays = if entrant.stakeable {
-                cash_within(premium(entrant.worth), MONEY_W)
-            } else {
-                crate::ui::table::NOTHING.to_string()
-            };
-            put(
-                buf,
-                money_x - plays.chars().count() as i32 + 1,
-                y,
-                &plays,
-                style(color),
-                body,
-            );
-            if both {
-                put(
-                    buf,
-                    second_x - worth.chars().count() as i32 + 1,
-                    y,
-                    &worth,
-                    style(color),
-                    body,
-                );
-            }
+        let plays = if entrant.stakeable {
+            cash_within(premium(entrant.worth), MONEY_W)
         } else {
+            crate::ui::table::NOTHING.to_string()
+        };
+        put(
+            buf,
+            money_x - plays.chars().count() as i32 + 1,
+            y,
+            &plays,
+            style(color),
+            body,
+        );
+        if both {
             put(
                 buf,
-                money_x - worth.chars().count() as i32 + 1,
+                second_x - worth.chars().count() as i32 + 1,
                 y,
                 &worth,
                 style(color),
@@ -282,7 +266,19 @@ fn draw_flip(buf: &mut Buffer, room: &Room, flip: &Flip) {
     let x = stage.x + stage.width.saturating_sub(width) / 2;
     let face_left = matches!(landing, Some(Landing::Facing(Side::Left))) || frame_index == 2;
     let edge_on = frame_index % 2 == 1;
-    if edge_on {
+    let body_y = top + goldfish().body_row as u16;
+    let swim = flip.tollomind();
+    let eaten = swim.is_some_and(|swim| swim.has_passed(stage, (x + width / 2) as i32));
+    if eaten {
+        put(
+            buf,
+            (x + width / 2) as i32,
+            body_y as i32 - 1,
+            LAST_BUBBLE,
+            style(DARK_GRAY),
+            stage,
+        );
+    } else if edge_on {
         for row in 0..rows {
             put(
                 buf,
@@ -346,6 +342,42 @@ fn draw_flip(buf: &mut Buffer, room: &Room, flip: &Flip) {
         right_style,
         stage,
     );
+    if let Some(swim) = swim {
+        draw_swim(buf, stage, swim, body_y);
+    }
+}
+
+trait Swimming {
+    fn left_edge(&self, stage: Rect) -> i32;
+    fn has_passed(&self, stage: Rect, x: i32) -> bool;
+}
+
+impl Swimming for Swim {
+    fn left_edge(&self, stage: Rect) -> i32 {
+        let width = tollomind_size().0 as i32;
+        let travelled = (self.swum * (stage.width as i32 + width) as f32).round() as i32;
+        match self.from {
+            Side::Left => stage.x as i32 - width + travelled,
+            Side::Right => stage.right() as i32 - travelled,
+        }
+    }
+
+    fn has_passed(&self, stage: Rect, x: i32) -> bool {
+        let left = self.left_edge(stage);
+        match self.from {
+            Side::Left => left + tollomind_size().0 as i32 > x,
+            Side::Right => left <= x,
+        }
+    }
+}
+
+fn draw_swim(buf: &mut Buffer, stage: Rect, swim: Swim, body_y: u16) {
+    let x = swim.left_edge(stage);
+    let top = body_y as i32 - tollomind().body_row as i32;
+    match swim.from {
+        Side::Left => draw_tollomind(buf, x, top, stage),
+        Side::Right => draw_tollomind_facing_left(buf, x, top, stage),
+    };
 }
 
 fn rule_the_flip(buf: &mut Buffer, modal: &Modal, column: Option<u16>, border: Color) {
@@ -644,8 +676,37 @@ fn draw_lines(
 fn draw_paytable(buf: &mut Buffer, room: &Room, table: Option<&Table>, scroll: usize) {
     match table.map(|t| &t.play) {
         Some(Play::BubbleUp { risk, .. }) => draw_shells(buf, room, *risk, scroll),
+        Some(Play::Claw(claw)) => draw_strength(buf, room, claw, scroll),
         _ => draw_reels(buf, room, scroll),
     }
+}
+
+fn draw_strength(buf: &mut Buffer, room: &Room, claw: &Claw, scroll: usize) {
+    let mut prizes: Vec<&ClawPrize> = claw
+        .prizes
+        .iter()
+        .filter(|p| p.motion == Motion::Resting)
+        .collect();
+    prizes.sort_by_key(|p| std::cmp::Reverse(p.goods.worth()));
+    let mut lines = vec![Line::text(STRENGTH_NOTE, style(DARK_GRAY))];
+    for prize in prizes {
+        let (label, color) = match &prize.goods {
+            ClawGoods::Toy(fish) => {
+                let size = crate::fishes::toy::size_name(fish.size_category);
+                let color = fish.toy.as_ref().map_or(WHITE, |t| t.paints().0.color());
+                (format!("{} ({size})", prize.goods.name()), color)
+            }
+            ClawGoods::Part(part) => (prize.goods.name(), part.paint.color()),
+        };
+        let worth = prize.goods.worth();
+        let grip = (crate::casino::claw::best_grip(worth) * 100.0).round();
+        lines.push(Line::priced(
+            vec![(label, style(color))],
+            format!("{} {grip}%", super::claw::pips(worth)),
+            style(WHITE),
+        ));
+    }
+    draw_lines(buf, room, " Claw#paytable ", STRENGTH_W, &lines, scroll);
 }
 
 fn draw_reels(buf: &mut Buffer, room: &Room, scroll: usize) {

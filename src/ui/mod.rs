@@ -27,6 +27,7 @@ pub mod show_overlay;
 pub mod table;
 pub mod tank_view;
 pub mod text_input;
+pub mod toybox;
 pub mod wiring_panel;
 
 use ratatui::{

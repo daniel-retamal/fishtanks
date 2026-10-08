@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0 - 2026-10-08
+
+- **The Claw replaces the Mystery Net.** One price a go, $50 for everyone. Steer, let the claw settle, drop it, and watch your prize ride to the chute, if it holds on. The middle of a prize grips best, heavy prizes slip more, and `P` shows how heavy everything in the glass is. Win something and a new prize drops in; come back to the casino and the glass is different. A steady hand can come out ahead.
+- **Toyfish.** Plush toys you win at the Claw: twenty-one colors, five materials from plastic to holographic, and sizes from a keychain to a giant. They float in your tank, never eat, and sell for at least what a go costs.
+- **Dress them up.** `/toybox` lists your toys beside a display of the one you picked. Snap on parts won in capsules: wings, wheels, a rotor, a rocket, a crown and more. Parts change how a toy moves, so watch it in your tank.
+- **Signatures.** Some toys come fully dressed, with names, in lines of four: Mecha, Kaiju, Racers, Deep Sea, Space and Royals. Your shelf (`Tab` in the toybox) remembers everything you ever won, and a full row does not go unnoticed.
+
 ## 1.4.0 - 2026-10-07
 
 - **The casino.** `/casino` opens Tollomind's lobby, six tables where your fished money goes: Blackjack, Spins with its Pearl Dive bonus, the Pufferfish (cash out before it pops), Bubble Up, the Derby and the Mystery Net. Every table prints what it pays back, and the house always wins.

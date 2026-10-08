@@ -49,6 +49,9 @@ fn is_worm(fish: &Fish) -> bool {
 }
 
 fn engulf_compatible(receiver: &Fish, candidate: &Fish) -> bool {
+    if receiver.toy.is_some() || candidate.toy.is_some() {
+        return false;
+    }
     let receiver_is_worm = is_worm(receiver);
     match candidate.unfish_state.as_ref() {
         Some(us) if is_multi_row(us.kind) => false,

@@ -4,12 +4,14 @@ use std::process::ExitCode;
 
 use crossterm::event::KeyCode;
 use fishtank::casino::Multiple;
+use fishtank::casino::claw::{Goods, Motion, Phase};
 use fishtank::casino::flip::{FlipPhase, Landing, Side};
-use fishtank::casino::net::{LANDS_AT, Net, Prize};
 use fishtank::casino::pufferfish::PuffPhase;
 use fishtank::casino::spins::{PEARLS_TO_DIVE, Spins, pearls_in, window};
 use fishtank::casino::state::{CasinoState, Play, Popup, View};
-use fishtank::fishes::species::FishSpecies;
+use fishtank::fishes::fish::Fish;
+use fishtank::fishes::species::SizeCategory;
+use fishtank::fishes::toy::{FittedPart, Material, Paint, Signature, ToyColor, ToyPart, ToyState};
 use fishtank::testing::Tui;
 use rand::{SeedableRng, rngs::SmallRng};
 
@@ -18,9 +20,10 @@ const USAGE: &str = "usage: cargo run --example casino -- <out-dir>
 Films the wiki's casino pictures, one reel per scene (<out>/reels/casino-<scene>.html), on a big
 screen so every hint bar fits on one line: the lobby, a hand of blackjack with a seahorse on the
 line, a spin, a spin that lands three pearls and dives, a Pufferfish that puffs to a pop, a sky of
-bubbles on the Stupid board, a Derby with a fish on the line, a Golden Net, a fish doubled at double
-or nothing, and a Stupid Win. The rare moments are set up by hand; everything after the setup plays
-out on its own.";
+bubbles on the Stupid board, a Derby with a fish on the line, a toy won at the Claw, a fish doubled at double
+or nothing until Tollomind eats it, and a Stupid Win. The rare moments are set up by hand;
+everything after the setup plays out on its own.";
+const TOYBOX_SEED: u64 = 8;
 const COLS: u16 = 120;
 const ROWS: u16 = 40;
 
@@ -142,20 +145,92 @@ fn derby(dir: &Path) {
     tui.record(300, 3, "race");
 }
 
-fn net(dir: &Path) {
-    let mut tui = scene(dir, "net");
-    table(&mut tui, "/casino mysterynet");
-    tui.key(KeyCode::Right);
-    tui.key(KeyCode::Right);
-    tui.record(10, 2, "golden");
+fn claw(dir: &Path) {
+    let mut tui = scene(dir, "claw");
+    table(&mut tui, "/casino claw");
+    let target = match play(&mut tui) {
+        Play::Claw(glass) => {
+            for prize in &mut glass.prizes {
+                prize.speed = 0.0;
+            }
+            glass
+                .prizes
+                .iter()
+                .filter(|p| matches!(p.goods, Goods::Toy(_)) && p.motion == Motion::Resting)
+                .map(|p| p.left() + p.width() / 2)
+                .next()
+        }
+        _ => None,
+    };
+    tui.record(20, 2, "glass");
     tui.key(KeyCode::Enter);
-    if let Play::Net(cast) = play(&mut tui) {
-        assert_eq!(cast.net, Net::Golden);
-        cast.strip[LANDS_AT] = Prize::Fish(FishSpecies::Cashfish);
+    if let Some(target) = target {
+        let start = match play(&mut tui) {
+            Play::Claw(glass) => glass.hand.rail,
+            _ => target,
+        };
+        for _ in start..target {
+            tui.key(KeyCode::Right);
+        }
     }
-    tui.record(150, 2, "cast");
-    tui.typewrite("Midas", 3);
+    tui.record(40, 2, "steer");
+    tui.key(KeyCode::Down);
+    for _ in 0..400 {
+        tui.tick_n(1);
+        if let Play::Claw(glass) = play(&mut tui)
+            && glass.phase == Phase::Grabbed
+        {
+            glass.hold_fast();
+            break;
+        }
+    }
+    tui.record(260, 3, "won");
+    tui.typewrite("Pip", 3);
     tui.record(10, 2, "named");
+}
+
+fn toybox(dir: &Path) {
+    let mut tui = scene(dir, "toybox");
+    let mut rng = SmallRng::seed_from_u64(TOYBOX_SEED);
+    for (name, toy, size) in [
+        (
+            "Pip",
+            ToyState::plain(ToyColor::Galaxy, Material::Metallic),
+            SizeCategory::L,
+        ),
+        (
+            "Mecha",
+            ToyState::signature(Signature::Mecha, false),
+            ToyState::signature_size(),
+        ),
+        (
+            "Bolt",
+            ToyState::plain(ToyColor::Coral, Material::Plastic),
+            SizeCategory::M,
+        ),
+    ] {
+        let fish = Fish::new_toy(toy, size, &mut rng);
+        tui.app.tanks[0].place_fish(fish, name.to_string(), &mut rng);
+    }
+    for (part, paint) in [
+        (ToyPart::Rotor, Paint::Mint),
+        (ToyPart::Wheels, Paint::Charcoal),
+        (ToyPart::Rocket, Paint::Cherry),
+    ] {
+        tui.app.casino.toybox.add(FittedPart { part, paint });
+    }
+    tui.run("/toybox");
+    tui.record(20, 2, "toys");
+    tui.select("Pip");
+    tui.key(KeyCode::Enter);
+    tui.record(10, 2, "edit");
+    for _ in 0..3 {
+        tui.key(KeyCode::Down);
+        tui.key(KeyCode::Right);
+        tui.record(16, 2, "part");
+    }
+    tui.key(KeyCode::Enter);
+    tui.record(20, 2, "saved");
 }
 
 fn double(dir: &Path) {
@@ -176,16 +251,21 @@ fn double(dir: &Path) {
     tui.record(20, 2, "home");
     tui.key(KeyCode::Char('d'));
     tui.record(20, 2, "call");
-    for call in [Side::Left, Side::Right] {
+    for (call, landing) in [
+        (Side::Left, Landing::Facing(Side::Left)),
+        (Side::Right, Landing::Facing(Side::Right)),
+        (Side::Left, Landing::Facing(Side::Right)),
+    ] {
         if let Some(Popup::Flip(flip)) = &mut state(&mut tui).popup {
             flip.phase = FlipPhase::Flying {
                 call,
-                landing: Landing::Facing(call),
+                landing,
                 t: 0.0,
             };
         }
         tui.record(60, 2, "flip");
     }
+    tui.record(80, 2, "eaten");
 }
 
 fn stupid_win(dir: &Path) {
@@ -217,7 +297,8 @@ fn main() -> ExitCode {
     pufferfish(dir);
     bubbles(dir);
     derby(dir);
-    net(dir);
+    claw(dir);
+    toybox(dir);
     double(dir);
     stupid_win(dir);
     ExitCode::SUCCESS

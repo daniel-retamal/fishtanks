@@ -5,15 +5,15 @@ use crate::casino::{Casino, Entrant, House, Teller};
 use crate::economy::Money;
 use crate::fishes::fish::Fish;
 use crate::fishes::species::FishSpecies;
+use crate::fishes::toy::{FittedPart, Shelf, ToyState};
 use crate::ledger::Flow;
 use crate::loot::{ConsumableKind, StockItem};
 use crate::names;
-use crate::tank::WorldSignal;
 use crate::ui::input_action::{InputAction, classify};
 
 use super::{App, Overlay};
 
-const PRIZE_PROBE: FishSpecies = FishSpecies::Merluza;
+const PRIZE_PROBE: FishSpecies = FishSpecies::Toyfish;
 
 pub(super) struct Lens<'a> {
     app: &'a App,
@@ -65,6 +65,10 @@ impl Teller for Lens<'_> {
     fn room_for_a_prize(&self) -> bool {
         self.app.has_room_for_a_new(PRIZE_PROBE)
     }
+
+    fn shelf(&self) -> Shelf {
+        self.app.casino.toybox.shelf.clone()
+    }
 }
 
 struct Cashier<'a> {
@@ -96,6 +100,10 @@ impl Teller for Cashier<'_> {
 
     fn room_for_a_prize(&self) -> bool {
         self.lens().room_for_a_prize()
+    }
+
+    fn shelf(&self) -> Shelf {
+        self.lens().shelf()
     }
 }
 
@@ -133,27 +141,17 @@ impl House for Cashier<'_> {
         &mut self.app.casino
     }
 
-    fn give_food(&mut self, pellets: u32) {
-        self.app.food_supply = self.app.food_supply.saturating_add(pellets);
-    }
-
     fn land(&mut self, fish: Fish, name: String) -> Option<String> {
         let to = self.app.land_fish(self.app.current_tank, fish, name).ok()?;
         self.app.tanks[to].fish.last().map(|fish| fish.name.clone())
     }
 
-    fn sell_as_bait(&mut self, name: &str) -> Option<Money> {
-        let (tank, index) = self.app.fish_location(name)?;
-        let fish = &self.app.tanks[tank].fish[index];
-        if !fish.is_sellable() {
-            return None;
-        }
-        let worth = fish.sell_value();
-        let fish = self.app.tanks[tank].take_fish(index);
-        self.app.tanks[tank].signal(WorldSignal::Sale);
-        self.app.part_with(fish);
-        self.app.earn(worth, Flow::FishSales);
-        Some(worth)
+    fn shelve(&mut self, toy: &ToyState) {
+        self.app.casino.toybox.shelf.shelve(toy);
+    }
+
+    fn stock_part(&mut self, part: FittedPart) {
+        self.app.casino.toybox.add(part);
     }
 }
 

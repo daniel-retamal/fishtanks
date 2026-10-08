@@ -55,6 +55,17 @@ impl SizeCategory {
     ];
     pub const ODDS_TOTAL: u32 = 100;
 
+    pub fn roll(rng: &mut impl rand::RngExt) -> SizeCategory {
+        let mut v = rng.random_range(0..SizeCategory::ODDS_TOTAL);
+        for size in SizeCategory::ALL {
+            if v < size.odds() {
+                return size;
+            }
+            v -= size.odds();
+        }
+        SizeCategory::XL
+    }
+
     pub fn odds(self) -> u32 {
         match self {
             SizeCategory::S => 55,
@@ -175,6 +186,7 @@ pub enum FishSpecies {
     Opalfish,
     Tartanfish,
     Bitfish,
+    Toyfish,
 }
 
 impl FishSpecies {
@@ -233,6 +245,7 @@ pub enum Habitat {
     Everywhere,
     Native(TankKind),
     Junkpile,
+    Claw,
     Nowhere,
 }
 
@@ -668,6 +681,7 @@ pub const ALL_SPECIES: &[FishSpecies] = &[
     FishSpecies::Botfish,
     FishSpecies::Cheatfish,
     FishSpecies::Junkfish,
+    FishSpecies::Toyfish,
 ];
 
 static BUYABLE_SPECIES: LazyLock<Vec<FishSpecies>> = LazyLock::new(|| {
@@ -799,6 +813,7 @@ static HOLYFISH_PALETTE: [Color; 1] = [GRAY];
 static BOTFISH_PALETTE: [Color; 1] = [DARK_GRAY];
 static CHEATFISH_PALETTE: [Color; 1] = [WHITE];
 static JUNKFISH_PALETTE: [Color; 1] = [JUNK_OUTLINE];
+static TOYFISH_PALETTE: [Color; 1] = [crate::colors::SNOW];
 
 static AKA_PALETTE: [Color; 1] = [RED];
 static KURO_PALETTE: [Color; 1] = [DARK_GRAY];
@@ -927,6 +942,10 @@ static ANCHOVETA_R: [&str; 1] = ["><>"];
 static JELLYFISH_LR: [&str; 1] = ["ଳ"];
 static BOTFISH_L: [&str; 1] = ["-º]]]]]-]"];
 static BOTFISH_R: [&str; 1] = ["[-[[[[[º-"];
+
+pub fn sell_base(rarity: Rarity) -> [u32; 4] {
+    rarity_arrays(rarity).1
+}
 
 fn rarity_arrays(rarity: Rarity) -> ([usize; 4], [u32; 4], [u32; 4]) {
     let (sizes, sell_base) = match rarity {
@@ -1373,6 +1392,26 @@ impl FishSpecies {
                 config.eyes = CHEATFISH_EYES;
                 config.eye_color = Some(RED);
                 config.flavour = CHEAT_FLAVOUR;
+                config
+            }
+            Toyfish => {
+                let mut config = standard_config(
+                    "Toyfish",
+                    standard(EYE_ROUND, TailKind::Wide),
+                    &TOYFISH_PALETTE,
+                    Solid,
+                    0.10,
+                    (1.5, 2.5),
+                    Common,
+                );
+                config.buyable = false;
+                config.habitat = Habitat::Claw;
+                config.abductable = false;
+                config.mutatable = false;
+                config.markable = false;
+                config.zoomie = Zoomie::None;
+                config.weight_cap = [0; 4];
+                config.sell_cap = [0; 4];
                 config
             }
             Junkfish => {

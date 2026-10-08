@@ -1,0 +1,30 @@
+# JOURNEY · the toybox: a Toyfish is a toy you dress. Open /toybox, step into a toy's slots and back
+# out without saving, then read the shelf. Parts only come from the Claw, which no journey can win on
+# cue, so the toy is handed over in a debug blink and the journey checks every door of the box.
+
+clear
+include scenes/take-a-fish.play toyfish Pip
+run /toybox
+expect Toybox
+expect Pip
+expect ENTER dress up
+snap the toy beside its name
+key enter
+expect Toybox#edit
+expect Head
+expect Tail
+expect ENTER save
+key down
+key down
+snap the slots of a toy
+key esc
+absent Toybox#edit
+key tab
+expect Toybox#shelf
+expect Colors
+expect ???
+snap the shelf keeps what was never won dark
+key tab
+expect Toybox
+key esc
+absent Toybox

@@ -1,0 +1,24 @@
+# JOURNEY · the Claw: one price a go. Read its paytable, pay, steer, and walk away before dropping.
+# What the claw keeps is random, so the journey never drops: leaving mid-go forfeits the go.
+
+clear
+include scenes/start-with-a-stake.play
+run /casino claw
+expect Claw
+expect a go
+expect ENTER pay
+key p
+expect Claw#paytable
+snap the paytable weighs every prize in the glass
+key esc
+absent Claw#paytable
+key enter
+expect ←→ steer
+expect ↓ drop
+key right 4
+snap the claw swings over the glass
+key esc
+expect Leave the table?
+key enter
+expect ENTER sit down
+key esc

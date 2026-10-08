@@ -3,13 +3,13 @@ use rand::{SeedableRng, rngs::SmallRng};
 
 use fishtank::casino::blackjack::{Blackjack, Phase};
 use fishtank::casino::bubble::Risk;
+use fishtank::casino::claw::{self, MAX_GRIP, MIN_GRIP};
 use fishtank::casino::derby::{CHANCES_PER_MILLE, PAYS_BACK_PER_MILLE, odds};
-use fishtank::casino::flip::{FlipPhase, Landing, Side};
-use fishtank::casino::net::Net;
+use fishtank::casino::flip::{FLIGHT_SECS, FlipPhase, LOSS_SHOWN_SECS, Landing, SWIM_SECS, Side};
 use fishtank::casino::pufferfish::{PuffPhase, reach_chance};
 use fishtank::casino::seat::Verdict;
 use fishtank::casino::spins;
-use fishtank::casino::state::{CasinoState, Game, Play, Popup, View};
+use fishtank::casino::state::{CasinoState, Game, Play, Popup, REVEAL_SECS, View};
 use fishtank::casino::{COMP_EVERY, FISH_PREMIUM, Multiple, POT_SHARE_PER_CENT, premium};
 use fishtank::economy::Money;
 use fishtank::ledger::{Direction, Flow};
@@ -31,9 +31,6 @@ fn every_table_pays_back_less_than_it_takes_in_cash() {
             reach_chance(target) * target < 1.0,
             "pufferfish at {target}"
         );
-    }
-    for net in Net::ALL {
-        assert!(net.pays_back() < 0.92, "{net:?}");
     }
     assert!(Landing::pays_back() < 1.0);
     for chance in CHANCES_PER_MILLE {
@@ -57,8 +54,23 @@ fn a_fish_plays_for_a_quarter_more_than_its_worth_at_every_table_that_takes_one(
             Game::BubbleUp,
             Game::Derby
         ],
-        "a net is bought, and bait is a sale"
+        "the claw has one price"
     );
+}
+
+#[test]
+fn the_claw_grips_between_its_floor_and_its_ceiling_and_never_sells_cheap() {
+    for worth in [1, 50, 120, 500, 5_000, 1_000_000] {
+        let grip = claw::best_grip(worth);
+        assert!((MIN_GRIP..=MAX_GRIP).contains(&grip), "{worth}: {grip}");
+    }
+    let mut tui = Tui::new();
+    tui.run("/give toyfish");
+    for tank in &tui.app.tanks {
+        for fish in tank.fish.iter().filter(|f| f.toy.is_some()) {
+            assert!(fish.sell_value() >= claw::price(), "{}", fish.name);
+        }
+    }
 }
 
 #[test]
@@ -76,6 +88,10 @@ fn a_fish_hand_at_blackjack_doubles_and_splits_like_any_other() {
         game.total_bet() > value
     });
     assert!(doubled);
+}
+
+fn ticks(tui: &Tui, secs: f32) -> usize {
+    (secs * tui.app.settings.fps).ceil() as usize
 }
 
 fn open(tui: &mut Tui, line: &str) {
@@ -203,6 +219,28 @@ fn walking_away_from_a_fish_on_the_table_buries_it_when_the_game_comes_back() {
 }
 
 #[test]
+fn quitting_on_a_win_card_keeps_the_fish_that_won_it() {
+    let mut tui = Tui::new();
+    open(&mut tui, "/casino pufferfish");
+    stake_adam(&mut tui);
+    tui.key(KeyCode::Enter);
+    if let View::Table(table) = &mut casino(&mut tui).view
+        && let Play::Pufferfish(puffer) = &mut table.play
+    {
+        puffer.phase = PuffPhase::Puffing {
+            clock: 28.0,
+            pops_at: Multiple::whole(50),
+        };
+    }
+    tui.key(KeyCode::Enter);
+    tui.tick_n(ticks(&tui, REVEAL_SECS) + 1);
+    assert!(matches!(casino(&mut tui).popup, Some(Popup::Banner(_))));
+    let back = Tui::resumed(tui.app.snapshot(), 100, 30);
+    assert_eq!(living(&back, "Adam"), 1);
+    assert!(!graves(&back).contains(&"Adam".to_string()));
+}
+
+#[test]
 fn the_pot_and_the_best_win_are_saved() {
     let mut tui = Tui::new();
     tui.app.casino.pot = 12_345;
@@ -299,13 +337,53 @@ fn a_lost_double_or_nothing_closes_by_itself_and_takes_the_fish() {
             t: 0.0,
         };
     }
-    tui.tick_n(120);
+    let swimming = ticks(&tui, FLIGHT_SECS + LOSS_SHOWN_SECS + SWIM_SECS / 2.0);
+    tui.tick_n(swimming);
+    assert!(
+        matches!(casino(&mut tui).popup, Some(Popup::Flip(_))),
+        "Tollomind is still crossing the stage"
+    );
+    let Some(Popup::Flip(flip)) = &casino(&mut tui).popup else {
+        unreachable!();
+    };
+    let swim = flip.tollomind().expect("Tollomind swims in");
+    assert_eq!(
+        swim.from,
+        Side::Right,
+        "he comes from the side nobody called"
+    );
+    tui.tick_n(ticks(&tui, SWIM_SECS / 2.0) + 1);
     assert!(
         casino(&mut tui).popup.is_none(),
-        "the flip closes by itself"
+        "the flip closes once Tollomind has left the stage"
     );
     assert!(graves(&tui).contains(&"Adam".to_string()));
     tui.screen().expect_absent("keeps it");
+}
+
+#[test]
+fn a_big_win_card_waits_for_the_table_to_show_what_won() {
+    let mut tui = Tui::new();
+    open(&mut tui, "/casino pufferfish");
+    tui.key(KeyCode::Enter);
+    if let View::Table(table) = &mut casino(&mut tui).view
+        && let Play::Pufferfish(puffer) = &mut table.play
+    {
+        puffer.phase = PuffPhase::Puffing {
+            clock: 28.0,
+            pops_at: Multiple::whole(50),
+        };
+    }
+    tui.key(KeyCode::Enter);
+    assert!(
+        casino(&mut tui).popup.is_none(),
+        "the card is still face down"
+    );
+    tui.key(KeyCode::Enter);
+    tui.tick_n(ticks(&tui, REVEAL_SECS / 2.0));
+    assert!(casino(&mut tui).popup.is_none(), "keys wait for the card");
+    tui.tick_n(ticks(&tui, REVEAL_SECS / 2.0) + 1);
+    assert!(matches!(casino(&mut tui).popup, Some(Popup::Banner(_))));
 }
 
 #[test]
@@ -348,27 +426,32 @@ fn a_big_bubble_win_keeps_its_double_or_nothing_while_other_bubbles_land() {
 }
 
 #[test]
-fn a_net_lands_its_fish_in_a_tank_or_food_in_the_bag() {
+fn a_go_at_the_claw_costs_one_price_and_lands_its_toy_by_name() {
+    use fishtank::casino::state::Card;
+    use fishtank::fishes::fish::Fish;
+    use fishtank::fishes::species::SizeCategory;
+    use fishtank::fishes::toy::{Material, ToyColor, ToyState};
     let mut tui = Tui::new();
-    open(&mut tui, "/casino mysterynet");
-    let fish_before: usize = tui.app.tanks.iter().map(|t| t.fish.len()).sum();
-    let food_before = tui.app.food_supply;
+    open(&mut tui, "/casino claw");
+    let before = tui.app.purse.spendable();
     tui.key(KeyCode::Enter);
-    tui.tick_n(200);
-    let prize = matches!(casino(&mut tui).popup, Some(Popup::Prize(_)));
-    if prize {
-        tui.type_text("Nemo");
-        tui.key(KeyCode::Enter);
-        let fish_after: usize = tui.app.tanks.iter().map(|t| t.fish.len()).sum();
-        assert_eq!(fish_after, fish_before + 1);
-        assert_eq!(living(&tui, "Nemo"), 1);
-    } else {
-        assert!(tui.app.food_supply > food_before);
+    assert_eq!(tui.app.purse.spendable(), before - claw::price());
+    tui.key(KeyCode::Enter);
+    assert_eq!(tui.app.purse.spendable(), before - claw::price());
+    let toy = ToyState::plain(ToyColor::Galaxy, Material::Metallic);
+    let fish = Fish::new_toy(toy, SizeCategory::L, &mut rand::rng());
+    if let View::Table(table) = &mut casino(&mut tui).view {
+        table.face_down = Some((Card::Catch(Box::new(fish)), 0.0));
     }
+    tui.tick_n(2);
+    assert!(matches!(casino(&mut tui).popup, Some(Popup::Prize(_))));
+    tui.type_text("Pip");
+    tui.key(KeyCode::Enter);
+    assert_eq!(living(&tui, "Pip"), 1);
     if let View::Table(table) = &casino(&mut tui).view {
         assert!(matches!(
             table.result.as_ref().map(|r| &r.verdict),
-            Some(Verdict::Netted { .. })
+            Some(Verdict::Clawed { prize: Some(_) })
         ));
     }
 }
@@ -473,6 +556,27 @@ fn every_table_and_popup_is_filmed_whole_at_every_size() {
             }),
             "double or nothing",
         );
+        let half_way = LOSS_SHOWN_SECS + SWIM_SECS / 2.0 - 40.0 / tui.app.settings.fps;
+        for (swum, label) in [
+            (-0.3, "tollomind comes for the goldfish"),
+            (0.0, "the goldfish is eaten"),
+        ] {
+            with_popup(
+                &mut tui,
+                Popup::Flip(Flip {
+                    line: line.clone(),
+                    base: 500,
+                    base_fish: 0,
+                    rung: 0,
+                    phase: FlipPhase::Lost {
+                        landing: Landing::Facing(Side::Right),
+                        call: Side::Left,
+                        t: half_way + swum * SWIM_SECS,
+                    },
+                }),
+                label,
+            );
+        }
         with_popup(
             &mut tui,
             Popup::Banner(Banner {

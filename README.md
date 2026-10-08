@@ -127,7 +127,7 @@ The [wiki](https://github.com/daniel-retamal/fishtanks/wiki/Fishing) has the lon
 
 ### The casino
 
-Where fished money goes to get stupid. `/casino` opens Tollomind's lobby: Blackjack, Spins with its Pearl Dive, a Pufferfish that puffs until it pops, Bubble Up, the Derby and the Mystery Net. Bet cash, or put a fish on the line: it plays for more than it is worth, and it dies if it loses. Every win offers double or nothing, and nothing has a ceiling. The house always wins.
+Where fished money goes to get stupid. `/casino` opens Tollomind's lobby: Blackjack, Spins with its Pearl Dive, a Pufferfish that puffs until it pops, Bubble Up, the Derby and the Claw, where you win Toyfish to dress up in `/toybox`. Bet cash, or put a fish on the line: it plays for more than it is worth, and it dies if it loses. Every win offers double or nothing, and nothing has a ceiling. The house always wins, except at the Claw, if your hands are steady.
 
 <img src="https://raw.githubusercontent.com/daniel-retamal/fishtanks/main/.github/assets/casino.gif" alt="Bubble Up on the Stupid board: a bubble climbs to the ×1,000 shell and an Absolutely Stupid Win card counts up" width="720" />
 

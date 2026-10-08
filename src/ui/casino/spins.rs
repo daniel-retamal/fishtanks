@@ -43,7 +43,9 @@ pub fn glyphs(symbol: Symbol) -> (&'static str, &'static str, Color) {
 
 pub fn draw(buf: &mut Buffer, room: &Room, table: &Table, spins: &Spins) {
     let hints = match spins.phase {
-        SpinPhase::Idle => bet_hints(table, room.teller, HINT_SPIN, &[HINT_PAYTABLE]),
+        SpinPhase::Idle | SpinPhase::Surfaced(_) => {
+            bet_hints(table, room.teller, HINT_SPIN, &[HINT_PAYTABLE])
+        }
         SpinPhase::Spinning => HintBar::new(HINT_ESC_LEAVE).action(SPINNING),
         SpinPhase::Diving(_) => HintBar::new(HINT_ESC_LEAVE).action(DIVING),
     };
@@ -136,7 +138,7 @@ pub fn draw(buf: &mut Buffer, room: &Room, table: &Table, spins: &Spins) {
     if below >= art.bottom() {
         return;
     }
-    if let Some(dive) = spins.dive() {
+    if let Some(dive) = spins.dive().filter(|_| spins.is_diving()) {
         centred(
             buf,
             art,
@@ -289,7 +291,12 @@ fn draw_dive(
                 }
             }
             None => {
-                let mut stop = (clock * 20.0) as isize + index as isize * 7;
+                let turning = if dive.over {
+                    0
+                } else {
+                    (clock * 20.0) as isize
+                };
+                let mut stop = turning + index as isize * 7;
                 while at(stop) == Symbol::Pearl {
                     stop += 1;
                 }
@@ -311,8 +318,9 @@ fn draw_lever(buf: &mut Buffer, art: Rect, x: u16, top: u16, height: u16, lever:
     } else {
         0.0
     };
-    for y in top..top + height {
-        put(buf, x as i32, y as i32, "|", style(DARK_GRAY), art);
+    let knob = top as i32 - 1 + (pulled * (height.saturating_sub(1)) as f32).round() as i32;
+    for y in (knob + 1).max(top as i32)..(top + height) as i32 {
+        put(buf, x as i32, y, "|", style(DARK_GRAY), art);
     }
     put(
         buf,
@@ -322,7 +330,6 @@ fn draw_lever(buf: &mut Buffer, art: Rect, x: u16, top: u16, height: u16, lever:
         style(DARK_GRAY),
         art,
     );
-    let knob = top as i32 - 1 + (pulled * (height.saturating_sub(1)) as f32).round() as i32;
     put(
         buf,
         x as i32,
