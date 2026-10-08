@@ -9,6 +9,9 @@ use fishtank::casino::flip::{FlipPhase, Landing, Side};
 use fishtank::casino::pufferfish::PuffPhase;
 use fishtank::casino::spins::{PEARLS_TO_DIVE, Spins, pearls_in, window};
 use fishtank::casino::state::{CasinoState, Play, Popup, View};
+use fishtank::fishes::fish::Fish;
+use fishtank::fishes::species::SizeCategory;
+use fishtank::fishes::toy::{FittedPart, Material, Paint, Signature, ToyColor, ToyPart, ToyState};
 use fishtank::testing::Tui;
 use rand::{SeedableRng, rngs::SmallRng};
 
@@ -20,6 +23,7 @@ line, a spin, a spin that lands three pearls and dives, a Pufferfish that puffs 
 bubbles on the Stupid board, a Derby with a fish on the line, a toy won at the Claw, a fish doubled at double
 or nothing until Tollomind eats it, and a Stupid Win. The rare moments are set up by hand;
 everything after the setup plays out on its own.";
+const TOYBOX_SEED: u64 = 8;
 const COLS: u16 = 120;
 const ROWS: u16 = 40;
 
@@ -185,6 +189,50 @@ fn claw(dir: &Path) {
     tui.record(10, 2, "named");
 }
 
+fn toybox(dir: &Path) {
+    let mut tui = scene(dir, "toybox");
+    let mut rng = SmallRng::seed_from_u64(TOYBOX_SEED);
+    for (name, toy, size) in [
+        (
+            "Pip",
+            ToyState::plain(ToyColor::Galaxy, Material::Metallic),
+            SizeCategory::L,
+        ),
+        (
+            "Mecha",
+            ToyState::signature(Signature::Mecha, false),
+            ToyState::signature_size(),
+        ),
+        (
+            "Bolt",
+            ToyState::plain(ToyColor::Coral, Material::Plastic),
+            SizeCategory::M,
+        ),
+    ] {
+        let fish = Fish::new_toy(toy, size, &mut rng);
+        tui.app.tanks[0].place_fish(fish, name.to_string(), &mut rng);
+    }
+    for (part, paint) in [
+        (ToyPart::Rotor, Paint::Mint),
+        (ToyPart::Wheels, Paint::Charcoal),
+        (ToyPart::Rocket, Paint::Cherry),
+    ] {
+        tui.app.casino.toybox.add(FittedPart { part, paint });
+    }
+    tui.run("/toybox");
+    tui.record(20, 2, "toys");
+    tui.select("Pip");
+    tui.key(KeyCode::Enter);
+    tui.record(10, 2, "edit");
+    for _ in 0..3 {
+        tui.key(KeyCode::Down);
+        tui.key(KeyCode::Right);
+        tui.record(16, 2, "part");
+    }
+    tui.key(KeyCode::Enter);
+    tui.record(20, 2, "saved");
+}
+
 fn double(dir: &Path) {
     let mut tui = scene(dir, "double");
     table(&mut tui, "/casino pufferfish");
@@ -250,6 +298,7 @@ fn main() -> ExitCode {
     bubbles(dir);
     derby(dir);
     claw(dir);
+    toybox(dir);
     double(dir);
     stupid_win(dir);
     ExitCode::SUCCESS
