@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -42,6 +44,8 @@ const SECRET: &str = "???";
 const SHINY: &str = "✦";
 const DOT: char = '·';
 const GAP: &str = "  ";
+const CURRENT: &str = "• ";
+const PARTS_SHOWN: usize = 6;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
@@ -156,13 +160,18 @@ impl ToyboxState {
         out
     }
 
+    pub fn choice(&self, options: &[Option<FittedPart>]) -> usize {
+        let slot = Slot::ALL[self.slot];
+        options
+            .iter()
+            .position(|option| *option == self.draft.get(slot))
+            .unwrap_or(0)
+    }
+
     pub fn turn_part(&mut self, toybox: &Toybox, ahead: bool) {
         let options = self.options(toybox);
         let slot = Slot::ALL[self.slot];
-        let at = options
-            .iter()
-            .position(|option| *option == self.draft.get(slot))
-            .unwrap_or(0);
+        let at = self.choice(&options);
         let n = options.len();
         let next = if ahead {
             (at + 1) % n
@@ -276,6 +285,56 @@ fn slot_rows(state: &ToyboxState) -> Vec<Row> {
             ]
         })
         .collect()
+}
+
+struct EditRows {
+    rows: Vec<Row>,
+    choice_row: usize,
+}
+
+fn edit_rows(state: &ToyboxState, toybox: &Toybox, width: usize, listed: usize) -> EditRows {
+    let mut rows = slot_rows(state);
+    if listed == 0 {
+        return EditRows {
+            rows,
+            choice_row: state.slot,
+        };
+    }
+    let slot = Slot::ALL[state.slot];
+    let options = state.options(toybox);
+    let at = state.choice(&options);
+    let shown = options.len().min(listed);
+    let first = at.saturating_sub(shown / 2).min(options.len() - shown);
+    rows.push(Vec::new());
+    rows.push(vec![(format!("{} parts", slot.name()), bold(WHITE))]);
+    let choice_row = rows.len() + at - first;
+    let worn = state.worn().get(slot);
+    for (i, option) in options.iter().enumerate().skip(first).take(shown) {
+        let chosen = i == at;
+        let mark = if chosen { CURRENT } else { "  " };
+        let Some(part) = option else {
+            rows.push(vec![
+                (mark.to_string(), bold(WHITE)),
+                (table::NOTHING.to_string(), plain(DARK_GRAY)),
+            ]);
+            continue;
+        };
+        let label = part.name();
+        let color = part.paint.color();
+        let count = toybox.count(*part) + u32::from(worn == Some(*part));
+        let tally = format!("×{count}");
+        let used = table::visual_width(mark) + table::visual_width(&label);
+        let pad = width
+            .saturating_sub(used + table::visual_width(&tally))
+            .max(1);
+        rows.push(vec![
+            (mark.to_string(), bold(WHITE)),
+            (label, if chosen { bold(color) } else { plain(color) }),
+            (" ".repeat(pad), plain(WHITE)),
+            (tally, plain(DARK_GRAY)),
+        ]);
+    }
+    EditRows { rows, choice_row }
 }
 
 fn wrap_tokens(tokens: Vec<Row>, width: usize) -> Vec<Row> {
@@ -404,11 +463,7 @@ fn hints(state: &ToyboxState, toybox: &Toybox, overflowing: bool) -> HintBar {
         Mode::Edit if state.sealed() => HintBar::new(HINT_CLOSE),
         Mode::Edit => {
             let options = state.options(toybox);
-            let slot = Slot::ALL[state.slot];
-            let at = options
-                .iter()
-                .position(|o| *o == state.draft.get(slot))
-                .unwrap_or(0);
+            let at = state.choice(&options);
             HintBar::new(HINT_TOY_DISCARD)
                 .action(HINT_TOY_SLOT)
                 .counted(
@@ -461,20 +516,19 @@ impl Widget for ToyboxOverlay<'_> {
     fn render(self, _area: Rect, buf: &mut Buffer) {
         let state = self.state;
         let text_w = |body_w: u16| body_w.saturating_sub(PAD * 2).max(1);
-        let rows_for = |body_w: u16| -> Vec<Row> {
+        let rows_for = |body_w: u16, listed: usize| -> Vec<Row> {
             match state.mode {
                 Mode::Toys => toy_rows(state),
-                Mode::Edit => slot_rows(state),
+                Mode::Edit => edit_rows(state, self.toybox, text_w(body_w) as usize, listed).rows,
                 Mode::Shelf => shelf_rows(&self.toybox.shelf, text_w(body_w) as usize),
             }
         };
-        let count = |body_w: u16| rows_for(body_w).len().max(1) as u16;
         let title = match state.mode {
             Mode::Toys => TITLE,
             Mode::Edit => EDIT_TITLE,
             Mode::Shelf => SHELF_TITLE,
         };
-        let spec_for = |bar| PanelSpec {
+        let spec_for = |bar, count| PanelSpec {
             title,
             title_style: bold(WHITE),
             border: plain(WHITE),
@@ -482,16 +536,29 @@ impl Widget for ToyboxOverlay<'_> {
             side: SIDE,
             body_w: BODY_W.max(widest_hints()),
             body_min_w: BODY_MIN_W,
-            body_rows: &count,
+            body_rows: count,
             hints: bar,
             reach: Reach::Full,
         };
         let calm = hints(state, self.toybox, false);
-        let measured = Panels::measure(self.screen, &spec_for(&calm));
+        let toy_rows_tall = state
+            .shown()
+            .map_or(0, |fish| fish.line_sprite().rows.len() as u16)
+            .min(SIDE.1);
+        let listed = Cell::new(PARTS_SHOWN);
+        let count = |body_w: u16| rows_for(body_w, listed.get()).len().max(1) as u16;
+        let measured = loop {
+            let measured = Panels::measure(self.screen, &spec_for(&calm, &count));
+            if !measured.stacked || measured.side.height >= toy_rows_tall || listed.get() == 0 {
+                break measured;
+            }
+            listed.set(listed.get() - 1);
+        };
+        let listed = listed.get();
         let total = count(measured.body.width) as usize;
         let overflowing = total > measured.body.height as usize;
         let bar = hints(state, self.toybox, overflowing);
-        let panels = Panels::open(buf, self.screen, &spec_for(&bar));
+        let panels = Panels::open(buf, self.screen, &spec_for(&bar, &count));
         if let Some(fish) = state.shown() {
             draw_fish_centred(buf, &fish, panels.side, BACKGROUND);
         }
@@ -505,12 +572,23 @@ impl Widget for ToyboxOverlay<'_> {
             );
             return;
         }
-        let rows = rows_for(panels.body.width);
+        let rows = rows_for(panels.body.width, listed);
         let room = panels.body.height as usize;
         let heights = vec![1; rows.len()];
         let shown = match state.mode {
             Mode::Toys => state.scroll.follow(&heights, state.selected, room),
-            Mode::Edit => state.scroll.follow(&heights, state.slot, room),
+            Mode::Edit => {
+                let choice = edit_rows(
+                    state,
+                    self.toybox,
+                    text_w(panels.body.width) as usize,
+                    listed,
+                )
+                .choice_row;
+                state
+                    .scroll
+                    .reveal(state.slot..choice + 1, room, rows.len())
+            }
             Mode::Shelf => {
                 let last = rows.len().saturating_sub(room);
                 let first = state.shelf_scroll.settle(last);

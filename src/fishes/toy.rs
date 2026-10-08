@@ -18,6 +18,7 @@ const OPEN: char = '{';
 const CLOSE: char = '}';
 const STITCHES: [usize; 4] = [2, 3, 4, 6];
 const HEAD_LEAD: usize = 2;
+const DRILL_LEAD: usize = 1;
 const TAIL_REACH: usize = 2;
 const ABOVE: usize = 2;
 const BELOW: usize = 1;
@@ -39,7 +40,13 @@ const ROTOR_HUB: char = '+';
 const ROTOR_BLADE: char = '-';
 const CROWN: char = 'w';
 const SIREN: char = '*';
-const WHEEL: char = 'o';
+const WHEEL_TURNS: [char; 2] = ['o', 'ø'];
+const FOOT_DOWN: char = '"';
+const FOOT_UP: char = '\'';
+const SMALL_BOOT: char = '⅃';
+const SMALL_BOOT_TURNED: char = 'L';
+const BOOT: char = 'd';
+const BOOT_TURNED: char = 'b';
 const TREAD_OPEN: char = '(';
 const TREAD_CLOSE: char = ')';
 const TREAD_LINKS: [char; 2] = ['o', '·'];
@@ -52,13 +59,16 @@ const SPIN_HZ: f32 = 8.0;
 const FLAME_HZ: f32 = 9.0;
 const KEY_HZ: f32 = 1.5;
 const SIREN_HZ: f32 = 4.0;
+const WHEEL_HZ: f32 = 6.0;
+const TREAD_HZ: f32 = 4.0;
+const STEP_HZ: f32 = 3.0;
 const SIREN_LIGHTS: [Color; 2] = [CHERRY, NAVY_LIGHT];
 const FLAME_LIGHTS: [Color; 2] = [TANGERINE, LEMON];
 const PEARL_BASE: f32 = 0.15;
 const PEARL_SWELL: f32 = 0.25;
 const PEARL_HZ: f32 = 2.2;
 const PEARL_STEP: f32 = 0.5;
-const SHINE_SECS: f32 = 2.2;
+const SHINE_SECS: f32 = 4.0;
 const SHINE_MARGIN: f32 = 3.0;
 const SHINE_CORE: f32 = 0.8;
 const SHINE_EDGE: f32 = 1.8;
@@ -76,6 +86,8 @@ const WINDUP_FULL: f32 = 1.6;
 const PACE_WHEELS: f32 = 1.6;
 const PACE_TREADS: f32 = 0.5;
 const PACE_FEET: f32 = 0.8;
+const PACE_SMALL_BOOTS: f32 = 0.7;
+const PACE_BOOTS: f32 = 0.6;
 const PACE_PROPELLER: f32 = 1.2;
 const PACE_ROTOR: f32 = 0.6;
 const PACE_DRIFT: f32 = 0.45;
@@ -365,8 +377,26 @@ fn turned(ch: char) -> char {
     match ch {
         '<' => '>',
         '>' => '<',
+        SMALL_BOOT => SMALL_BOOT_TURNED,
+        SMALL_BOOT_TURNED => SMALL_BOOT,
+        BOOT => BOOT_TURNED,
+        BOOT_TURNED => BOOT,
         other => mirror_char(other),
     }
+}
+
+fn foot_columns(width: usize, span: (usize, usize)) -> Vec<usize> {
+    let body: Vec<Cell> = (0..width).map(|_| (STITCH, Color::Reset)).collect();
+    let feet = Feet {
+        style: FeetStyle::Quote,
+        color: None,
+    };
+    feet_row(&body, span, feet)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, (ch, _))| *ch != TRANSPARENT)
+        .map(|(col, _)| col)
+        .collect()
 }
 
 fn sparkle(x: u64, row: u64, beat: u64, seed: u64) -> f32 {
@@ -434,6 +464,8 @@ pub enum ToyPart {
     Siren,
     VentralFin,
     Feet,
+    SmallBoots,
+    Boots,
     Wheels,
     Treads,
     Rocket,
@@ -448,7 +480,7 @@ pub struct PartSpec {
 }
 
 impl ToyPart {
-    pub const ALL: [ToyPart; 18] = [
+    pub const ALL: [ToyPart; 20] = [
         ToyPart::Lure,
         ToyPart::Bill,
         ToyPart::Drill,
@@ -462,6 +494,8 @@ impl ToyPart {
         ToyPart::Siren,
         ToyPart::VentralFin,
         ToyPart::Feet,
+        ToyPart::SmallBoots,
+        ToyPart::Boots,
         ToyPart::Wheels,
         ToyPart::Treads,
         ToyPart::Rocket,
@@ -486,6 +520,8 @@ impl ToyPart {
             ToyPart::Siren => ("Siren", Top, Rare),
             ToyPart::VentralFin => ("Ventral Fin", Under, Common),
             ToyPart::Feet => ("Feet", Under, Common),
+            ToyPart::SmallBoots => ("Small Boots", Under, Common),
+            ToyPart::Boots => ("Boots", Under, Common),
             ToyPart::Wheels => ("Wheels", Under, Rare),
             ToyPart::Treads => ("Treads", Under, Rare),
             ToyPart::Rocket => ("Rocket", Tail, Rare),
@@ -515,7 +551,21 @@ impl ToyPart {
     }
 
     fn walks(self) -> bool {
-        matches!(self, ToyPart::Wheels | ToyPart::Treads | ToyPart::Feet)
+        matches!(
+            self,
+            ToyPart::Wheels
+                | ToyPart::Treads
+                | ToyPart::Feet
+                | ToyPart::SmallBoots
+                | ToyPart::Boots
+        )
+    }
+
+    fn lead(self) -> usize {
+        match self {
+            ToyPart::Drill => DRILL_LEAD,
+            _ => HEAD_LEAD,
+        }
     }
 }
 
@@ -1234,6 +1284,8 @@ impl ToyState {
             Some(ToyPart::Wheels) => PACE_WHEELS,
             Some(ToyPart::Treads) => PACE_TREADS,
             Some(ToyPart::Feet) => PACE_FEET,
+            Some(ToyPart::SmallBoots) => PACE_SMALL_BOOTS,
+            Some(ToyPart::Boots) => PACE_BOOTS,
             _ if fittings.has(ToyPart::Propeller) => PACE_PROPELLER,
             _ if fittings.has(ToyPart::Rotor) => PACE_ROTOR,
             _ => PACE_DRIFT,
@@ -1248,13 +1300,13 @@ impl ToyState {
         base * WINDUP_FULL * (1.0 - turn / WINDUP_RUN_SECS)
     }
 
+    fn lead(fittings: &Fittings) -> usize {
+        fittings.head.map_or(0, |fitted| fitted.part.lead())
+    }
+
     pub fn width(&self, size: SizeCategory) -> usize {
         let fittings = self.fittings();
-        let lead = if fittings.head.is_some() {
-            HEAD_LEAD
-        } else {
-            0
-        };
+        let lead = Self::lead(&fittings);
         let reach = if fittings.tail.is_some() {
             TAIL_REACH
         } else {
@@ -1273,12 +1325,7 @@ impl ToyState {
         let fittings = self.fittings();
         let width = self.width(size);
         let stitches = STITCHES[size as usize];
-        let lead = if fittings.head.is_some() {
-            HEAD_LEAD
-        } else {
-            0
-        };
-        let mouth = lead;
+        let mouth = Self::lead(&fittings);
         let eye = mouth + 1;
         let open = mouth + 2;
         let lo = mouth + 3;
@@ -1305,6 +1352,8 @@ impl ToyState {
         put(body, close, CLOSE, a.color(), Ink::Body);
         put(body, tail, TAIL, b.color(), Ink::Body);
         let turn = |hz: f32, frames: usize| ((clock * hz) as usize) % frames;
+        let moving = self.pace(clock) > 0.0;
+        let roll = |hz: f32| if moving { turn(hz, 2) } else { 0 };
         if let Some(fitted) = fittings.head {
             let paint = fitted.paint.color();
             match fitted.part {
@@ -1318,14 +1367,8 @@ impl ToyState {
                     put(body, mouth - 1, BILL, paint, Ink::Body);
                 }
                 _ => {
-                    put(body, mouth - 2, DRILL_TIP, paint, Ink::Body);
-                    put(
-                        body,
-                        mouth - 1,
-                        DRILL_TURNS[turn(SPIN_HZ, 2)],
-                        paint,
-                        Ink::Body,
-                    );
+                    put(body, mouth - 1, DRILL_TIP, paint, Ink::Body);
+                    put(body, mouth, DRILL_TURNS[turn(SPIN_HZ, 2)], paint, Ink::Body);
                 }
             }
         }
@@ -1374,29 +1417,28 @@ impl ToyState {
                     put(below, mid, VENTRAL_LEAD, paint, Ink::Body);
                     put(below, mid + 1, FIN_BACK, paint, Ink::Body);
                 }
-                ToyPart::Feet => {
-                    let body_cells: Vec<Cell> = (0..width).map(|_| (STITCH, paint)).collect();
-                    let feet = Feet {
-                        style: FeetStyle::Quote,
-                        color: Some(paint),
-                    };
-                    for (col, (ch, color)) in feet_row(&body_cells, (lo, hi), feet)
-                        .into_iter()
-                        .enumerate()
-                    {
-                        if ch != TRANSPARENT {
-                            put(below, col, ch, color, Ink::Body);
-                        }
+                ToyPart::Feet | ToyPart::SmallBoots | ToyPart::Boots => {
+                    let step = roll(STEP_HZ);
+                    for (i, col) in foot_columns(width, (lo, hi)).into_iter().enumerate() {
+                        let ch = match fitted.part {
+                            ToyPart::SmallBoots => SMALL_BOOT,
+                            ToyPart::Boots => BOOT,
+                            _ if (i + step) % 2 == 1 => FOOT_UP,
+                            _ => FOOT_DOWN,
+                        };
+                        put(below, col, ch, paint, Ink::Body);
                     }
                 }
                 ToyPart::Wheels => {
-                    put(below, lo, WHEEL, paint, Ink::Body);
-                    put(below, hi, WHEEL, paint, Ink::Body);
+                    let wheel = WHEEL_TURNS[roll(WHEEL_HZ)];
+                    put(below, lo, wheel, paint, Ink::Body);
+                    put(below, hi, wheel, paint, Ink::Body);
                 }
                 _ => {
+                    let shift = roll(TREAD_HZ);
                     put(below, lo - 1, TREAD_OPEN, paint, Ink::Body);
                     for (i, col) in (lo..=hi).enumerate() {
-                        put(below, col, TREAD_LINKS[i % 2], paint, Ink::Body);
+                        put(below, col, TREAD_LINKS[(i + shift) % 2], paint, Ink::Body);
                     }
                     put(below, close, TREAD_CLOSE, paint, Ink::Body);
                 }
@@ -1718,6 +1760,80 @@ mod tests {
             })
             .collect();
         assert_eq!(frames, vec!['O', '-']);
+    }
+
+    fn under_row(toy: &ToyState, clock: f32) -> String {
+        let sprite = toy.sprite(true, SizeCategory::L, clock, 0);
+        sprite.rows[sprite.body_row + 1]
+            .iter()
+            .map(|(ch, _)| if *ch == TRANSPARENT { ' ' } else { *ch })
+            .collect::<String>()
+            .trim_end()
+            .to_string()
+    }
+
+    fn wearing(slot_part: ToyPart, tail: Option<ToyPart>) -> ToyState {
+        let mut toy = ToyState::plain(ToyColor::Sky, Material::Plastic);
+        for part in std::iter::once(slot_part).chain(tail) {
+            toy.fittings.set(
+                part.slot(),
+                Some(FittedPart {
+                    part,
+                    paint: Paint::Charcoal,
+                }),
+            );
+        }
+        toy
+    }
+
+    #[test]
+    fn wheels_treads_and_feet_move_while_the_toy_moves() {
+        for part in [ToyPart::Wheels, ToyPart::Treads, ToyPart::Feet] {
+            let toy = wearing(part, None);
+            let frames: Vec<String> = (0..12).map(|t| under_row(&toy, t as f32 * 0.1)).collect();
+            assert!(
+                frames.windows(2).any(|w| w[0] != w[1]),
+                "{} never moves: {frames:?}",
+                part.name()
+            );
+            let width: Vec<usize> = frames.iter().map(|f| f.chars().count()).collect();
+            assert!(width.windows(2).all(|w| w[0] == w[1]), "{}", part.name());
+        }
+    }
+
+    #[test]
+    fn a_wound_down_toy_stands_on_still_wheels() {
+        let toy = wearing(ToyPart::Wheels, Some(ToyPart::WindUpKey));
+        let rest = WINDUP_RUN_SECS + 0.1;
+        let frames: Vec<String> = (0..8)
+            .map(|t| under_row(&toy, rest + t as f32 * 0.1))
+            .collect();
+        assert_eq!(toy.pace(rest), 0.0);
+        assert!(frames.windows(2).all(|w| w[0] == w[1]), "{frames:?}");
+    }
+
+    #[test]
+    fn boots_stand_still_and_turn_with_the_toy() {
+        for (part, left, right) in [
+            (ToyPart::SmallBoots, "    ⅃ ⅃", "  L L"),
+            (ToyPart::Boots, "    d d", "  b b"),
+        ] {
+            let toy = wearing(part, None);
+            let frames: Vec<String> = (0..12).map(|t| under_row(&toy, t as f32 * 0.1)).collect();
+            assert!(frames.windows(2).all(|w| w[0] == w[1]), "{}", part.name());
+            assert_eq!(body_text(&toy, true, SizeCategory::L)[1], left);
+            assert_eq!(body_text(&toy, false, SizeCategory::L)[1], right);
+            assert_eq!(toy.locomotion(), Locomotion::Floor);
+        }
+    }
+
+    #[test]
+    fn a_drill_is_the_mouth_and_turns_before_the_eye() {
+        let toy = wearing(ToyPart::Drill, None);
+        let left = body_text(&toy, true, SizeCategory::L);
+        assert_eq!(left, vec!["<=°{xxxx}<"]);
+        assert_eq!(left[0].matches('<').count(), 2);
+        assert_eq!(body_text(&toy, false, SizeCategory::L), vec![">{xxxx}°=>"]);
     }
 
     #[test]
