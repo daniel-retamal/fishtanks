@@ -255,3 +255,48 @@ fn wheels_keep_a_toy_on_the_gravel_and_a_rotor_at_the_surface() {
     let plain = find(&tui, "Plain");
     assert!(plain.position.y <= f32::from(height) / 3.0 + 1.0);
 }
+
+#[test]
+fn dressing_a_slot_lists_its_parts_on_hand_six_at_a_time() {
+    let mut tui = stocked();
+    let unders = [
+        part(ToyPart::Feet, Paint::Coral),
+        part(ToyPart::SmallBoots, Paint::Cocoa),
+        part(ToyPart::Boots, Paint::Cocoa),
+        part(ToyPart::Boots, Paint::Cocoa),
+        part(ToyPart::Treads, Paint::Lime),
+        part(ToyPart::VentralFin, Paint::Sky),
+        part(ToyPart::Wheels, Paint::Cherry),
+    ];
+    for fitted in unders {
+        tui.app.casino.toybox.add(fitted);
+    }
+    tui.run("/toybox");
+    tui.select("Pip");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Down);
+    tui.key(KeyCode::Down);
+    let screen = tui.screen();
+    screen.expect_find("Under parts");
+    screen.expect_find("• -");
+    screen.expect_find("Cocoa Small Boots");
+    screen.expect_absent("Lime Treads");
+    for _ in 0..4 {
+        tui.key(KeyCode::Right);
+    }
+    let screen = tui.screen();
+    let row = screen
+        .text()
+        .lines()
+        .find(|line| line.contains("• Cocoa Boots"))
+        .expect("the chosen row")
+        .to_string();
+    assert!(row.contains("×2"), "{row}");
+    for _ in 0..3 {
+        tui.key(KeyCode::Right);
+    }
+    let screen = tui.screen();
+    screen.expect_find("• Lime Treads");
+    screen.expect_find("Coral Feet");
+    screen.expect_absent("Sky Ventral Fin");
+}

@@ -214,7 +214,11 @@ fn toybox(dir: &Path) {
     }
     for (part, paint) in [
         (ToyPart::Rotor, Paint::Mint),
+        (ToyPart::Antenna, Paint::Lemon),
+        (ToyPart::SmallBoots, Paint::Lemon),
+        (ToyPart::Boots, Paint::Cocoa),
         (ToyPart::Wheels, Paint::Charcoal),
+        (ToyPart::Treads, Paint::Lime),
         (ToyPart::Rocket, Paint::Cherry),
     ] {
         tui.app.casino.toybox.add(FittedPart { part, paint });
@@ -224,11 +228,17 @@ fn toybox(dir: &Path) {
     tui.select("Pip");
     tui.key(KeyCode::Enter);
     tui.record(10, 2, "edit");
-    for _ in 0..3 {
-        tui.key(KeyCode::Down);
+    tui.key(KeyCode::Down);
+    tui.key(KeyCode::Right);
+    tui.record(16, 2, "part");
+    tui.key(KeyCode::Down);
+    for _ in 0..4 {
         tui.key(KeyCode::Right);
         tui.record(16, 2, "part");
     }
+    tui.key(KeyCode::Down);
+    tui.key(KeyCode::Right);
+    tui.record(16, 2, "part");
     tui.key(KeyCode::Enter);
     tui.record(20, 2, "saved");
 }
