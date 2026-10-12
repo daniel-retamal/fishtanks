@@ -6,6 +6,7 @@ use ratatui::style::Color;
 use super::art::{BOXFISH, CRABFISH, HAMMERFISH, OCTOPUSFISH, SEAHORSEFISH, SHOALFISH, SNAILFISH};
 use super::figure::Figure;
 use super::mutations::Mutation;
+use crate::dungeon::tables::species::DeepRole;
 use crate::economy::{Money, Purchasable, Rarity, Sellable};
 use crate::entities::food::{FOOD_BUY_PRICE, FOOD_WEIGHT_GAIN_G};
 use crate::loot::{CashValue, JUNK_OUTLINE, StockItem};
@@ -542,6 +543,7 @@ pub struct SpeciesConfig {
     pub zoomie_bubble_color: Tint,
     pub flavour: Flavour,
     pub appraisal: Option<Appraisal>,
+    pub deep: DeepRole,
     pub sizes: [usize; 4],
     pub weight_base: [u32; 4],
     pub weight_cap: [u32; 4],
@@ -998,6 +1000,7 @@ fn standard_config(
         zoomie_bubble_color: Tint::Plain,
         flavour: ORDINARY_FLAVOUR,
         appraisal: None,
+        deep: DeepRole::Schooling,
         sizes,
         weight_base: STD_WEIGHT_BASE,
         weight_cap: STD_WEIGHT_CAP,
@@ -1048,6 +1051,7 @@ fn fixed_config(
         zoomie_bubble_color: Tint::Plain,
         flavour: ORDINARY_FLAVOUR,
         appraisal: None,
+        deep: DeepRole::Schooling,
         sizes,
         weight_base: STD_WEIGHT_BASE,
         weight_cap: STD_WEIGHT_CAP,
@@ -1233,6 +1237,7 @@ impl FishSpecies {
                     zoomie_bubble_color: Tint::Plain,
                     flavour: ORDINARY_FLAVOUR,
                     appraisal: None,
+                    deep: DeepRole::Undead,
                     sizes,
                     weight_base: STD_WEIGHT_BASE,
                     weight_cap: STD_WEIGHT_CAP,
@@ -1260,6 +1265,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.zoomie = Zoomie::Vertical;
+                config.deep = DeepRole::Sting;
                 config
             }
             Turbofish => {
@@ -1283,31 +1289,36 @@ impl FishSpecies {
                     Rare,
                 );
                 config.sizes = [2, 2, 2, 2];
+                config.deep = DeepRole::Afterburner;
                 config
             }
-            Koi => standard_config(
-                "Koi",
-                BodyChars {
-                    mouth_left: '>',
-                    mouth_right: '<',
-                    eye_left: EYE_ROUND,
-                    eye_right: EYE_ROUND,
-                    body_left: BODY_CURLY.left_body,
-                    wave_left: BODY_CURLY.left_wave,
-                    body_right: BODY_CURLY.right_body,
-                    wave_right: BODY_CURLY.right_wave,
-                    tail: TailKind::Swaying {
-                        left: TAIL_WAVE_LEFT,
-                        right: TAIL_WAVE_RIGHT,
-                        wave: TAIL_EQUAL,
+            Koi => {
+                let mut config = standard_config(
+                    "Koi",
+                    BodyChars {
+                        mouth_left: '>',
+                        mouth_right: '<',
+                        eye_left: EYE_ROUND,
+                        eye_right: EYE_ROUND,
+                        body_left: BODY_CURLY.left_body,
+                        wave_left: BODY_CURLY.left_wave,
+                        body_right: BODY_CURLY.right_body,
+                        wave_right: BODY_CURLY.right_wave,
+                        tail: TailKind::Swaying {
+                            left: TAIL_WAVE_LEFT,
+                            right: TAIL_WAVE_RIGHT,
+                            wave: TAIL_EQUAL,
+                        },
                     },
-                },
-                &KOI_PALETTE,
-                Patchy,
-                0.07,
-                (1.5, 3.0),
-                Rare,
-            ),
+                    &KOI_PALETTE,
+                    Patchy,
+                    0.07,
+                    (1.5, 3.0),
+                    Rare,
+                );
+                config.deep = DeepRole::Upstream;
+                config
+            }
             Carpin => standard_config(
                 "Carpin",
                 standard_with(
@@ -1338,6 +1349,7 @@ impl FishSpecies {
                 config.habitat = Habitat::Native(TankKind::Hell);
                 config.eye_color = Some(LIGHT_YELLOW);
                 config.flavour = CASH_FLAVOUR;
+                config.deep = DeepRole::Greed;
                 config
             }
             Holyfish => {
@@ -1356,6 +1368,7 @@ impl FishSpecies {
                 config.markable = false;
                 config.eye_color = Some(LIGHT_YELLOW);
                 config.flavour = HOLY_FLAVOUR;
+                config.deep = DeepRole::Lust;
                 config
             }
             Botfish => {
@@ -1374,6 +1387,7 @@ impl FishSpecies {
                 config.markable = false;
                 config.programmable = true;
                 config.flavour = BOT_FLAVOUR;
+                config.deep = DeepRole::Sloth;
                 config
             }
             Cheatfish => {
@@ -1392,6 +1406,7 @@ impl FishSpecies {
                 config.eyes = CHEATFISH_EYES;
                 config.eye_color = Some(RED);
                 config.flavour = CHEAT_FLAVOUR;
+                config.deep = DeepRole::Pride;
                 config
             }
             Toyfish => {
@@ -1412,6 +1427,7 @@ impl FishSpecies {
                 config.zoomie = Zoomie::None;
                 config.weight_cap = [0; 4];
                 config.sell_cap = [0; 4];
+                config.deep = DeepRole::Toy;
                 config
             }
             Junkfish => {
@@ -1428,6 +1444,7 @@ impl FishSpecies {
                 config.habitat = Habitat::Junkpile;
                 config.body_fill = BodyFill::Junk;
                 config.appraisal = Some(JUNKFISH_APPRAISAL);
+                config.deep = DeepRole::Junk;
                 config
             }
             Mutantfish => SpeciesConfig {
@@ -1462,6 +1479,7 @@ impl FishSpecies {
                 zoomie_bubble_color: Tint::Body,
                 flavour: MUTANT_FLAVOUR,
                 appraisal: None,
+                deep: DeepRole::Wrath,
                 sizes: LEGENDARY_SIZES,
                 weight_base: [0, 250, 0, 0],
                 weight_cap: [0; 4],
@@ -1482,6 +1500,7 @@ impl FishSpecies {
                 config.habitat = Habitat::Native(TankKind::Candy);
                 config.zoomie_bubble_color = Tint::Fixed(PINK);
                 config.flavour = CANDY_FLAVOUR;
+                config.deep = DeepRole::Gluttony;
                 config
             }
             Snailfish => {
@@ -1495,6 +1514,7 @@ impl FishSpecies {
                 config.locomotion = Locomotion::Glass;
                 config.zoomie = Zoomie::Still;
                 config.trail = Some(Tint::Fixed(GRAY));
+                config.deep = DeepRole::Shell;
                 config
             }
             Slugfish => {
@@ -1519,6 +1539,7 @@ impl FishSpecies {
                 config.locomotion = Locomotion::Glass;
                 config.zoomie = Zoomie::None;
                 config.trail = Some(Tint::Body);
+                config.deep = DeepRole::Glitter;
                 config
             }
             Starfish => {
@@ -1535,6 +1556,7 @@ impl FishSpecies {
                 config.zoomie = Zoomie::None;
                 config.habit = Some(Habit::Twinkle);
                 config.flavour = SKY_FLAVOUR;
+                config.deep = DeepRole::Regrow;
                 config
             }
             Crabfish => {
@@ -1546,6 +1568,7 @@ impl FishSpecies {
                 config.body_fill = BodyFill::Junk;
                 config.keepsake = Some(StockItem::Junk);
                 config.eye_color = Some(WHITE);
+                config.deep = DeepRole::HermitShell;
                 config
             }
             Lenguado => {
@@ -1562,6 +1585,7 @@ impl FishSpecies {
                 config.eye_color = Some(WHITE);
                 config.locomotion = Locomotion::Floor;
                 config.skin = Skin::Camouflage;
+                config.deep = DeepRole::Camouflage;
                 config
             }
             Stonefish => {
@@ -1589,6 +1613,7 @@ impl FishSpecies {
                 config.habit = Some(Habit::Ambush);
                 config.body_fill = BodyFill::Stones;
                 config.eye_at = EyeAt::Middle;
+                config.deep = DeepRole::Ambush;
                 config
             }
             Pejesapo => {
@@ -1614,6 +1639,7 @@ impl FishSpecies {
                 config.locomotion = Locomotion::Floor;
                 config.zoomie = Zoomie::Hop;
                 config.born_with = &[Mutation::Feet];
+                config.deep = DeepRole::Hop;
                 config
             }
             Boxfish => {
@@ -1622,6 +1648,7 @@ impl FishSpecies {
                 config.locomotion = Locomotion::Bounce;
                 config.zoomie = Zoomie::None;
                 config.skin = Skin::Cycle(Cycle::OnBounce);
+                config.deep = DeepRole::Ricochet;
                 config
             }
             Seahorsefish => {
@@ -1634,6 +1661,7 @@ impl FishSpecies {
                 );
                 config.zoomie = Zoomie::Vertical;
                 config.habit = Some(Habit::Pair);
+                config.deep = DeepRole::Heart;
                 config
             }
             Eelfish => {
@@ -1658,6 +1686,7 @@ impl FishSpecies {
                 config.sizes = EELFISH_SIZES;
                 config.locomotion = Locomotion::Through;
                 config.habit = Some(Habit::Gape);
+                config.deep = DeepRole::Lurk;
                 config
             }
             Flyingfish => {
@@ -1672,6 +1701,7 @@ impl FishSpecies {
                 );
                 config.zoomie = Zoomie::Glide;
                 config.flavour = SKY_FLAVOUR;
+                config.deep = DeepRole::Glide;
                 config
             }
             Swordfish => {
@@ -1687,6 +1717,7 @@ impl FishSpecies {
                 config.zoomie = Zoomie::Lunge;
                 config.habit = Some(Habit::Duel);
                 config.born_with = &[Mutation::Bill];
+                config.deep = DeepRole::Duelist;
                 config
             }
             Tollo => {
@@ -1701,6 +1732,7 @@ impl FishSpecies {
                 );
                 config.habit = Some(Habit::Chase);
                 config.born_with = &[Mutation::DorsalFin];
+                config.deep = DeepRole::Chase;
                 config
             }
             Butterflyfish => {
@@ -1724,6 +1756,7 @@ impl FishSpecies {
                 );
                 config.eye_color = Some(DARK_GRAY);
                 config.habit = Some(Habit::Backwards);
+                config.deep = DeepRole::FalseEye;
                 config
             }
             Lanternfish => {
@@ -1738,6 +1771,7 @@ impl FishSpecies {
                 );
                 config.eye_color = Some(WHITE);
                 config.born_with = &[Mutation::Lure];
+                config.deep = DeepRole::Lantern;
                 config
             }
             Fireflyfish => {
@@ -1751,6 +1785,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.habit = Some(Habit::Sync);
+                config.deep = DeepRole::Flash;
                 config
             }
             Bagre => {
@@ -1765,6 +1800,7 @@ impl FishSpecies {
                 );
                 config.born_with = &[Mutation::NightOwl];
                 config.flavour = CAT_FLAVOUR;
+                config.deep = DeepRole::NineLives;
                 config
             }
             Moonfish => {
@@ -1787,6 +1823,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.born_with = &[Mutation::DorsalFin, Mutation::VentralFin, Mutation::Lunar];
+                config.deep = DeepRole::Eclipse;
                 config
             }
             Parrotfish => {
@@ -1806,6 +1843,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.habit = Some(Habit::Echo);
+                config.deep = DeepRole::Echo;
                 config
             }
             Mimicfish => {
@@ -1819,6 +1857,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.habit = Some(Habit::Shadow);
+                config.deep = DeepRole::Mime;
                 config
             }
             Shyfish => {
@@ -1832,6 +1871,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.habit = Some(Habit::Shy);
+                config.deep = DeepRole::Hide;
                 config
             }
             Blindfish => {
@@ -1846,6 +1886,7 @@ impl FishSpecies {
                 );
                 config.eyes = NO_EYES;
                 config.habit = Some(Habit::Blind);
+                config.deep = DeepRole::Contact;
                 config
             }
             Pufferfish => {
@@ -1859,6 +1900,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.born_with = &[Mutation::Puff];
+                config.deep = DeepRole::Puffer;
                 config
             }
             Octopusfish => {
@@ -1873,6 +1915,7 @@ impl FishSpecies {
                 config.zoomie = Zoomie::Ink;
                 config.skin = Skin::Cycle(Cycle::OnClock);
                 config.habit = Some(Habit::Escape);
+                config.deep = DeepRole::Escape;
                 config
             }
             Glassfish => {
@@ -1886,15 +1929,20 @@ impl FishSpecies {
                     Rare,
                 );
                 config.skin = Skin::SeeThrough;
+                config.deep = DeepRole::SeeThrough;
                 config
             }
-            Shoalfish => figure_config(
-                "Shoalfish",
-                &SHOALFISH,
-                &SHOALFISH_PALETTE,
-                (3.0, 5.0),
-                Rare,
-            ),
+            Shoalfish => {
+                let mut config = figure_config(
+                    "Shoalfish",
+                    &SHOALFISH,
+                    &SHOALFISH_PALETTE,
+                    (3.0, 5.0),
+                    Rare,
+                );
+                config.deep = DeepRole::Shoal;
+                config
+            }
             Hammerfish => {
                 let mut config = figure_config(
                     "Hammerfish",
@@ -1904,6 +1952,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.eye_color = Some(WHITE);
+                config.deep = DeepRole::Electrosense;
                 config
             }
             Rabbitfish => {
@@ -1917,6 +1966,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.born_with = &[Mutation::Ear];
+                config.deep = DeepRole::Lucky;
                 config
             }
             Lionfish => {
@@ -1930,6 +1980,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.born_with = &[Mutation::Spikes];
+                config.deep = DeepRole::Venom;
                 config
             }
             Pencilfish => {
@@ -1953,6 +2004,7 @@ impl FishSpecies {
                 );
                 config.eye_color = Some(DARK_GRAY);
                 config.trail = Some(Tint::Fixed(DARK_GRAY));
+                config.deep = DeepRole::Cartographer;
                 config
             }
             Kissfish => {
@@ -1966,6 +2018,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.habit = Some(Habit::Pair);
+                config.deep = DeepRole::Kiss;
                 config
             }
             Rustfish => {
@@ -1979,6 +2032,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.keepsake = Some(StockItem::Junk);
+                config.deep = DeepRole::Corrode;
                 config
             }
             Sawfish => {
@@ -1992,6 +2046,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.sizes = SAWFISH_SIZES;
+                config.deep = DeepRole::Saw;
                 config
             }
             Jurel => standard_config(
@@ -2330,6 +2385,7 @@ impl FishSpecies {
                 zoomie_bubble_color: Tint::Plain,
                 flavour: ORDINARY_FLAVOUR,
                 appraisal: None,
+                deep: DeepRole::Unfish,
                 sizes: COMMON_SIZES,
                 weight_base: [1; 4],
                 weight_cap: [0; 4],

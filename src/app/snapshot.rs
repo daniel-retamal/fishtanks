@@ -66,6 +66,8 @@ pub struct SaveFile {
     lessons: Lessons,
     #[serde(default)]
     casino: crate::casino::Casino,
+    #[serde(default)]
+    dungeon: crate::dungeon::Dungeon,
 }
 
 impl SaveFile {
@@ -101,6 +103,7 @@ impl SaveFile {
             catch: None,
             lessons: Lessons::default(),
             casino: crate::casino::Casino::default(),
+            dungeon: crate::dungeon::Dungeon::default(),
         }
     }
 
@@ -180,6 +183,7 @@ impl App {
             newer_release: _,
             lessons,
             casino,
+            dungeon,
         } = self;
         let food_in_the_water: u32 = tanks.iter().map(TankRecord::food_in_the_water).sum();
         let catch = match active_overlay {
@@ -222,6 +226,7 @@ impl App {
                 on_the_table: self.fish_on_the_table(),
                 ..casino.clone()
             },
+            dungeon: dungeon.clone(),
         }
     }
 
@@ -270,6 +275,7 @@ impl App {
                 on_the_table: Vec::new(),
                 ..save.casino.clone()
             },
+            dungeon: save.dungeon,
         };
         app.hang_the_souls();
         app.walk_away_from_the_table(&save.casino.on_the_table);

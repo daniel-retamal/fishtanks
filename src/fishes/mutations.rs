@@ -1052,6 +1052,17 @@ impl Fish {
         }
     }
 
+    pub fn eyes_a_side(&self) -> usize {
+        let drawn = self.mutant.as_ref().map_or(0, |mutant| {
+            mutant.left_eyes.len().max(mutant.right_eyes.len())
+        });
+        let config = self.species.config();
+        match (config.body, self.mutant.is_some()) {
+            (BodyTemplate::Standard(_) | BodyTemplate::Alternating(_, _), true) => drawn,
+            _ => drawn.max(config.eyes),
+        }
+    }
+
     fn natural_body_size(&self) -> usize {
         match self.species.config().body {
             BodyTemplate::Fixed { left, .. } if self.mutant.is_none() => left

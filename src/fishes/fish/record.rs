@@ -8,6 +8,7 @@ use super::{
     DIRECTION_TIMER_MAX, DIRECTION_TIMER_MIN, DY_FRACTION, Direction, Fish, FishState,
     ZOOMIE_INITIAL_TIMER_MAX, ZOOMIE_INITIAL_TIMER_MIN, random_heading,
 };
+use crate::dungeon::life::DeepLife;
 use crate::entities::components::{Position, SwayState};
 use crate::fishes::botfish::BotfishState;
 use crate::fishes::mutant::{MutantState, MutationRecord};
@@ -59,6 +60,8 @@ pub struct FishRecord {
     placement: Option<Placement>,
     #[serde(default, skip_serializing_if = "is_default")]
     leeched: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    deep: Option<Box<DeepLife>>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -106,6 +109,7 @@ impl From<Fish> for FishRecord {
             sky: _,
             habits: _,
             leeched,
+            deep,
             direction_timer: _,
             zoomie_timer: _,
             zoomed_secs: _,
@@ -134,6 +138,7 @@ impl From<Fish> for FishRecord {
             pending_rad_mutations,
             placement,
             leeched,
+            deep,
         }
     }
 }
@@ -191,6 +196,7 @@ impl From<FishRecord> for Fish {
             sky: Sky::default(),
             habits: Box::default(),
             leeched: record.leeched,
+            deep: record.deep,
             direction_timer: rng.random_range(DIRECTION_TIMER_MIN..DIRECTION_TIMER_MAX),
             zoomie_timer: rng.random_range(ZOOMIE_INITIAL_TIMER_MIN..ZOOMIE_INITIAL_TIMER_MAX),
             zoomed_secs: 0.0,

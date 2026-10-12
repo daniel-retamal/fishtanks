@@ -148,6 +148,7 @@ pub struct App {
     newer_release: bool,
     lessons: Lessons,
     pub casino: crate::casino::Casino,
+    pub dungeon: crate::dungeon::Dungeon,
 }
 
 impl Default for App {

@@ -26,6 +26,7 @@ use super::unfish::{
 };
 use crate::colors::{PINK, WHITE};
 use crate::consumable::{COFFEE_SPEED_MULT, COFFEE_SWAY_MULT, COFFEE_ZOOMIE_DT_MULT};
+use crate::dungeon::life::DeepLife;
 use crate::economy::Money;
 use crate::entities::components::{Position, SwayState, Velocity, tick_sway};
 use crate::entities::glistening::{GlisteningMode, color_for_glisten, derive_glistening_palette};
@@ -197,6 +198,7 @@ pub struct Fish {
     pub sky: Sky,
     pub habits: Box<Habits>,
     pub leeched: bool,
+    pub deep: Option<Box<DeepLife>>,
     direction_timer: u32,
     zoomie_timer: f32,
     zoomed_secs: f32,
@@ -328,6 +330,7 @@ impl Fish {
             sky: Sky::default(),
             habits: Box::default(),
             leeched: false,
+            deep: None,
         };
         grow_birthmarks(&mut fish, rng);
         fish.fit_the_toy();
@@ -379,6 +382,7 @@ impl Fish {
             sky: Sky::default(),
             habits: Box::default(),
             leeched: false,
+            deep: None,
         };
         grow_birthmarks(&mut fish, rng);
         fish.fit_the_toy();
@@ -444,6 +448,7 @@ impl Fish {
             sky: Sky::default(),
             habits: Box::default(),
             leeched: false,
+            deep: None,
         };
         if !is_multi_row(kind) && kind != UnfishKind::Worm {
             fish.display_width = fish.unfish_line_width();
