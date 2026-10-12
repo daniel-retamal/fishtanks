@@ -10,7 +10,7 @@ use crate::fishes::fish::Fish;
 use crate::fishes::species::FishSpecies;
 
 const TRAITS: &str = include_str!("../traits.rs");
-const ENGINE: [&str; 9] = [
+const ENGINE: [&str; 11] = [
     include_str!("../battle.rs"),
     include_str!("../rules.rs"),
     include_str!("../passives.rs"),
@@ -20,6 +20,8 @@ const ENGINE: [&str; 9] = [
     include_str!("../fighter.rs"),
     include_str!("../floor.rs"),
     include_str!("../bestiary/mod.rs"),
+    include_str!("../reveal.rs"),
+    include_str!("../info.rs"),
 ];
 const FIGHT_ARM: &str = "=> Reader::Fight,";
 const READER: &str = "pub fn reader(self) -> Reader {";
@@ -97,6 +99,8 @@ fn fight(species: &[FishSpecies]) -> Battle {
         ambushed: false,
         haunts: Vec::new(),
         scale: Scale::PLAIN,
+        known: Vec::new(),
+        every_graeae: false,
     };
     let foes = vec![Fighter::of_enemy(&DUMMY, 1, Scale::PLAIN)];
     let mut battle = Battle::new(party(species), foes, setup);

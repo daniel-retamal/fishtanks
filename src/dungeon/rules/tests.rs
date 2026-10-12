@@ -30,6 +30,8 @@ fn setup(floor: u32, haunts: Vec<Ghost>) -> BattleSetup {
         ambushed: false,
         haunts,
         scale: Scale::PLAIN,
+        known: Vec::new(),
+        every_graeae: false,
     }
 }
 
@@ -276,7 +278,7 @@ fn the_court_swims_beside_the_millalobo() {
     let (battle, _) = against("The Millalobo");
     let sharks = battle
         .side(Side::Foes)
-        .filter(|&i| battle.fighters[i].name == COURTIER)
+        .filter(|&i| battle.fighters[i].base == COURTIER)
         .count();
     assert_eq!(sharks, usize::from(COURTIERS));
 }

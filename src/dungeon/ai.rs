@@ -118,7 +118,7 @@ fn sensible(battle: &Battle, actor: usize, skill: &Skill) -> bool {
                 && battle
                     .standing(side)
                     .iter()
-                    .filter(|&&i| battle.fighters[i].name == *enemy)
+                    .filter(|&&i| battle.fighters[i].base == *enemy)
                     .count()
                     < MAX_SUMMONED
         }

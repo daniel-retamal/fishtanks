@@ -73,4 +73,5 @@ pub struct Beat {
     pub actor: Option<usize>,
     pub pause: Pause,
     pub views: Vec<View>,
+    pub order: Vec<usize>,
 }

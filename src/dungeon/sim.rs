@@ -249,6 +249,8 @@ impl Dive {
             ambushed: false,
             haunts: Vec::new(),
             scale: self.scale,
+            known: Vec::new(),
+            every_graeae: false,
         };
         let mut battle = Battle::new(self.party.clone(), foes, setup);
         for (member, wound) in self.wounds.iter().enumerate() {

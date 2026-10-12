@@ -55,6 +55,8 @@ fn setup(difficulty: Difficulty, stakes: Stakes, seed: u64) -> BattleSetup {
         ambushed: false,
         haunts: Vec::new(),
         scale: Scale::PLAIN,
+        known: Vec::new(),
+        every_graeae: false,
     }
 }
 
@@ -374,6 +376,44 @@ fn every_enemy_in_the_bestiary_can_be_fought_to_the_end() {
                     fighter.name,
                     spec.name
                 );
+            }
+        }
+    }
+}
+
+const BEATEN: &str = " is beaten.";
+const STRIKE_VERBS: [&str; 4] = ["bites", "again", "hits", "through"];
+const PROBED_DEPTHS: u32 = 3;
+
+#[test]
+fn a_hit_is_told_before_what_it_causes() {
+    for seed in 0..SEEDS {
+        for depth in 1..=PROBED_DEPTHS {
+            let mut rng = SmallRng::seed_from_u64(seed);
+            let party = super::super::sim::Tier::Starter.party(&mut rng);
+            let foes = super::super::floor::encounter(
+                depth,
+                super::super::floor::scale_for(depth),
+                &[],
+                &mut rng,
+            );
+            let setup = BattleSetup {
+                floor: depth,
+                ..setup(Difficulty::Normal, Stakes::Encounter, seed)
+            };
+            let mut battle = Battle::new(party, foes, setup);
+            bite_the_first_foe(&mut battle);
+            let mut beaten: Vec<String> = Vec::new();
+            for (at, line) in battle.log.iter().enumerate() {
+                let late = beaten.iter().any(|name| {
+                    STRIKE_VERBS
+                        .iter()
+                        .any(|verb| line.text.contains(&format!("{verb} {name} for")))
+                });
+                assert!(!late, "seed {seed}: {:#?}", &battle.log[..=at]);
+                if let Some((name, _)) = line.text.split_once(BEATEN) {
+                    beaten.push(name.to_string());
+                }
             }
         }
     }

@@ -174,8 +174,8 @@ fn junk(battle: &mut Battle, target: usize) {
     match battle.fighters[target].side {
         Side::Foes => {
             let thrower = battle.current.unwrap_or(target);
-            battle.harm(thrower, target, JUNK_THROW, DamageKind::Skill);
             battle.note(format!("Junk hits {name} for {JUNK_THROW}."), Tone::Hit);
+            battle.harm(thrower, target, JUNK_THROW, DamageKind::Skill);
         }
         Side::Party if battle.fighters[target].has(Trait::JunkArmour) => {
             let f = &mut battle.fighters[target];

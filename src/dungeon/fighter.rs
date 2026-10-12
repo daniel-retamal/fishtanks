@@ -7,7 +7,7 @@ use super::traits::{Haunt, Trait};
 pub const ENEMY_START_BUBBLES: u32 = 1;
 const SCALE_PERCENT: u32 = 100;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Ghost {
     pub name: String,
     pub haunt: Haunt,
@@ -53,6 +53,7 @@ pub enum Origin {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fighter {
     pub name: String,
+    pub base: String,
     pub side: Side,
     pub origin: Origin,
     pub rank: Option<Rank>,
@@ -95,12 +96,16 @@ pub struct Fighter {
     pub lap: Vec<u32>,
     pub gathered: u32,
     pub hid_in_round: u32,
+    pub ghost: Option<Ghost>,
+    pub foresight: Option<super::reveal::Foresight>,
+    pub disguise: Option<usize>,
 }
 
 impl Fighter {
     pub fn of_kit(kit: &Kit, member: usize) -> Fighter {
         Fighter {
             name: kit.name.clone(),
+            base: kit.name.clone(),
             side: Side::Party,
             origin: Origin::Fish { member },
             rank: None,
@@ -143,6 +148,9 @@ impl Fighter {
             lap: Vec::new(),
             gathered: 0,
             hid_in_round: 0,
+            ghost: None,
+            foresight: None,
+            disguise: None,
         }
     }
 
@@ -151,6 +159,7 @@ impl Fighter {
         let hp = scale.hp(base_hp).max(1);
         Fighter {
             name: spec.name.to_string(),
+            base: spec.name.to_string(),
             side: Side::Foes,
             origin: Origin::Enemy { spec },
             rank: Some(spec.rank),
@@ -193,6 +202,9 @@ impl Fighter {
             lap: Vec::new(),
             gathered: 0,
             hid_in_round: 0,
+            ghost: None,
+            foresight: None,
+            disguise: None,
         }
     }
 
@@ -200,11 +212,13 @@ impl Fighter {
         let mut fighter = Fighter::of_enemy(spec, floor, scale);
         let hp = scale.hp(ghost.vigor).max(1);
         fighter.name = format!("{} {}", spec.name, ghost.name);
+        fighter.base = fighter.name.clone();
         fighter.hp = hp;
         fighter.max_hp = hp;
         fighter.last_hp = hp;
         fighter.bite = scale.bite(ghost.bite);
         fighter.speed = ghost.speed.max(1);
+        fighter.ghost = Some(ghost.clone());
         fighter
     }
 

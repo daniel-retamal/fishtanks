@@ -200,6 +200,7 @@ static COMMAND_NAMES: &[(&str, Clearance)] = &[
     ("console", Clearance::Player),
     ("consume", Clearance::Player),
     ("cowsay", Clearance::Player),
+    ("dungeon", Clearance::Player),
     ("etch", Clearance::Player),
     ("exit", Clearance::Player),
     ("expand", Clearance::God),
@@ -1446,6 +1447,7 @@ pub enum Action {
     Fishtanks,
     Ledger,
     Toybox,
+    Dungeon,
     Casino(Option<Game>),
     Circuit,
     Foundry,
@@ -1809,6 +1811,7 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
         "fishtanks" => Action::Fishtanks,
         "ledger" => Action::Ledger,
         "toybox" => Action::Toybox,
+        "dungeon" => Action::Dungeon,
         "casino" => match rest.trim() {
             "" => Action::Casino(None),
             word => Game::parse(word).map_or(Action::Unknown, |game| Action::Casino(Some(game))),
@@ -1863,6 +1866,7 @@ impl Action {
             | Fishtanks
             | Ledger
             | Toybox
+            | Dungeon
             | Casino(_)
             | Circuit
             | Foundry

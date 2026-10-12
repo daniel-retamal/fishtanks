@@ -1,5 +1,6 @@
 use rand::rngs::SmallRng;
 use rand::{RngExt, SeedableRng};
+use serde::{Deserialize, Serialize};
 
 use crate::fishes::fish::Fish;
 use crate::fishes::toy::Line;
@@ -11,6 +12,7 @@ use super::fighter::{Fighter, Ghost, Scale, Side};
 use super::items::Pack;
 use super::kit::Kit;
 use super::passives;
+use super::reveal;
 use super::rules::{self, Fate, Prayer};
 use super::skill::{Price, Skill};
 use super::traits::{Haunt, Trait};
@@ -55,7 +57,7 @@ pub enum Phase {
     Over(Outcome),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Stakes {
     Encounter,
     Den,
@@ -68,7 +70,7 @@ impl Stakes {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Choice {
     Bite(usize),
     Skill { skill: usize, target: Option<usize> },
@@ -88,6 +90,8 @@ pub struct BattleSetup {
     pub ambushed: bool,
     pub haunts: Vec<Ghost>,
     pub scale: Scale,
+    pub known: Vec<String>,
+    pub every_graeae: bool,
 }
 
 #[derive(Clone)]
@@ -116,6 +120,9 @@ pub struct Battle {
     pub junk_found: u32,
     pub ambush_round: u32,
     pub lagging: Vec<(usize, Choice)>,
+    pub turn: Option<usize>,
+    pub sure: bool,
+    named: usize,
     beats: Vec<Beat>,
 }
 
@@ -123,6 +130,13 @@ pub struct Strike {
     pub landed: bool,
     pub damage: u32,
     pub crit: bool,
+    pub at: Mark,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Mark {
+    log: usize,
+    beats: usize,
 }
 
 impl Battle {
@@ -158,11 +172,15 @@ impl Battle {
             junk_found: 0,
             ambush_round: 0,
             lagging: Vec::new(),
+            turn: None,
+            sure: false,
+            named: 0,
             beats: Vec::new(),
         }
     }
 
     pub fn begin(&mut self) -> Vec<Beat> {
+        self.distinguish();
         let count = self.fighters.len() as u64;
         for index in 0..self.fighters.len() {
             let fighter = &self.fighters[index];
@@ -185,6 +203,8 @@ impl Battle {
         self.say(format!("Round {}", self.round), Tone::Round, Pause::Round);
         rules::assemble(self);
         passives::assemble(self);
+        reveal::assemble(self);
+        reveal::foresee(self);
         self.advance();
         std::mem::take(&mut self.beats)
     }
@@ -284,7 +304,10 @@ impl Battle {
             .map(|(i, f)| (i, f.ready_at))
             .collect();
         let mut order = Vec::with_capacity(length);
-        if let Phase::Choosing(actor) = self.phase {
+        if let Some(actor) = self
+            .turn
+            .filter(|&actor| self.fighters[actor].in_the_fight())
+        {
             order.push(actor);
         }
         if clocks.is_empty() {
@@ -369,7 +392,28 @@ impl Battle {
         TURN_LENGTH / u64::from(speed)
     }
 
+    fn distinguish(&mut self) {
+        self.named = self.fighters.len();
+        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for fighter in &self.fighters {
+            *counts.entry(fighter.base.clone()).or_default() += 1;
+        }
+        let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for fighter in &mut self.fighters {
+            if counts[&fighter.base] < 2 {
+                fighter.name = fighter.base.clone();
+                continue;
+            }
+            let place = seen.entry(fighter.base.clone()).or_default();
+            fighter.name = format!("{} {}", fighter.base, letter(*place));
+            *place += 1;
+        }
+    }
+
     fn say(&mut self, text: impl Into<String>, tone: Tone, pause: Pause) {
+        if self.fighters.len() != self.named {
+            self.distinguish();
+        }
         let line = LogLine::new(text, tone);
         self.log.push(line.clone());
         self.beats.push(Beat {
@@ -377,11 +421,41 @@ impl Battle {
             actor: self.current,
             pause,
             views: self.views(),
+            order: self.turn_order(TURN_BAR_LENGTH),
         });
     }
 
     pub fn note(&mut self, text: impl Into<String>, tone: Tone) {
         self.say(text, tone, Pause::Result);
+    }
+
+    pub fn mark(&self) -> Mark {
+        Mark {
+            log: self.log.len(),
+            beats: self.beats.len(),
+        }
+    }
+
+    pub fn note_at(&mut self, at: Mark, text: impl Into<String>, tone: Tone) -> Mark {
+        if at.log >= self.log.len() || at.beats >= self.beats.len() {
+            self.note(text, tone);
+            return self.mark();
+        }
+        let line = LogLine::new(text, tone);
+        self.log.insert(at.log, line.clone());
+        let after = &self.beats[at.beats];
+        let beat = Beat {
+            line: Some(line),
+            actor: self.current,
+            pause: Pause::Result,
+            views: after.views.clone(),
+            order: after.order.clone(),
+        };
+        self.beats.insert(at.beats, beat);
+        Mark {
+            log: at.log + 1,
+            beats: at.beats + 1,
+        }
     }
 
     fn think(&mut self, actor: usize) {
@@ -390,6 +464,7 @@ impl Battle {
             actor: Some(actor),
             pause: Pause::Think,
             views: self.views(),
+            order: self.turn_order(TURN_BAR_LENGTH),
         });
     }
 
@@ -426,6 +501,7 @@ impl Battle {
                 false => at + self.wait_of(actor),
             };
             self.current = Some(actor);
+            self.turn = Some(actor);
             if !self.start_turn(actor) {
                 self.end_turn(actor);
                 continue;
@@ -743,10 +819,12 @@ impl Battle {
             return;
         }
         rules::turn_ended(self, actor);
+        self.turn = None;
         if self.fighters[actor].side == Side::Foes && self.fighters[actor].standing() {
             let before = self.fighters[actor].mp;
             self.fighters[actor].gain_bubbles(1);
             self.announce_tell(actor, before);
+            reveal::foresee(self);
         }
         self.fighters[actor].last_hp = self.fighters[actor].hp;
         if self.phase == Phase::Choosing(actor) {
@@ -914,6 +992,7 @@ impl Battle {
             landed: false,
             damage: 0,
             crit: false,
+            at: self.mark(),
         };
         if self.passes_through(actor, target, kind) {
             return miss;
@@ -936,11 +1015,13 @@ impl Battle {
             * self.incoming_percent(actor, target, kind)
             / PERCENT;
         let mut damage = raw * percent / PERCENT;
+        let at = self.mark();
         damage = self.harm(actor, target, damage.max(1), kind);
         Strike {
             landed: true,
             damage,
             crit,
+            at,
         }
     }
 
@@ -966,11 +1047,10 @@ impl Battle {
             self.fighters[actor].clear_status(StatusKind::Sure);
             return true;
         }
-        let mut chance = super::skill::BASE_ACCURACY;
-        chance = chance.saturating_sub(attacker.status_amount(StatusKind::AccuracyDown));
-        if attacker.has_status(StatusKind::Blind) {
-            chance = chance * BLIND_MISS_PERCENT / PERCENT;
+        if self.sure {
+            return true;
         }
+        let chance = self.accuracy(actor);
         if self.rng.random_range(0..PERCENT) >= chance {
             return false;
         }
@@ -979,6 +1059,19 @@ impl Battle {
         }
         let dodge = t.dodge + self.shimmer_dodge(target);
         self.rng.random_range(0..PERCENT) >= dodge
+    }
+
+    pub fn accuracy(&self, actor: usize) -> u32 {
+        let attacker = &self.fighters[actor];
+        if attacker.has(Trait::Cyclops) || attacker.has(Trait::AllSeeing) {
+            return super::skill::SURE_ACCURACY;
+        }
+        let chance = super::skill::BASE_ACCURACY
+            .saturating_sub(attacker.status_amount(StatusKind::AccuracyDown));
+        match attacker.has_status(StatusKind::Blind) {
+            true => chance * BLIND_MISS_PERCENT / PERCENT,
+            false => chance,
+        }
     }
 
     fn shimmer_dodge(&self, target: usize) -> u32 {
@@ -1001,25 +1094,56 @@ impl Battle {
     }
 
     fn base_damage(&mut self, actor: usize, power: Power) -> u32 {
+        let (low, high) = self.spread(actor, power);
+        let roll = self.rng.random_range(low..=high.max(low));
+        (roll + PERCENT / 2) / PERCENT
+    }
+
+    pub fn damage_range(&self, actor: usize, power: Power) -> (u32, u32) {
+        let (low, high) = self.spread(actor, power);
+        (
+            (low + PERCENT / 2) / PERCENT,
+            (high + PERCENT / 2) / PERCENT,
+        )
+    }
+
+    fn spread(&self, actor: usize, power: Power) -> (u32, u32) {
         let extra = passives::wrath_bite(self, actor) + passives::ledger(self, actor);
         let attacker = &self.fighters[actor];
+        let fixed = |damage: u32| (damage * PERCENT, damage * PERCENT);
         match power {
             Power::Bite { percent } => {
                 let bite = enraged_bite(attacker) + extra;
-                let low = bite * percent * SPREAD_LOW_PERCENT / PERCENT;
-                let high = bite * percent * SPREAD_HIGH_PERCENT / PERCENT;
-                let roll = self.rng.random_range(low..=high.max(low));
-                (roll + PERCENT / 2) / PERCENT
+                (
+                    bite * percent * SPREAD_LOW_PERCENT / PERCENT,
+                    bite * percent * SPREAD_HIGH_PERCENT / PERCENT,
+                )
             }
-            Power::Flat(n) => attacker.scale.bite((n * self.strength / PERCENT).max(1)),
+            Power::Flat(n) => fixed(attacker.scale.bite((n * self.strength / PERCENT).max(1))),
             Power::PerVoice(n) => {
                 let side = attacker.side;
                 let voices = self
                     .side(side)
                     .filter(|&i| self.fighters[i].standing())
                     .count();
-                attacker.scale.bite(n * voices as u32)
+                fixed(attacker.scale.bite(n * voices as u32))
             }
+        }
+    }
+
+    pub fn crit_odds(&self, actor: usize, target: Option<usize>) -> (u32, u32) {
+        match target {
+            Some(target) => (
+                self.crit_chance(actor, target),
+                self.crit_times(actor, target),
+            ),
+            None => (
+                self.fighters[actor].crit,
+                match self.fighters[actor].has(Trait::Cyclops) {
+                    true => HARSH_CRIT_TIMES,
+                    false => CRIT_TIMES,
+                },
+            ),
         }
     }
 
@@ -1356,7 +1480,8 @@ impl Battle {
         let name = self.fighters[actor].name.clone();
         let target_name = self.fighters[target].name.clone();
         if !strike.landed {
-            self.note(
+            self.note_at(
+                strike.at,
                 format!("{name} {verb} at {target_name} and misses."),
                 Tone::Quiet,
             );
@@ -1367,13 +1492,15 @@ impl Battle {
             Side::Party => Tone::Hurt,
             Side::Foes => Tone::Hit,
         };
-        self.note(
+        let next = self.note_at(
+            strike.at,
             format!("{name} {verb} {target_name} for {}{crit}.", strike.damage),
             tone,
         );
         let rolling = self.fighters[target].rolling;
         if rolling > 0 && self.fighters[target].standing() {
-            self.note(
+            self.note_at(
+                next,
                 format!(
                     "{target_name} is rolling: {rolling} more will land at the start of its turn."
                 ),
@@ -1471,12 +1598,14 @@ impl Battle {
         }
         self.note(format!("{name} uses {}.", skill.name), Tone::Plain);
         let targets = self.reach(actor, skill.reach, target);
+        self.sure = skill.accuracy >= super::skill::SURE_ACCURACY;
         for effect in &skill.effects {
             self.apply(actor, *effect, &targets, skill);
             if self.settle_outcome_quietly() {
-                return;
+                break;
             }
         }
+        self.sure = false;
     }
 
     pub fn within_reach(&self, side: Side) -> Vec<usize> {
@@ -1626,9 +1755,11 @@ impl Battle {
             Effect::Drain(amount) => {
                 let amount = self.fighters[actor].scale.bite(amount);
                 for &target in targets {
+                    let at = self.mark();
                     let taken = self.harm(actor, target, amount, DamageKind::Skill);
                     let target_name = self.fighters[target].name.clone();
-                    self.note(
+                    self.note_at(
+                        at,
                         format!("{name} drains {taken} from {target_name}."),
                         Tone::Hurt,
                     );
@@ -1636,8 +1767,8 @@ impl Battle {
                 }
             }
             Effect::Recoil(amount) => {
-                self.lose_hp(actor, amount, None);
                 self.note(format!("{name} takes {amount} itself."), Tone::Hit);
+                self.lose_hp(actor, amount, None);
             }
             Effect::Mutate(count) => {
                 for &target in targets {
@@ -1928,6 +2059,7 @@ impl Battle {
         self.items[pack].count -= 1;
         let name = self.fighters[actor].name.clone();
         self.note(format!("{name} uses {}.", item.name()), Tone::Plain);
+        reveal::gossip(self, item.name());
         super::items::apply(self, item, target);
     }
 
@@ -1976,7 +2108,7 @@ impl Battle {
             self.note(format!("{name} waits."), Tone::Quiet);
             return;
         }
-        let plan = super::ai::plan(self, actor);
+        let plan = reveal::next_move(self, actor);
         let plan = match (self.fighters[actor].has_status(StatusKind::Astray), plan) {
             (true, super::ai::Plan::Bite(_) | super::ai::Plan::Skill { .. }) => {
                 match self.lead_astray(actor, Choice::Bite(actor)) {
@@ -2080,6 +2212,13 @@ pub fn bite_hits(fighter: &Fighter) -> (u8, Power) {
     (1 + tentacle, Power::BITE)
 }
 
+fn letter(place: usize) -> String {
+    match LETTERS.chars().nth(place) {
+        Some(letter) => letter.to_string(),
+        None => (place + 1).to_string(),
+    }
+}
+
 fn enraged_bite(fighter: &Fighter) -> u32 {
     let bite = fighter.effective_bite();
     match fighter.has(Trait::Enrage) && fighter.hp * HALF < fighter.max_hp {
@@ -2108,6 +2247,7 @@ pub const TENTACLE_HOLD_PERCENT: u32 = 30;
 pub const ENEMY_MUTATION_BITE: u32 = 3;
 pub const CRUMBS: &str = "Gingerbread Fry";
 pub const CRUMB_COUNT: u8 = 3;
+pub const LETTERS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 #[cfg(test)]
 mod tests;

@@ -380,3 +380,17 @@ pub enum Special {
     Borrow,
     Assimilate,
 }
+
+impl Special {
+    pub fn is_random(self) -> bool {
+        matches!(
+            self,
+            Special::Miracle
+                | Special::Radiate
+                | Special::Meltdown
+                | Special::CallHome
+                | Special::Static
+                | Special::Shuffle
+        )
+    }
+}

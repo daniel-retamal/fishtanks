@@ -514,7 +514,7 @@ pub fn before_falling(battle: &mut Battle, target: usize) -> Fate {
     let phylactery = battle.fighters[target].has(Trait::Phylactery)
         && parts_of(battle, target)
             .iter()
-            .any(|&part| battle.fighters[part].name == PHYLACTERY);
+            .any(|&part| battle.fighters[part].base == PHYLACTERY);
     if phylactery {
         let f = &mut battle.fighters[target];
         f.hp = f.max_hp / HALF;

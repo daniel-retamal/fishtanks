@@ -237,7 +237,6 @@ pub enum Trait {
 pub enum Reader {
     Fight,
     Kit,
-    Reveal,
     Map,
     DeepFish,
     Cows,
@@ -419,15 +418,8 @@ impl Trait {
             | Trait::Yours(_)
             | Trait::Spreads
             | Trait::Appendage
-            | Trait::Hunter => Reader::Fight,
-            Trait::Wrath
-            | Trait::Sloth
-            | Trait::Light
-            | Trait::Plated(_)
-            | Trait::Treads
-            | Trait::Commanded
-            | Trait::HungryGhost => Reader::Kit,
-            Trait::Mirage
+            | Trait::Hunter
+            | Trait::Mirage
             | Trait::Gossip
             | Trait::Electrosense
             | Trait::Telepathy
@@ -435,7 +427,14 @@ impl Trait {
             | Trait::Overhears
             | Trait::Assay
             | Trait::Cochlea
-            | Trait::CoreStack => Reader::Reveal,
+            | Trait::CoreStack => Reader::Fight,
+            Trait::Wrath
+            | Trait::Sloth
+            | Trait::Light
+            | Trait::Plated(_)
+            | Trait::Treads
+            | Trait::Commanded
+            | Trait::HungryGhost => Reader::Kit,
             Trait::SilentSteps
             | Trait::NightOwl
             | Trait::Lantern
@@ -454,7 +453,7 @@ impl Trait {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Haunt {
     Dead,
     Damned,

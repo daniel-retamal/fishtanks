@@ -22,7 +22,8 @@ use crate::ui::command_bar::{metric, scientific};
 use crate::ui::hint_bar::HintBar;
 use crate::ui::layout::Screen;
 use crate::ui::modal::clear;
-use crate::ui::{overdraw, table};
+use crate::ui::table;
+pub use crate::ui::{inside, put};
 
 mod blackjack;
 mod bubble;
@@ -164,20 +165,6 @@ pub fn flash_color(flash: Option<(Flash, f32)>) -> Color {
     }
 }
 
-pub fn put(buf: &mut Buffer, x: i32, y: i32, text: &str, style: Style, clip: Rect) -> u16 {
-    let mut col = x;
-    for ch in text.chars() {
-        let w = UnicodeWidthChar::width(ch).unwrap_or(1) as i32;
-        if inside(clip, col, y) && inside(*buf.area(), col, y) {
-            overdraw(buf, col as u16, y as u16)
-                .set_char(ch)
-                .set_style(style);
-        }
-        col += w;
-    }
-    (col - x).max(0) as u16
-}
-
 pub fn put_opaque(buf: &mut Buffer, x: i32, y: i32, text: &str, style: Style, clip: Rect) {
     for (i, ch) in text.chars().enumerate() {
         if ch != ' ' {
@@ -206,10 +193,6 @@ pub fn centred(buf: &mut Buffer, area: Rect, y: u16, text: &str, style: Style) {
     let x = area.x + area.width.saturating_sub(w) / 2;
     let shown = table::ellipsize(text, area.width as usize);
     put(buf, x as i32, y as i32, &shown, style, area);
-}
-
-fn inside(area: Rect, x: i32, y: i32) -> bool {
-    x >= area.x as i32 && y >= area.y as i32 && x < area.right() as i32 && y < area.bottom() as i32
 }
 
 pub fn draw_sprite(buf: &mut Buffer, sprite: &LineSprite, x: i32, top: i32, clip: Rect) {

@@ -1697,3 +1697,44 @@ fn the_casino_demo_runs_keystroke_for_keystroke() {
     tui.write_reel();
     assert_no_broken_borders(&tui);
 }
+
+const DEEP_WAIT_TICKS: usize = 900;
+const DEEP_MAX_TURNS: usize = 200;
+const DEEP_PARTY: usize = 3;
+
+#[test]
+fn the_deep_demo_runs_keystroke_for_keystroke() {
+    let mut tui = Tui::as_player(120, 38);
+    tui.film(Path::new(REEL_DIR), "demo-the-deep");
+    tui.run("/dungeon");
+    tui.screen().expect_find("The Shallows");
+    tui.tick_n(DEEP_WAIT_TICKS);
+    tui.screen().expect_find("> Bite");
+    tui.snap("1. a fish chooses; the info box explains Bite");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("←→ target");
+    tui.snap("2. ENTER picks a target; ←→ moves it");
+    tui.key(KeyCode::Enter);
+    tui.tick_n(DEEP_WAIT_TICKS);
+    tui.snap("3. the bite and the enemies' turns arrive a beat apart");
+    tui.key(KeyCode::Esc);
+    tui.screen().expect_absent("The Shallows");
+    tui.run("/dungeon");
+    tui.screen().expect_find("The Shallows");
+    tui.snap("4. /dungeon finds the dive where it was left");
+    for _ in 0..DEEP_MAX_TURNS {
+        if tui.screen().contains("ENTER swim home") {
+            break;
+        }
+        tui.key(KeyCode::Enter);
+        tui.key(KeyCode::Enter);
+        tui.tick_n(DEEP_WAIT_TICKS);
+    }
+    tui.screen().expect_find("ENTER swim home");
+    tui.snap("5. the room is quiet: the result");
+    tui.key(KeyCode::Enter);
+    let home: usize = tui.app.tanks.iter().map(|tank| tank.fish.len()).sum();
+    assert_eq!(home, DEEP_PARTY);
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}

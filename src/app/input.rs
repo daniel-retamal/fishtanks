@@ -151,6 +151,8 @@ impl App {
             self.handle_console_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Casino(_))) {
             self.handle_casino_input(event);
+        } else if matches!(self.active_overlay, Some(Overlay::Dungeon(_))) {
+            self.handle_dungeon_input(event);
         } else {
             self.handle_command_input(event);
         }
@@ -2822,6 +2824,7 @@ impl App {
             commands::Action::Move { fish, tank } => self.move_entity(&fish, &tank),
             commands::Action::Ledger => self.open_ledger(),
             commands::Action::Toybox => self.open_toybox(),
+            commands::Action::Dungeon => self.open_dungeon(),
             commands::Action::Fishtanks => {
                 self.set_overlay(Overlay::Fishtanks(FishtanksState::new(
                     &self.tanks,
@@ -3153,5 +3156,10 @@ mod casino_tests {
     #[test]
     fn the_casino_is_never_a_bot_verb() {
         assert!(!bot_action_allowed(&commands::Action::Casino(None)));
+    }
+
+    #[test]
+    fn the_deep_is_never_a_bot_verb() {
+        assert!(!bot_action_allowed(&commands::Action::Dungeon));
     }
 }

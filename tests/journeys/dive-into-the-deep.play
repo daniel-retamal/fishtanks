@@ -1,0 +1,24 @@
+# JOURNEY · the Deep: take the new game's three fish into a fight, bite once, leave, and find the dive waiting.
+# Who acts first and what the enemies do is random, so the journey waits out the beats and expects only what every fight shows.
+
+run /dungeon
+expect The Shallows
+expect ESC leave
+tick 900
+expect Bite
+expect ENTER select
+snap a fish chooses what to do
+key enter
+expect ←→ target
+expect ENTER confirm
+snap the bite picks its target
+key enter
+tick 900
+expect Bite
+snap the bite has landed and the next fish chooses
+key esc
+absent The Shallows
+run /dungeon
+expect The Shallows
+expect Bite
+snap the dive was waiting where it was left

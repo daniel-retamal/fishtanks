@@ -35,6 +35,7 @@ pub const CLING_TURNS: u8 = 99;
 pub const ECLIPSE_ROUND: u32 = 6;
 pub const DOMINATED_TURNS: u8 = 1;
 const PERCENT: u32 = 100;
+const PERCENT_WIDE: u128 = 100;
 
 pub fn wearable_mutations(fish: &Fish) -> Vec<Mutation> {
     fish.capabilities()
@@ -77,9 +78,8 @@ pub fn perform(
             let Some(target) = first else {
                 return;
             };
-            let spent = battle.purse_spent.max(1) as f64;
             let paid = battle.fighters[target].has(Trait::Paid);
-            let mut damage = (PAY_TO_WIN_SCALE * spent.log10()).round().max(1.0) as u32;
+            let mut damage = pay_to_win(battle.purse_spent);
             if paid {
                 damage *= 2;
             }
@@ -197,7 +197,8 @@ pub fn perform(
                 if strike.landed {
                     struck += 1;
                     let target_name = battle.fighters[target].name.clone();
-                    battle.note(
+                    battle.note_at(
+                        strike.at,
                         format!("The bounce hits {target_name} for {}.", strike.damage),
                         Tone::Hit,
                     );
@@ -279,9 +280,7 @@ pub fn perform(
             }
         }
         Special::Roll => {
-            let eyes = battle.fighters[actor]
-                .member()
-                .map_or(1, |m| battle.party[m].eyes_a_side().max(1) * HALF as usize);
+            let eyes = rolls(battle, actor);
             let foes = battle.standing(battle.fighters[actor].side.other());
             for target in foes.into_iter().cycle().take(eyes) {
                 if !battle.fighters[target].standing() {
@@ -290,7 +289,8 @@ pub fn perform(
                 let strike = battle.strike(actor, target, Power::BITE, DamageKind::Bite);
                 let target_name = battle.fighters[target].name.clone();
                 if strike.landed {
-                    battle.note(
+                    battle.note_at(
+                        strike.at,
                         format!("{name} rolls through {target_name} for {}.", strike.damage),
                         Tone::Hit,
                     );
@@ -403,12 +403,12 @@ pub fn perform(
         }
         Special::ThrowJunk => {
             if let Some(target) = first {
-                battle.harm(actor, target, moves::THROWN_JUNK, DamageKind::Skill);
                 let target_name = battle.fighters[target].name.clone();
                 battle.note(
                     format!("Junk hits {target_name} for {}.", moves::THROWN_JUNK),
                     Tone::Hit,
                 );
+                battle.harm(actor, target, moves::THROWN_JUNK, DamageKind::Skill);
             }
         }
         Special::WalkThePlank => {
@@ -578,7 +578,8 @@ pub fn perform(
                 let strike = battle.strike(actor, target, Power::Flat(borrowed), DamageKind::Bite);
                 let target_name = battle.fighters[target].name.clone();
                 if strike.landed {
-                    battle.note(
+                    battle.note_at(
+                        strike.at,
                         format!(
                             "{name} bites {target_name} with its own teeth for {}.",
                             strike.damage
@@ -586,7 +587,8 @@ pub fn perform(
                         Tone::Hurt,
                     );
                 } else {
-                    battle.note(
+                    battle.note_at(
+                        strike.at,
                         format!("{name} snaps at {target_name} and misses."),
                         Tone::Quiet,
                     );
@@ -702,6 +704,32 @@ fn miracle(battle: &mut Battle, actor: usize) {
                 battle.harm(actor, target, MIRACLE_SMITE, DamageKind::Holy);
             }
         }
+    }
+}
+
+pub fn pay_to_win(spent: u128) -> u32 {
+    let spent = spent.max(1) as f64;
+    (PAY_TO_WIN_SCALE * spent.log10()).round().max(1.0) as u32
+}
+
+pub fn rolls(battle: &Battle, actor: usize) -> usize {
+    battle.fighters[actor]
+        .member()
+        .map_or(1, |m| battle.party[m].eyes_a_side().max(1) * HALF as usize)
+}
+
+pub fn strikes(battle: &Battle, actor: usize, special: Special) -> Option<(Power, u32)> {
+    let foes = battle.standing(battle.fighters[actor].side.other()).len() as u32;
+    match special {
+        Special::Roll => Some((Power::BITE, rolls(battle, actor) as u32)),
+        Special::Ricochet => Some((Power::BITE, foes.max(1))),
+        Special::ThrowJunk => Some((Power::Flat(moves::THROWN_JUNK), 1)),
+        Special::PayToWin => {
+            let percent = u128::from(moves::PAY_TO_WIN_PERCENT);
+            let spent = battle.purse_spent + battle.purse * percent / PERCENT_WIDE;
+            Some((Power::Flat(pay_to_win(spent)), 1))
+        }
+        _ => None,
     }
 }
 

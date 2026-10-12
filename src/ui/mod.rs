@@ -5,6 +5,7 @@ pub mod circuit_overlay;
 pub mod command_bar;
 pub mod console;
 pub mod consume_picker;
+pub mod dungeon;
 pub mod fields;
 pub mod fishing_overlay;
 pub mod fishtanks_overlay;
@@ -33,7 +34,7 @@ pub mod wiring_panel;
 use ratatui::{
     buffer::{Buffer, Cell},
     layout::Rect,
-    style::Color,
+    style::{Color, Style},
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -49,6 +50,24 @@ pub fn overdraw(buf: &mut Buffer, x: u16, y: u16) -> &mut Cell {
         buf[(x - 1, y)].set_symbol(UNCOVERED);
     }
     &mut buf[(x, y)]
+}
+
+pub fn put(buf: &mut Buffer, x: i32, y: i32, text: &str, style: Style, clip: Rect) -> u16 {
+    let mut col = x;
+    for ch in text.chars() {
+        let w = UnicodeWidthChar::width(ch).unwrap_or(1) as i32;
+        if inside(clip, col, y) && inside(*buf.area(), col, y) {
+            overdraw(buf, col as u16, y as u16)
+                .set_char(ch)
+                .set_style(style);
+        }
+        col += w;
+    }
+    (col - x).max(0) as u16
+}
+
+pub fn inside(area: Rect, x: i32, y: i32) -> bool {
+    x >= area.x as i32 && y >= area.y as i32 && x < area.right() as i32 && y < area.bottom() as i32
 }
 
 pub fn render_fish_segs(
@@ -99,10 +118,17 @@ pub fn render_fish_sprite(
     }
 }
 
+pub fn fish_rows(fish: &Fish) -> u16 {
+    match fish.unfish_kind().and_then(UnfishKind::grid) {
+        Some(grid) => grid.height,
+        None => fish.line_sprite().rows.len() as u16,
+    }
+}
+
 pub fn fish_art_height(fish: &Fish, floor: u16) -> u16 {
     match fish.unfish_kind().and_then(UnfishKind::grid) {
         Some(grid) => grid.height,
-        None => floor.max(fish.line_sprite().rows.len() as u16 + FISH_ART_PAD_ROWS),
+        None => floor.max(fish_rows(fish) + FISH_ART_PAD_ROWS),
     }
 }
 

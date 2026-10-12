@@ -52,6 +52,7 @@ use crate::{
 mod casino;
 mod cheats;
 mod console;
+mod dungeon;
 mod heaven;
 mod input;
 mod lessons;
@@ -105,6 +106,7 @@ enum Overlay {
     Ledger(LedgerState),
     Casino(Box<crate::casino::state::CasinoState>),
     Toybox(Box<crate::ui::toybox::ToyboxState>),
+    Dungeon(Box<crate::dungeon::state::DungeonState>),
 }
 
 pub const CAJETANS_GRACE_SECS: f32 = 3.0 * 60.0 + 33.0;
@@ -772,6 +774,10 @@ impl App {
                 self.tick_casino();
                 return;
             }
+            Some(Overlay::Dungeon(_)) => {
+                self.tick_dungeon();
+                return;
+            }
             Some(Overlay::Circuit(_))
             | Some(Overlay::ConsumePicker(_))
             | Some(Overlay::Console(_))
@@ -1145,6 +1151,10 @@ impl App {
             }
             Some(Overlay::Toybox(state)) => frame.render_widget(
                 crate::ui::toybox::ToyboxOverlay::new(state, &self.casino.toybox, screen),
+                full_area,
+            ),
+            Some(Overlay::Dungeon(state)) => frame.render_widget(
+                crate::ui::dungeon::DungeonOverlay::new(state, screen),
                 full_area,
             ),
             Some(Overlay::Console(_)) | None => {}
