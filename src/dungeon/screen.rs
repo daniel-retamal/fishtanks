@@ -17,6 +17,21 @@ pub enum Popup {
 pub struct Chart {
     pub selected: usize,
     pub popup: Option<Popup>,
+    pub at: usize,
+}
+
+impl Chart {
+    pub fn sheet(&self, expedition: &Expedition) -> Option<Panel> {
+        Some(match self.popup? {
+            Popup::Party => expedition.party_sheet(self.at),
+            Popup::Items => expedition.item_sheet(self.at),
+        })
+    }
+
+    fn open(&mut self, popup: Popup) {
+        self.popup = Some(popup);
+        self.at = 0;
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -47,6 +62,7 @@ pub enum Step {
 pub struct DungeonState {
     pub view: View,
     pub scroll: Scroll,
+    pub sheet_scroll: Scroll,
 }
 
 impl DungeonState {
@@ -54,6 +70,7 @@ impl DungeonState {
         DungeonState {
             view: View::Muster(muster),
             scroll: Scroll::default(),
+            sheet_scroll: Scroll::default(),
         }
     }
 
@@ -66,6 +83,7 @@ impl DungeonState {
         DungeonState {
             view,
             scroll: Scroll::default(),
+            sheet_scroll: Scroll::default(),
         }
     }
 
@@ -141,12 +159,16 @@ fn cycle(selected: usize, count: usize, back: bool) -> usize {
 }
 
 fn map_key(chart: &mut Chart, action: &InputAction, expedition: &Expedition) -> Step {
-    if chart.popup.is_some() {
-        chart.popup = match action {
-            InputAction::Char('i') if chart.popup != Some(Popup::Items) => Some(Popup::Items),
-            InputAction::Char('p') if chart.popup != Some(Popup::Party) => Some(Popup::Party),
-            _ => None,
-        };
+    if let Some(panel) = chart.sheet(expedition) {
+        let rows = panel.rows.len();
+        match action {
+            InputAction::Up | InputAction::Left => chart.at = cycle(chart.at, rows, true),
+            InputAction::Down | InputAction::Right => chart.at = cycle(chart.at, rows, false),
+            InputAction::Char('i') if chart.popup != Some(Popup::Items) => chart.open(Popup::Items),
+            InputAction::Char('p') if chart.popup != Some(Popup::Party) => chart.open(Popup::Party),
+            InputAction::Char('i' | 'p') | InputAction::Cancel => chart.popup = None,
+            _ => {}
+        }
         return Step::Stay;
     }
     let ahead = expedition.ahead();
@@ -160,11 +182,11 @@ fn map_key(chart: &mut Chart, action: &InputAction, expedition: &Expedition) -> 
             Step::Stay
         }
         InputAction::Char('i') => {
-            chart.popup = Some(Popup::Items);
+            chart.open(Popup::Items);
             Step::Stay
         }
         InputAction::Char('p') => {
-            chart.popup = Some(Popup::Party);
+            chart.open(Popup::Party);
             Step::Stay
         }
         InputAction::Confirm => {

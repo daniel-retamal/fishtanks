@@ -15,6 +15,7 @@ pub enum Tone {
     Round,
     Down,
     Quiet,
+    Focus,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

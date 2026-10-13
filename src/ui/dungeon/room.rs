@@ -2,11 +2,14 @@ use std::ops::Range;
 
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 
-use crate::colors::{AMBER, CHARCOAL, DARK_GRAY, LIGHT_CYAN, RED, VIOLET, WHITE, YELLOW};
+use crate::colors::{AMBER, CHARCOAL, DARK_GRAY, GRAY, LIGHT_CYAN, RED, VIOLET, WHITE, YELLOW};
 use crate::dungeon::beat::{LogLine, View};
+use crate::dungeon::bestiary::SpriteRow;
 use crate::dungeon::items::Item;
-use crate::dungeon::room::{Figure, Panel, Row, Scene, Tab, VEND_COLUMNS, Verb, slot};
-use crate::dungeon::room_art::{ELEVATOR, LIFT_ARROW, LIFT_FROM, LIFT_TO};
+use crate::dungeon::room::{
+    Card, Figure, Panel, Portrait, Row, Scene, Tab, VEND_COLUMNS, Verb, slot,
+};
+use crate::dungeon::room_art::{LIFT_ARROW, LIFT_FROM, LIFT_TO, LIFTS};
 use crate::economy::grouped;
 use crate::ui::catch_overlay::{food_sprite_rows, stock_sprite};
 use crate::ui::hint_bar::HintBar;
@@ -18,13 +21,15 @@ use crate::ui::hints::{
 };
 use crate::ui::layout::{Screen, Scroll, Scrollbar};
 use crate::ui::modal::clear;
+use crate::ui::shop_overlay::PENGUIN_LINES;
 use crate::ui::table::{draw_box_border, draw_box_title, ellipsize, visual_width, wrap_words};
 
 use super::battle::{
     BACKGROUND, BORDER, BORDERS, CURSOR, FRAME, NO_CURSOR, PAD, SPLIT_DOWN, SPLIT_UP, Span,
-    UPRIGHT, inner, put_char, put_spans, row_colour, rule, style, titled, tone_colour, vitals,
+    TITLE_INSET, UPRIGHT, inner, put_char, put_spans, row_colour, rule, style, titled, tone_colour,
+    vitals,
 };
-use super::canvas::{Canvas, Cuts, seal};
+use super::canvas::{Canvas, Picture};
 
 pub const ART_W: u16 = 51;
 pub const TEXT_W: u16 = 56;
@@ -32,22 +37,39 @@ pub const TEXT_MIN_W: u16 = 26;
 pub const DESIGN_H: u16 = 20;
 pub const TEXT_INDENT: usize = 2;
 pub const NOTE_PAD: usize = 1;
+pub const NOTE_GAP: usize = 2;
 pub const FIGURE_GAP: usize = 4;
-pub const FIGURE_TOP: usize = 3;
-pub const LABEL_INSET: usize = 2;
-pub const SLOT_GAP: usize = 3;
-pub const MACHINE_PAD: usize = 1;
+pub const FIGURE_LINE_GAP: usize = 2;
+pub const ART_GAP: usize = 1;
+pub const STACK_TEXT_FLOOR: usize = 8;
+pub const LABEL_ROWS: usize = 2;
+pub const CARD_PAD_X: usize = 3;
+pub const CARD_PAD_Y: usize = 1;
+pub const CARD_MIN_INNER: usize = 21;
+pub const CARD_TITLE_ROOM: usize = 6;
+pub const SEABED: [char; 2] = ['.', ':'];
 pub const KEYPAD: [&str; 3] = ["[A][B]", "[1][2]", "[3][#]"];
 pub const COIN_SLOT: &str = "[ $ ]";
-pub const COIN_TRAY: &str = " ▒▒▒";
-pub const VEND_TITLE: &str = "D E E P   V E N D";
+pub const COIN_RETURN: &str = "▒▒▒";
+pub const VEND_TITLE: &str = "≋  D E E P   V E N D  ≋";
 pub const PUSH: &str = "P U S H";
+pub const SOLD_OUT: &str = "SOLD OUT";
+pub const NONE: &str = "-";
 pub const COIL: char = '@';
-pub const PENGUIN: [&str; 4] = ["'", "(O>", "//\\", "\\V_"];
+pub const DISPLAY_INNER: usize = 4;
+pub const SIDE_W: usize = 10;
+pub const SLOT_GAP: usize = 3;
+pub const TIGHT_SLOT_GAP: usize = 1;
+pub const MACHINE_PAD: usize = 1;
+pub const FLAP_INSET: usize = 4;
+pub const PENGUIN_GAP: usize = 1;
+pub const LABEL_GAP: usize = 2;
 pub const TAG_OPEN: &str = "[";
 pub const TAG_CLOSE: &str = "]";
 const DIVIDER: u16 = 1;
 const RULE_ROWS: u16 = 1;
+const SHELF_TOP: usize = 1;
+const SHELF_FOOT: usize = 2;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cursor {
@@ -56,8 +78,8 @@ pub struct Cursor {
     pub reading: bool,
 }
 
-fn verb_hint(verb: Verb) -> &'static str {
-    match verb {
+fn verb_hint(verb: Verb) -> Option<&'static str> {
+    Some(match verb {
         Verb::Select => HINT_ENTER_SELECT,
         Verb::Fight => HINT_ENTER_FIGHT,
         Verb::Hire => HINT_ENTER_HIRE,
@@ -68,7 +90,8 @@ fn verb_hint(verb: Verb) -> &'static str {
         Verb::Ride => HINT_ENTER_RIDE,
         Verb::Pick => HINT_ENTER_PICK,
         Verb::Pack => HINT_ENTER_ONWARD,
-    }
+        Verb::Browse => return None,
+    })
 }
 
 fn tab_hint(tab: Tab) -> &'static str {
@@ -89,8 +112,10 @@ pub fn hints(panel: &Panel, position: Option<(usize, usize)>) -> HintBar {
     }
     bar = bar
         .action_if(panel.which_fish, HINT_WHICH_FISH)
-        .action_if(panel.counts, HINT_HOW_MANY)
-        .action(verb_hint(panel.verb));
+        .action_if(panel.counts, HINT_HOW_MANY);
+    if let Some(verb) = verb_hint(panel.verb) {
+        bar = bar.action(verb);
+    }
     match panel.tab {
         Some(tab) => bar.action(tab_hint(tab)),
         None => bar,
@@ -111,35 +136,43 @@ fn figure_view(figure: &Figure) -> View {
     }
 }
 
-fn label(canvas: &mut Canvas, x: usize, y: usize, figure: &Figure) -> usize {
-    let name = canvas.text(x, y, &figure.name, style(RED));
-    let mut col = x;
-    for (text, ink) in vitals(&figure_view(figure)) {
-        col += canvas.text(col, y + 1, &text, ink);
-    }
-    name.max(col - x)
+fn label_spans(figure: &Figure) -> (Vec<Span>, Vec<Span>) {
+    (
+        vec![(figure.name.clone(), style(RED))],
+        vitals(&figure_view(figure)),
+    )
 }
 
-fn figure_width(figure: &Figure) -> usize {
-    let sprite = figure
-        .sprite
-        .iter()
-        .map(|row| row.width())
-        .max()
-        .unwrap_or(0);
-    let vitals: usize = vitals(&figure_view(figure))
-        .iter()
-        .map(|(text, _)| visual_width(text))
-        .sum();
-    sprite.max(visual_width(&figure.name)).max(vitals)
+fn spans_width(spans: &[Span]) -> usize {
+    spans.iter().map(|(text, _)| visual_width(text)).sum()
 }
 
-fn figures(figures: &[Figure], room: usize) -> Canvas {
+fn sprite(rows: &[SpriteRow]) -> Canvas {
     let mut canvas = Canvas::default();
-    let mut lines: Vec<Vec<&Figure>> = vec![Vec::new()];
+    canvas.sprite(0, 0, rows);
+    canvas.trimmed()
+}
+
+fn figure_canvas(figure: &Figure) -> Canvas {
+    let art = sprite(figure.sprite);
+    let (name, vitals) = label_spans(figure);
+    let width = (art.width() as usize)
+        .max(spans_width(&name))
+        .max(spans_width(&vitals));
+    let mut canvas = Canvas::default();
+    canvas.blit((width - art.width() as usize) / 2, 0, &art);
+    let y = art.height() as usize + 1;
+    canvas.centred_row(y, width, &name);
+    canvas.centred_row(y + 1, width, &vitals);
+    canvas
+}
+
+fn lineup(figures: &[Figure], room: usize) -> Canvas {
+    let drawn: Vec<Canvas> = figures.iter().map(figure_canvas).collect();
+    let mut lines: Vec<Vec<&Canvas>> = vec![Vec::new()];
     let mut used = 0;
-    for figure in figures {
-        let width = figure_width(figure);
+    for canvas in &drawn {
+        let width = canvas.width() as usize;
         let line = lines.last_mut().expect("a line");
         if !line.is_empty() && used + FIGURE_GAP + width > room {
             lines.push(Vec::new());
@@ -150,118 +183,68 @@ fn figures(figures: &[Figure], room: usize) -> Canvas {
             used += FIGURE_GAP;
         }
         used += width;
-        line.push(figure);
+        line.push(canvas);
     }
-    let mut y = FIGURE_TOP;
-    for line in lines {
-        let tallest = line.iter().map(|f| f.sprite.len()).max().unwrap_or(0);
-        let mut x = 0;
+    let widths: Vec<usize> = lines
+        .iter()
+        .map(|line| {
+            line.iter().map(|c| c.width() as usize).sum::<usize>()
+                + line.len().saturating_sub(1) * FIGURE_GAP
+        })
+        .collect();
+    let widest = widths.iter().copied().max().unwrap_or(0);
+    let mut canvas = Canvas::default();
+    let mut y = 0;
+    for (line, width) in lines.iter().zip(widths) {
+        let tallest = line.iter().map(|c| c.height() as usize).max().unwrap_or(0);
+        let mut x = (widest - width) / 2;
         for figure in line {
-            canvas.sprite(x, y + tallest - figure.sprite.len(), figure.sprite);
-            label(&mut canvas, x, y + tallest + 1, figure);
-            x += figure_width(figure) + FIGURE_GAP;
+            canvas.blit(x, y + tallest - figure.height() as usize, figure);
+            x += figure.width() as usize + FIGURE_GAP;
         }
-        y += tallest + FIGURE_TOP;
+        y += tallest + FIGURE_LINE_GAP;
     }
     canvas
 }
 
-fn item_rows(item: Item) -> Vec<Vec<(char, ratatui::style::Color)>> {
-    match item {
+fn labels(figures: &[Figure]) -> Canvas {
+    let lines: Vec<(Vec<Span>, Vec<Span>)> = figures.iter().map(label_spans).collect();
+    let width = lines
+        .iter()
+        .map(|(name, vitals)| spans_width(name).max(spans_width(vitals)))
+        .max()
+        .unwrap_or(0);
+    let mut canvas = Canvas::default();
+    for (index, (name, vitals)) in lines.iter().enumerate() {
+        canvas.centred_row(index * LABEL_ROWS, width, name);
+        canvas.centred_row(index * LABEL_ROWS + 1, width, vitals);
+    }
+    canvas
+}
+
+fn below(top: &Canvas, under: &Canvas) -> Canvas {
+    if top.height() == 0 {
+        return under.clone();
+    }
+    let width = top.width().max(under.width()) as usize;
+    let mut canvas = Canvas::default();
+    canvas.blit((width - top.width() as usize) / 2, 0, top);
+    canvas.blit(
+        (width - under.width() as usize) / 2,
+        top.height() as usize + ART_GAP,
+        under,
+    );
+    canvas
+}
+
+fn item_canvas(item: Item) -> Canvas {
+    let rows = match item {
         Item::Food => food_sprite_rows(),
         Item::Stock(stock) => stock_sprite(stock),
-    }
-}
-
-fn vending(stock: &[(Item, u64)], room: usize) -> Canvas {
-    let sprites: Vec<Vec<Vec<(char, ratatui::style::Color)>>> =
-        stock.iter().map(|(item, _)| item_rows(*item)).collect();
-    let prices: Vec<String> = stock
-        .iter()
-        .enumerate()
-        .map(|(index, (_, price))| format!("{}  ${}", slot(index), grouped(u128::from(*price))))
-        .collect();
-    let slot_w = sprites
-        .iter()
-        .map(|rows| rows.iter().map(Vec::len).max().unwrap_or(0))
-        .chain(prices.iter().map(|price| visual_width(price)))
-        .max()
-        .unwrap_or(0);
-    let slot_h = sprites.iter().map(Vec::len).max().unwrap_or(0);
-    let keypad_w = KEYPAD[0].len().max(COIN_SLOT.len()) + MACHINE_PAD * 2;
-    let chrome = (MACHINE_PAD + 1) * 2 + MACHINE_PAD * 2 + 2;
-    let fits = |columns: usize, keypad: usize| {
-        chrome + columns * slot_w + columns.saturating_sub(1) * SLOT_GAP + keypad <= room
     };
-    let columns = (1..=VEND_COLUMNS.min(stock.len().max(1)))
-        .rev()
-        .find(|&columns| fits(columns, 0))
-        .unwrap_or(1);
-    let keypad_beside = fits(columns, keypad_w);
-    let shelves = stock.len().div_ceil(columns).max(1);
-    let window_w = MACHINE_PAD * 2 + columns * slot_w + (columns - 1) * SLOT_GAP + 2;
-    let shelf_h = slot_h + 2;
-    let window_h = shelves * shelf_h + 2 + shelves.saturating_sub(1);
-    let keypad_h = KEYPAD.len() + 3;
-    let below = match keypad_beside {
-        true => 0,
-        false => keypad_h,
-    };
-    let machine_w = window_w + MACHINE_PAD * 2 + 2 + if keypad_beside { keypad_w } else { 0 };
-    let machine_h = window_h + 5 + below;
     let mut canvas = Canvas::default();
-    let frame = style(crate::colors::GRAY);
-    let dim = style(DARK_GRAY);
-    boxed(&mut canvas, 0, 0, machine_w, machine_h, frame);
-    let title_x = machine_w.saturating_sub(VEND_TITLE.len()) / 2;
-    canvas.text(title_x, 1, VEND_TITLE, style(LIGHT_CYAN));
-    let wx = MACHINE_PAD + 1;
-    let wy = 2;
-    boxed(&mut canvas, wx, wy, window_w, window_h, dim);
-    for (index, rows) in sprites.iter().enumerate() {
-        let shelf = index / columns;
-        let column = index % columns;
-        let x = wx + 1 + MACHINE_PAD + column * (slot_w + SLOT_GAP);
-        let top = wy + 1 + shelf * (shelf_h + 1);
-        let width = rows.iter().map(Vec::len).max().unwrap_or(0);
-        canvas.cells(x + (slot_w - width) / 2, top + slot_h - rows.len(), rows);
-        let coil: String = std::iter::repeat_n(COIL, slot_w).collect();
-        canvas.text(x, top + slot_h, &coil, style(CHARCOAL));
-        canvas.text(x, top + slot_h + 1, &prices[index], style(YELLOW));
-        if shelf + 1 < shelves && column == 0 {
-            let y = top + shelf_h;
-            canvas.set(wx, y, '├', dim);
-            for dx in 1..window_w - 1 {
-                canvas.set(wx + dx, y, '─', dim);
-            }
-            canvas.set(wx + window_w - 1, y, '┤', dim);
-        }
-    }
-    let (kx, ky) = match keypad_beside {
-        true => (wx + window_w + MACHINE_PAD, wy + 2),
-        false => (wx + MACHINE_PAD, wy + window_h + 1),
-    };
-    for (row, keys) in KEYPAD.iter().enumerate() {
-        canvas.text(kx, ky + row, keys, frame);
-    }
-    canvas.text(kx, ky + KEYPAD.len() + 1, COIN_SLOT, style(AMBER));
-    canvas.text(kx, ky + KEYPAD.len() + 2, COIN_TRAY, dim);
-    let push = format!("[ {PUSH} ]");
-    let push_x = wx + window_w.saturating_sub(visual_width(&push)) / 2;
-    canvas.text(push_x, machine_h - 2, &push, dim);
-    let penguin_w = PENGUIN
-        .iter()
-        .map(|line| visual_width(line))
-        .max()
-        .unwrap_or(0);
-    let (px, py) = match machine_w + 1 + penguin_w <= room {
-        true => (machine_w + 1, machine_h / 2),
-        false => (machine_w.saturating_sub(penguin_w) / 2, machine_h),
-    };
-    for (row, line) in PENGUIN.iter().enumerate() {
-        canvas.text(px, py + row, line, style(WHITE));
-    }
-    canvas
+    canvas.cells(0, 0, &rows);
+    canvas.trimmed()
 }
 
 fn boxed(canvas: &mut Canvas, x: usize, y: usize, w: usize, h: usize, ink: Style) {
@@ -282,73 +265,335 @@ fn boxed(canvas: &mut Canvas, x: usize, y: usize, w: usize, h: usize, ink: Style
     canvas.set(x + w - 1, y + h - 1, '┘', ink);
 }
 
-fn lift(from: u32, to: u32) -> Canvas {
-    let mut canvas = Canvas::default();
-    canvas.sprite(0, 0, ELEVATOR);
-    let from = from.to_string();
-    let (row, col) = LIFT_FROM;
-    let start = (col + 1).saturating_sub(from.len());
-    for x in start..=col {
-        canvas.set(x, row, ' ', style(BACKGROUND));
+fn titled_box(canvas: &mut Canvas, (w, h): (usize, usize), title: &str, ink: Style) {
+    boxed(canvas, 0, 0, w, h, ink);
+    let room = w.saturating_sub(TITLE_INSET as usize * 2 + 2);
+    let title = format!(" {} ", ellipsize(title, room));
+    for (dx, glyph) in title.chars().enumerate() {
+        canvas.set(TITLE_INSET as usize + dx, 0, glyph, style(WHITE));
     }
-    canvas.text(start, row, &from, style(YELLOW));
-    let (row, col) = LIFT_ARROW;
-    canvas.set(col, row, '▼', style(YELLOW));
-    let (row, col) = LIFT_TO;
-    canvas.set(col, row, ' ', style(BACKGROUND));
-    canvas.text(col, row, &to.to_string(), style(DARK_GRAY));
-    let button = ELEVATOR
-        .iter()
-        .enumerate()
-        .skip(LIFT_ARROW.0 + 1)
-        .find_map(|(y, row)| row.text.chars().position(|g| g == '▼').map(|x| (x, y)));
-    if let Some((x, y)) = button {
-        canvas.set(x, y, '▼', style(YELLOW));
-    }
-    canvas
 }
 
-pub fn scene(panel: &Panel, room: usize) -> Canvas {
-    let mut canvas = match &panel.art {
-        Scene::Rows(rows) => {
-            let mut canvas = Canvas::default();
-            canvas.sprite(0, 0, rows);
-            canvas
-        }
-        Scene::Fish(fish) => {
-            let mut canvas = Canvas::default();
-            canvas.blit(0, FIGURE_TOP, &Canvas::fish(fish));
-            canvas
-        }
-        Scene::Item(item) => {
-            let mut canvas = Canvas::default();
-            canvas.cells(0, FIGURE_TOP, &item_rows(*item));
-            canvas
-        }
-        Scene::Vending(stock) => vending(stock, room),
-        Scene::Lift { from, to } => lift(*from, *to),
-    };
-    if panel.figures.is_empty() {
-        return canvas;
+fn seabed(canvas: &mut Canvas, x: usize, y: usize, width: usize) {
+    for dx in 0..width {
+        canvas.set(x + dx, y, SEABED[dx % SEABED.len()], style(CHARCOAL));
     }
-    match panel.draw_figures {
-        true => {
-            let drawn = figures(&panel.figures, room);
-            let y = canvas.height() as usize;
-            canvas.blit(0, y, &drawn);
+}
+
+fn cards(card: &Card) -> Vec<Canvas> {
+    let (portrait, grounded) = match &card.portrait {
+        Portrait::Fish(fish) => (Canvas::fish(fish).trimmed(), true),
+        Portrait::Item(item) => (item_canvas(*item), false),
+    };
+    let pw = portrait.width() as usize;
+    let mut inner = (pw + CARD_PAD_X * 2)
+        .max(CARD_MIN_INNER)
+        .max(visual_width(&card.title) + CARD_TITLE_ROOM);
+    if (inner - pw) % 2 == 1 {
+        inner += 1;
+    }
+    let ground_rows = usize::from(grounded);
+    let inner_h = portrait.height() as usize + CARD_PAD_Y * 2 + ground_rows;
+    let (w, h) = (inner + 2, inner_h + 2);
+    let frame = match card.lit {
+        true => style(WHITE),
+        false => style(GRAY),
+    };
+    let mut canvas = Canvas::default();
+    titled_box(&mut canvas, (w, h), &card.title, frame);
+    canvas.blit(1 + (inner - pw) / 2, 1 + CARD_PAD_Y, &portrait);
+    if grounded {
+        seabed(&mut canvas, 1, h - 2, inner);
+    }
+    for (index, line) in card.caption.iter().enumerate() {
+        let spans = vec![(line.text.clone(), style(tone_colour(line.tone)))];
+        canvas.centred_row(h + index, w, &spans);
+    }
+    let name = vec![(card.title.clone(), style(WHITE))];
+    let compact_w = pw.max(visual_width(&card.title));
+    let mut compact = Canvas::default();
+    compact.blit(centred_x(compact_w, pw), 0, &portrait);
+    compact.centred_row(portrait.height() as usize + ART_GAP, compact_w, &name);
+    vec![canvas, compact]
+}
+
+struct Machine {
+    shelves: usize,
+    side: bool,
+    flap_box: bool,
+    gap: usize,
+}
+
+const MACHINES: [Machine; 4] = [
+    Machine {
+        shelves: 2,
+        side: true,
+        flap_box: true,
+        gap: SLOT_GAP,
+    },
+    Machine {
+        shelves: 1,
+        side: true,
+        flap_box: true,
+        gap: SLOT_GAP,
+    },
+    Machine {
+        shelves: 1,
+        side: true,
+        flap_box: false,
+        gap: SLOT_GAP,
+    },
+    Machine {
+        shelves: 1,
+        side: false,
+        flap_box: false,
+        gap: TIGHT_SLOT_GAP,
+    },
+];
+
+struct Shelf<'a> {
+    goods: Vec<Option<(&'a Canvas, String, String)>>,
+}
+
+fn centred_x(room: usize, width: usize) -> usize {
+    room.saturating_sub(width) / 2
+}
+
+fn penguin() -> Canvas {
+    let mut canvas = Canvas::default();
+    for (y, line) in PENGUIN_LINES.iter().enumerate() {
+        canvas.text(0, y, line, style(WHITE));
+    }
+    canvas.trimmed()
+}
+
+fn vending_machine(
+    shelves: &[Shelf],
+    (slot_w, slot_h): (usize, usize),
+    shown: &str,
+    machine: &Machine,
+) -> Canvas {
+    let shelf_h = SHELF_TOP + slot_h + SHELF_FOOT;
+    let window_w = 2 + MACHINE_PAD * 2 + VEND_COLUMNS * slot_w + (VEND_COLUMNS - 1) * machine.gap;
+    let window_h = 2 + machine.shelves * shelf_h + machine.shelves.saturating_sub(1);
+    let side_w = match machine.side {
+        true => SIDE_W + MACHINE_PAD,
+        false => 0,
+    };
+    let flap_h = match machine.flap_box {
+        true => 3,
+        false => 1,
+    };
+    let cabinet_w = 2 + MACHINE_PAD * 2 + window_w + side_w;
+    let cabinet_h = 2 + 1 + window_h + flap_h;
+    let frame = style(GRAY);
+    let dim = style(DARK_GRAY);
+    let mut canvas = Canvas::default();
+    boxed(&mut canvas, 0, 0, cabinet_w, cabinet_h, frame);
+    canvas.text(
+        centred_x(cabinet_w, visual_width(VEND_TITLE)),
+        1,
+        VEND_TITLE,
+        style(LIGHT_CYAN),
+    );
+    let (wx, wy) = (1 + MACHINE_PAD, 2);
+    boxed(&mut canvas, wx, wy, window_w, window_h, dim);
+    for (row, shelf) in shelves.iter().take(machine.shelves).enumerate() {
+        let top = wy + 1 + row * (shelf_h + 1);
+        if row > 0 {
+            canvas.set(wx, top - 1, '├', dim);
+            for dx in 1..window_w - 1 {
+                canvas.set(wx + dx, top - 1, '─', dim);
+            }
+            canvas.set(wx + window_w - 1, top - 1, '┤', dim);
         }
-        false => {
-            let mut y = canvas.height() as usize + 1;
-            for figure in &panel.figures {
-                label(&mut canvas, LABEL_INSET, y, figure);
-                y += LABEL_ROWS;
+        for (column, goods) in shelf.goods.iter().enumerate() {
+            let x = wx + 1 + MACHINE_PAD + column * (slot_w + machine.gap);
+            let coil_y = top + SHELF_TOP + slot_h;
+            let coil: String = std::iter::repeat_n(COIL, slot_w).collect();
+            canvas.text(x, coil_y, &coil, style(CHARCOAL));
+            match goods {
+                Some((art, code, price)) => {
+                    let ax = x + centred_x(slot_w, art.width() as usize);
+                    canvas.blit(ax, coil_y - art.height() as usize, art);
+                    let label_w = visual_width(code) + LABEL_GAP + visual_width(price);
+                    let lx = x + centred_x(slot_w, label_w);
+                    let lx = lx + canvas.text(lx, coil_y + 1, code, style(WHITE)) + LABEL_GAP;
+                    canvas.text(lx, coil_y + 1, price, style(AMBER));
+                }
+                None => {
+                    let sx = x + centred_x(slot_w, visual_width(SOLD_OUT));
+                    canvas.text(sx, top + SHELF_TOP + slot_h / 2, SOLD_OUT, dim);
+                    let code = slot(row * VEND_COLUMNS + column);
+                    let label_w = visual_width(&code) + LABEL_GAP + visual_width(NONE);
+                    let lx = x + centred_x(slot_w, label_w);
+                    let lx = lx + canvas.text(lx, coil_y + 1, &code, dim) + LABEL_GAP;
+                    canvas.text(lx, coil_y + 1, NONE, dim);
+                }
             }
         }
     }
+    if machine.side {
+        let sx = wx + window_w + MACHINE_PAD;
+        let mut y = wy + 1;
+        let display_w = DISPLAY_INNER + 2;
+        let dx = sx + centred_x(SIDE_W, display_w);
+        boxed(&mut canvas, dx, y, display_w, 3, frame);
+        canvas.text(
+            dx + 1 + centred_x(DISPLAY_INNER, visual_width(shown)),
+            y + 1,
+            shown,
+            style(YELLOW),
+        );
+        y += 4;
+        for keys in KEYPAD {
+            canvas.text(sx + centred_x(SIDE_W, visual_width(keys)), y, keys, frame);
+            y += 1;
+        }
+        y += 1;
+        canvas.text(
+            sx + centred_x(SIDE_W, visual_width(COIN_SLOT)),
+            y,
+            COIN_SLOT,
+            style(AMBER),
+        );
+        canvas.text(
+            sx + centred_x(SIDE_W, visual_width(COIN_RETURN)),
+            y + 1,
+            COIN_RETURN,
+            dim,
+        );
+    }
+    let flap_y = wy + window_h;
+    match machine.flap_box {
+        true => {
+            let flap_w = window_w - FLAP_INSET * 2;
+            boxed(&mut canvas, wx + FLAP_INSET, flap_y, flap_w, flap_h, dim);
+            canvas.text(
+                wx + FLAP_INSET + centred_x(flap_w, visual_width(PUSH)),
+                flap_y + 1,
+                PUSH,
+                dim,
+            );
+        }
+        false => {
+            let push = format!("[ {PUSH} ]");
+            canvas.text(
+                wx + centred_x(window_w, visual_width(&push)),
+                flap_y,
+                &push,
+                dim,
+            );
+        }
+    }
+    let bird = penguin();
+    canvas.blit(
+        cabinet_w + PENGUIN_GAP,
+        cabinet_h - bird.height() as usize,
+        &bird,
+    );
     canvas
 }
 
-pub const LABEL_ROWS: usize = 2;
+fn vending(stock: &[(Item, u64)], selected: usize) -> Vec<Canvas> {
+    let arts: Vec<Canvas> = stock.iter().map(|(item, _)| item_canvas(*item)).collect();
+    let codes: Vec<String> = (0..stock.len()).map(slot).collect();
+    let prices: Vec<String> = stock
+        .iter()
+        .map(|(_, price)| format!("${}", grouped(u128::from(*price))))
+        .collect();
+    let slot_w = arts
+        .iter()
+        .map(|art| art.width() as usize)
+        .chain(
+            codes
+                .iter()
+                .zip(&prices)
+                .map(|(code, price)| visual_width(code) + LABEL_GAP + visual_width(price)),
+        )
+        .chain([visual_width(SOLD_OUT)])
+        .max()
+        .unwrap_or(0);
+    let slot_h = arts
+        .iter()
+        .map(|art| art.height() as usize)
+        .max()
+        .unwrap_or(0);
+    let goods: Vec<Option<(&Canvas, String, String)>> = arts
+        .iter()
+        .zip(codes)
+        .zip(prices)
+        .map(|((art, code), price)| Some((art, code, price)))
+        .collect();
+    let stocked = goods.len().div_ceil(VEND_COLUMNS).max(1);
+    let mut shelves: Vec<Shelf> = (0..stocked)
+        .map(|row| Shelf {
+            goods: (0..VEND_COLUMNS)
+                .map(|column| goods.get(row * VEND_COLUMNS + column).cloned().flatten())
+                .collect(),
+        })
+        .collect();
+    shelves.push(Shelf {
+        goods: vec![None; VEND_COLUMNS],
+    });
+    let shown = match selected < stock.len() {
+        true => slot(selected),
+        false => "--".to_string(),
+    };
+    MACHINES
+        .iter()
+        .filter(|machine| machine.shelves >= stocked)
+        .map(|machine| vending_machine(&shelves, (slot_w, slot_h), &shown, machine))
+        .collect()
+}
+
+fn lift(from: u32, to: u32) -> Vec<Canvas> {
+    LIFTS
+        .iter()
+        .map(|rows| {
+            let mut canvas = Canvas::default();
+            canvas.sprite(0, 0, rows);
+            let from = from.to_string();
+            let (row, col) = LIFT_FROM;
+            let start = (col + 1).saturating_sub(from.len());
+            for x in start..=col {
+                canvas.set(x, row, ' ', style(BACKGROUND));
+            }
+            canvas.text(start, row, &from, style(YELLOW));
+            let (row, col) = LIFT_ARROW;
+            canvas.set(col, row, '▼', style(YELLOW));
+            let (row, col) = LIFT_TO;
+            canvas.set(col, row, ' ', style(BACKGROUND));
+            canvas.text(col, row, &to.to_string(), style(DARK_GRAY));
+            let button = rows
+                .iter()
+                .enumerate()
+                .skip(LIFT_ARROW.0 + 1)
+                .find_map(|(y, row)| row.text.chars().position(|g| g == '▼').map(|x| (x, y)));
+            if let Some((x, y)) = button {
+                canvas.set(x, y, '▼', style(YELLOW));
+            }
+            canvas
+        })
+        .collect()
+}
+
+pub fn scene(panel: &Panel, cursor: Cursor, room: usize) -> Picture {
+    let bases: Vec<Canvas> = match &panel.art {
+        Scene::Rows(rows) => vec![sprite(rows)],
+        Scene::Card(shown) => cards(shown),
+        Scene::Vending(stock) => vending(stock, cursor.selected),
+        Scene::Lift { from, to } => lift(*from, *to),
+    };
+    if panel.figures.is_empty() {
+        return Picture::of(bases);
+    }
+    let figures = match panel.draw_figures {
+        true => lineup(&panel.figures, room),
+        false => labels(&panel.figures),
+    };
+    Picture::of(bases.iter().map(|base| below(base, &figures)).collect())
+}
 
 fn row_lines(row: &Row, selected: bool, width: usize) -> Vec<Vec<Span>> {
     let mark = if selected { CURSOR } else { NO_CURSOR };
@@ -397,8 +642,6 @@ fn row_lines(row: &Row, selected: bool, width: usize) -> Vec<Vec<Span>> {
     lines
 }
 
-pub const NOTE_GAP: usize = 2;
-
 pub struct Body {
     pub lines: Vec<Vec<Span>>,
     pub focus: Range<usize>,
@@ -424,8 +667,10 @@ fn text_lines(lines: &mut Vec<Vec<Span>>, said: &[LogLine], width: usize) {
 
 pub fn body(panel: &Panel, cursor: Cursor, width: usize) -> Body {
     let mut lines: Vec<Vec<Span>> = vec![Vec::new()];
-    text_lines(&mut lines, &panel.text, width);
-    lines.push(Vec::new());
+    if !panel.text.is_empty() {
+        text_lines(&mut lines, &panel.text, width);
+        lines.push(Vec::new());
+    }
     let mut focus = lines.len()..lines.len();
     for (index, row) in panel.rows.iter().enumerate() {
         let selected = index == cursor.selected;
@@ -474,19 +719,36 @@ pub struct Sheet<'a> {
     pub scroll: &'a Scroll,
 }
 
+fn tallest_hints(panel: &Panel, width: u16) -> u16 {
+    hints(panel, Some((panel.rows.len(), panel.rows.len()))).height(width)
+}
+
 pub fn draw(buf: &mut Buffer, sheet: &Sheet, screen: Screen) {
-    let art = scene(sheet.panel, ART_W as usize);
-    let left_w = ART_W.max(art.width() + PAD * 2);
-    let natural = BORDERS + left_w + DIVIDER + TEXT_W;
-    let width = natural.min(screen.whole.width);
-    let text_w = width.saturating_sub(BORDERS + DIVIDER + left_w);
-    match text_w >= TEXT_MIN_W {
-        true => draw_wide(buf, sheet, screen, &art, (left_w, width)),
-        false => {
-            let room = screen.whole.width.saturating_sub(BORDERS + PAD * 2) as usize;
-            draw_stacked(buf, sheet, screen, &scene(sheet.panel, room))
+    let width = screen.whole.width;
+    let inner_w = width.saturating_sub(BORDERS);
+    let room_h = screen
+        .whole
+        .height
+        .saturating_sub(BORDERS + RULE_ROWS + tallest_hints(sheet.panel, inner_w));
+    let wide_room = inner_w.saturating_sub(DIVIDER + TEXT_MIN_W + PAD * 2);
+    let natural_room = ART_W.saturating_sub(PAD * 2) as usize;
+    let wide_picture = scene(sheet.panel, sheet.cursor, natural_room);
+    if let Some(art) = wide_picture.fit(wide_room, room_h) {
+        let left_w = ART_W.max(art.width() + PAD * 2);
+        let frame_w = (BORDERS + left_w + DIVIDER + TEXT_W).min(width);
+        let text_w = frame_w.saturating_sub(BORDERS + DIVIDER + left_w);
+        if text_w >= TEXT_MIN_W {
+            return draw_wide(buf, sheet, screen, art, (left_w, frame_w));
         }
     }
+    let art_room = inner_w.saturating_sub(PAD * 2);
+    let body_lines = body(sheet.panel, sheet.cursor, inner_w as usize)
+        .lines
+        .len();
+    let text_floor = body_lines.min(STACK_TEXT_FLOOR);
+    let stacked = scene(sheet.panel, sheet.cursor, art_room as usize);
+    let art = stacked.fit(art_room, room_h.saturating_sub(text_floor as u16));
+    draw_stacked(buf, sheet, screen, art);
 }
 
 fn place(screen: Screen, width: u16, content_h: u16) -> Rect {
@@ -512,7 +774,7 @@ fn draw_wide(
     let inner_w = width.saturating_sub(BORDERS);
     let calm = hints(panel, None);
     let hint_h = calm.height(inner_w);
-    let content = (art.height()).max(body.lines.len() as u16);
+    let content = art.height().max(body.lines.len() as u16);
     let rect = place(screen, width, content + RULE_ROWS + hint_h + BORDERS);
     let inside = inner(rect);
     let hint_h = hint_h.min(inside.height.saturating_sub(1));
@@ -531,16 +793,9 @@ fn draw_wide(
     rule(buf, rect, rule_y);
     put_char(buf, divider, rule_y, SPLIT_UP);
     let left = Rect::new(inside.x, inside.y, left_w, body_h);
-    let x = left.x as i32 + (left.width.saturating_sub(art.width()) / 2) as i32;
-    art.draw(buf, x, left.y as i32, left);
-    seal(
-        buf,
-        left,
-        Cuts {
-            bottom: art.height() > body_h,
-            ..Cuts::default()
-        },
-    );
+    if art.height() <= left.height && art.width() <= left.width {
+        art.draw_centred(buf, left);
+    }
     let right = Rect::new(divider + 1, inside.y, text_w, body_h);
     let total = body.lines.len();
     let shown = scroll.reveal(body.focus.clone(), body_h as usize, total);
@@ -558,59 +813,46 @@ fn draw_wide(
     );
 }
 
-fn draw_stacked(buf: &mut Buffer, sheet: &Sheet, screen: Screen, art: &Canvas) {
+fn draw_stacked(buf: &mut Buffer, sheet: &Sheet, screen: Screen, art: Option<&Canvas>) {
     let (panel, cursor, scroll) = (sheet.panel, sheet.cursor, sheet.scroll);
     let width = screen.whole.width;
     let inner_w = width.saturating_sub(BORDERS);
     let body = body(panel, cursor, inner_w as usize);
-    let indent = (inner_w.saturating_sub(art.width()) / 2) as usize;
-    let mut lines: Vec<Vec<Span>> = (0..art.height() as usize)
-        .map(|row| {
-            let mut spans = vec![(" ".repeat(indent), style(WHITE))];
-            spans.extend(art.row_spans(row));
-            spans
-        })
-        .collect();
-    let offset = lines.len();
-    lines.extend(body.lines);
-    let focus = body.focus.start + offset..body.focus.end + offset;
+    let band = art.map_or(0, Canvas::height);
     let calm = hints(panel, None);
     let hint_h = calm.height(inner_w);
     let rect = place(
         screen,
         width,
-        lines.len() as u16 + RULE_ROWS + hint_h + BORDERS,
+        band + body.lines.len() as u16 + RULE_ROWS + hint_h + BORDERS,
     );
     let inside = inner(rect);
-    let window = inside.height.saturating_sub(hint_h + RULE_ROWS) as usize;
-    let overflowing = lines.len() > window;
+    let window = inside.height.saturating_sub(hint_h + RULE_ROWS + band) as usize;
+    let overflowing = body.lines.len() > window;
     let bar = hints(
         panel,
         overflowing.then_some((cursor.selected + 1, panel.rows.len())),
     );
     let hint_h = bar.height(inner_w).min(inside.height.saturating_sub(1));
-    let body_h = inside.height.saturating_sub(hint_h + RULE_ROWS);
+    let text_h = inside.height.saturating_sub(hint_h + RULE_ROWS);
+    let band = band.min(text_h);
     frame(buf, rect, &panel.title);
-    let rule_y = inside.y + body_h;
+    let rule_y = inside.y + text_h;
     rule(buf, rect, rule_y);
-    let total = lines.len();
-    let shown = scroll.reveal(focus, body_h as usize, total);
-    let window = Rect::new(inside.x, inside.y, inside.width, body_h);
-    draw_lines(buf, &lines[shown.clone()], window);
-    let wide_art = art.width() > inside.width;
-    seal(
-        buf,
-        window,
-        Cuts {
-            top: shown.start > 0,
-            bottom: shown.end < total,
-            left: wide_art,
-            right: wide_art,
-        },
-    );
+    if let Some(art) = art {
+        let area = Rect::new(inside.x, inside.y, inside.width, art.height());
+        if art.height() <= text_h && art.width() <= area.width {
+            art.draw_centred(buf, area);
+        }
+    }
+    let body_h = text_h.saturating_sub(band);
+    let total = body.lines.len();
+    let shown = scroll.reveal(body.focus.clone(), body_h as usize, total);
+    let window = Rect::new(inside.x, inside.y + band, inside.width, body_h);
+    draw_lines(buf, &body.lines[shown.clone()], window);
     Scrollbar {
         x: rect.right().saturating_sub(BORDER),
-        top: inside.y,
+        top: window.y,
         height: body_h,
     }
     .draw(buf, shown, total, WHITE);

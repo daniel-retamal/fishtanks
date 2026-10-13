@@ -1,6 +1,10 @@
 use std::ops::Range;
 
-use ratatui::{buffer::Buffer, layout::Rect, style::Modifier};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Modifier, Style},
+};
 
 use crate::colors::{AMBER, DARK_GRAY, GRAY, LIGHT_RED, RED, WHITE};
 use crate::dungeon::beat::View;
@@ -10,7 +14,7 @@ use crate::dungeon::items::PACK_STACKS;
 use crate::dungeon::kit::Kit;
 use crate::dungeon::map::{ENTRY_GLYPH, ENTRY_LANE, LANES, RoomKind};
 use crate::dungeon::room::hidden;
-use crate::dungeon::screen::{Chart, Popup};
+use crate::dungeon::screen::Chart;
 use crate::dungeon::traits::Trait;
 use crate::ui::circuit_overlay::{EAST, NORTH, SOUTH, WEST, wire_char};
 use crate::ui::hint_bar::HintBar;
@@ -18,8 +22,6 @@ use crate::ui::hints::{
     HINT_ENTER_GO, HINT_ESC_BACK, HINT_ESC_LEAVE, HINT_I_ITEMS, HINT_P_PARTY, HINT_ROUTE,
 };
 use crate::ui::layout::{Screen, Scroll, Scrollbar};
-use crate::ui::modal::{Modal, ModalSpec};
-use crate::ui::put;
 use crate::ui::table::{ellipsize, visual_width};
 
 use super::battle::{
@@ -115,7 +117,14 @@ pub struct Chartwork {
     pub focus: Range<usize>,
 }
 
+fn label(canvas: &mut Canvas, (x, y): (usize, usize), text: &str, ink: Style, room: usize) {
+    if x + visual_width(text) <= room {
+        canvas.text(x, y, text, ink);
+    }
+}
+
 pub fn chart(expedition: &Expedition, chart: &Chart, room: usize) -> Chartwork {
+    let space = room;
     let map = expedition.map();
     let layout = Layout::of(room);
     let path = &expedition.route.path;
@@ -194,7 +203,13 @@ pub fn chart(expedition: &Expedition, chart: &Chart, room: usize) -> Chartwork {
         1 => FROM_HOME.to_string(),
         n => format!("from Floor {}", n - 1),
     };
-    canvas.text(entry_x + LABEL_GAP, 0, &from, style(DARK_GRAY));
+    label(
+        &mut canvas,
+        (entry_x + LABEL_GAP, 0),
+        &from,
+        style(DARK_GRAY),
+        space,
+    );
     let kits = expedition.kits();
     let mapped = kits
         .iter()
@@ -227,14 +242,20 @@ pub fn chart(expedition: &Expedition, chart: &Chart, room: usize) -> Chartwork {
                     .filter(|visit| visit.kind == RoomKind::Boss)
                     .and_then(|visit| visit.foes.first().map(|foe| foe.enemy.clone()))
                     .unwrap_or_else(|| boss_name(expedition));
-                canvas.text(x + LABEL_GAP, y, &name, style(RED));
+                label(&mut canvas, (x + LABEL_GAP, y), &name, style(RED), space);
             }
         }
     }
     let boss_x = layout.x(ENTRY_LANE);
     canvas.set(boss_x, boss_y + 1, '│', style(DARK_GRAY));
     canvas.set(boss_x, boss_y + 2, RoomKind::Elevator.glyph(), style(WHITE));
-    canvas.text(boss_x + LABEL_GAP, boss_y + 2, ELEVATOR, style(WHITE));
+    label(
+        &mut canvas,
+        (boss_x + LABEL_GAP, boss_y + 2),
+        ELEVATOR,
+        style(WHITE),
+        space,
+    );
     let row = path.len();
     let top = Layout::row_y(row.checked_sub(1));
     let bottom = (Layout::row_y(Some(row.min(map.boss_row()))) + 1).min(height);
@@ -345,7 +366,7 @@ pub fn draw(
     buf: &mut Buffer,
     expedition: &Expedition,
     chart_state: &Chart,
-    scroll: &Scroll,
+    (scroll, sheet_scroll): (&Scroll, &Scroll),
     screen: Screen,
 ) {
     let width = frame_width(screen);
@@ -419,8 +440,17 @@ pub fn draw(
     } else {
         draw_column(buf, expedition, chart_state, scroll, screen, &bar);
     }
-    if let Some(popup) = chart_state.popup {
-        draw_popup(buf, expedition, popup, screen);
+    if let Some(panel) = chart_state.sheet(expedition) {
+        let sheet = super::room::Sheet {
+            panel: &panel,
+            cursor: super::room::Cursor {
+                selected: chart_state.at.min(panel.rows.len().saturating_sub(1)),
+                fish: 0,
+                reading: false,
+            },
+            scroll: sheet_scroll,
+        };
+        super::room::draw(buf, &sheet, screen);
     }
 }
 
@@ -486,80 +516,4 @@ fn draw_column(
         Rect::new(inside.x, rule_y + RULE_ROWS, inside.width, hint_h),
         BACKGROUND,
     );
-}
-
-fn popup_lines(expedition: &Expedition, popup: Popup) -> (String, Vec<Span>) {
-    match popup {
-        Popup::Items => {
-            let lines: Vec<Span> = match expedition.pack.iter().any(|p| p.count > 0) {
-                false => vec![("Nothing is packed.".to_string(), style(GRAY))],
-                true => expedition
-                    .pack
-                    .iter()
-                    .filter(|p| p.count > 0)
-                    .map(|p| (format!("{} ×{}", p.item.name(), p.count), style(WHITE)))
-                    .collect(),
-            };
-            ("Items".to_string(), lines)
-        }
-        Popup::Party => {
-            let lines = expedition
-                .party
-                .iter()
-                .map(|fish| {
-                    let kit = Kit::of(fish);
-                    (
-                        format!(
-                            "{}{SEPARATOR}{}{SEPARATOR}{}{SEPARATOR}Bite {}{SEPARATOR}Speed {}",
-                            fish.name,
-                            fish.species.display_name(),
-                            kit.grade.name(),
-                            kit.bite,
-                            kit.speed
-                        ),
-                        style(WHITE),
-                    )
-                })
-                .collect();
-            ("Party".to_string(), lines)
-        }
-    }
-}
-
-fn draw_popup(buf: &mut Buffer, expedition: &Expedition, popup: Popup, screen: Screen) {
-    let (title, lines) = popup_lines(expedition, popup);
-    let title = titled(&title);
-    let bar = HintBar::new(HINT_ESC_BACK);
-    let content_w = lines
-        .iter()
-        .map(|(text, _)| visual_width(text) as u16 + PAD * 2)
-        .max()
-        .unwrap_or(0);
-    let modal = Modal::open(
-        buf,
-        screen,
-        &ModalSpec {
-            title: &title,
-            border: WHITE,
-            background: BACKGROUND,
-            content_w,
-            content_h: lines.len() as u16,
-            hints: &bar,
-        },
-    );
-    for (row, (text, ink)) in lines.iter().enumerate() {
-        let y = modal.body.y + row as u16;
-        if y >= modal.body.bottom() {
-            return;
-        }
-        let shown = ellipsize(text, modal.body.width.saturating_sub(PAD * 2) as usize);
-        put(
-            buf,
-            (modal.body.x + PAD) as i32,
-            y as i32,
-            &shown,
-            *ink,
-            modal.body,
-        );
-    }
 }

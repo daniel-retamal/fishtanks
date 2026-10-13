@@ -5,8 +5,10 @@ use super::room::{Scene, Stage};
 pub fn of(kind: RoomKind, stage: &Stage) -> Scene {
     let rows = match (kind, stage) {
         (RoomKind::Chest, Stage::Sprung) => MIMIC,
+        (RoomKind::Chest, Stage::Spoils) => OPEN_CHEST,
         (RoomKind::Chest, _) => CHEST,
         (RoomKind::BellJar, Stage::Sprung) => LURKER_JAR,
+        (RoomKind::BellJar, Stage::Spoils) => BROKEN_JAR,
         (RoomKind::BellJar, _) => BELL_JAR,
         (RoomKind::Den, _) => DEN,
         (RoomKind::School, _) => SCHOOL,
@@ -23,13 +25,29 @@ pub fn of(kind: RoomKind, stage: &Stage) -> Scene {
 }
 
 pub const ALL: &[&[SpriteRow]] = &[
-    DEN, SCHOOL, SHRINE, ALTAR, LABORATORY, VENT, CLEANING, WRECK, ELEVATOR, CHEST, MIMIC,
-    LURKER_JAR, BELL_JAR,
+    DEN,
+    SCHOOL,
+    SHRINE,
+    ALTAR,
+    LABORATORY,
+    VENT,
+    CLEANING,
+    WRECK,
+    ELEVATOR,
+    ELEVATOR_LOW,
+    ELEVATOR_SMALL,
+    CHEST,
+    OPEN_CHEST,
+    MIMIC,
+    LURKER_JAR,
+    BELL_JAR,
+    BROKEN_JAR,
 ];
 
-pub const LIFT_FROM: (usize, usize) = (1, 13);
-pub const LIFT_ARROW: (usize, usize) = (1, 18);
-pub const LIFT_TO: (usize, usize) = (1, 23);
+pub const LIFTS: &[&[SpriteRow]] = &[ELEVATOR, ELEVATOR_LOW, ELEVATOR_SMALL];
+pub const LIFT_FROM: (usize, usize) = (1, 11);
+pub const LIFT_ARROW: (usize, usize) = (1, 15);
+pub const LIFT_TO: (usize, usize) = (1, 19);
 
 pub const DEN: &[SpriteRow] = &[
     row("                      :               `:", "k"),
@@ -67,55 +85,67 @@ pub const SCHOOL: &[SpriteRow] = &[
 ];
 
 pub const SHRINE: &[SpriteRow] = &[
-    row("      \\    |    /", "y"),
+    row("       \\    |    /", "y"),
     row("            +", "y"),
     row("           /|\\", "y"),
     row("         _/ | \\_", "y"),
     row("       _/       \\_", "y"),
     row("     _/___________\\_", "y"),
-    row("      |  .-‾‾‾-.  |", "eeeeeeeeyyyyyyye"),
-    row("      | (  ‿‿‿  ) |", "eeeeeeeeeyyyyye"),
+    row("      |  .-‾‾‾-.  |", "eeeeeeeeeyyyyyyye"),
+    row("      | (  ‿‿‿  ) |", "eeeeeeeeyyyyyyyyye"),
     row("      | ><)))))°> |", "eeeeeeeewwwwwwwwwe"),
     row("      |  _______  |", "e"),
-    row(" i    |_|_______|_|    i", "eoeeeeeeeeeeeeeeeeeeeoe"),
+    row(" i    |_|_______|_|    i", "eoeeeeeeeeeeeeeeeeeeeeeo"),
     row(" |   [=============]   |", "e"),
     row("_|_                   _|_", "e"),
 ];
 
 pub const ALTAR: &[SpriteRow] = &[
     row("     )                       (", "o"),
-    row("    (_)     .---------.     (_)", "dddddddddddeeeeeeeeeeed"),
-    row("    |#|     | ~~~~~~~ |     |#|", "ddddddddddddeeeeeeeeed"),
-    row("    |#|     | ~~~~~~~ |     |#|", "ddddddddddddeeeeeeeeed"),
-    row("    |#|     | x______ |     |#|", "ddddddddddddeeeeeeeeed"),
+    row(
+        "    (_)     .---------.     (_)",
+        "ssssdddssssseeeeeeeeeeesssssd",
+    ),
+    row(
+        "    |#|     | ~~~~~~~ |     |#|",
+        "ssssdddssssseeeeeeeeeeesssssd",
+    ),
+    row(
+        "    |#|     | ~~~~~~~ |     |#|",
+        "ssssdddssssseeeeeeeeeeesssssd",
+    ),
+    row(
+        "    |#|     | x______ |     |#|",
+        "ssssdddssssseeeeeeeeeeesssssd",
+    ),
     row(
         " ___|#|_____'---------'_____|#|___",
-        "ssssssssssseeeeeeeeeees",
+        "ssssdddssssseeeeeeeeeeesssssddds",
     ),
-    row("|                                  |", "s"),
+    row("|                                 |", "s"),
     row(
-        "|           .-‾‾‾‾‾‾-.             |",
-        "sssssssssRRRRRRRRRRRRRRRRs",
-    ),
-    row(
-        "|          / \\      / \\            |",
-        "sssssssssRRRRRRRRRRRRRRRRs",
+        "|           .-‾‾‾‾‾‾‾-.           |",
+        "ssssssssssssRRRRRRRRRRRs",
     ),
     row(
-        "|         | ‾‾‾\\  /‾‾‾ |           |",
-        "sssssssssRRRRRRRRRRRRRRRRs",
+        "|          / \\       / \\          |",
+        "sssssssssssRsRsssssssRsRs",
     ),
     row(
-        "|         |  \\  \\/  /  |           |",
-        "sssssssssRRRRRRRRRRRRRRRRs",
+        "|         | ‾‾‾\\   /‾‾‾ |         |",
+        "ssssssssssRsRRRRsssRRRRsRs",
     ),
     row(
-        "|          \\  \\_/\\_/  /            |",
-        "sssssssssRRRRRRRRRRRRRRRRs",
+        "|         |  \\  \\ /  /  |         |",
+        "ssssssssssRssRssRsRssRssRs",
     ),
     row(
-        "|___________'-.____.-'_____________|",
-        "sssssssssRRRRRRRRRRRRRRRRs",
+        "|          \\  \\_/ \\_/  /          |",
+        "sssssssssssRssRRRsRRRssRs",
+    ),
+    row(
+        "|___________'-._____.-'___________|",
+        "ssssssssssssRRRRRRRRRRRs",
     ),
 ];
 
@@ -139,72 +169,100 @@ pub const LABORATORY: &[SpriteRow] = &[
     row("'---'       '---'       '---'", "s"),
     row("", "G"),
     row("", "G"),
-    row(" <=o=>   ·   ·    ·", "G"),
+    row("<=o=>         ·           ·", "oooooG"),
 ];
 
 pub const VENT: &[SpriteRow] = &[
     row("              o   °", "c"),
     row("            °   o   °", "c"),
     row("", ""),
-    row("               ~~~~", "o"),
-    row("             /      \\", "n"),
-    row("            /   ▒▒   \\", "nnnnnnnnnnnnnnnnoon"),
-    row("           /__________\\", "n"),
+    row("               ~~~", "o"),
+    row("             /     \\", "n"),
+    row("            /   ▒   \\", "nnnnnnnnnnnnnnnnon"),
+    row("           /_________\\", "n"),
     row("", ""),
     row("", ""),
-    row("}><)))))))°>      <°((((((><", "rrrrrrrrrrrrs"),
+    row(
+        "     ><)))))°>     <°(((((><",
+        "rrrrrrrrrrrrrrrrrrrooooooooo",
+    ),
 ];
 
 pub const CLEANING: &[SpriteRow] = &[
-    row("      ^ ^ ^ ^", "e"),
-    row("   ><))))))))°>", "r"),
-    row("      v v v v", "e"),
+    row("       ^ ^ ^ ^", "e"),
+    row("     ><)))))))°>", "r"),
+    row("       v v v v", "e"),
     row("", "d"),
     row("", "d"),
-    row("     ,,=<    >=,,", "R"),
+    row("    ,,=<     >=,,", "R"),
     row("", "d"),
-    row(" .-~~~~~~~~~~~~~~~~-.", "d"),
-    row("(                    )", "d"),
+    row(" .-~~~~~~~~~~~~~~~-.", "d"),
+    row("(                   )", "d"),
 ];
 
 pub const WRECK: &[SpriteRow] = &[
-    row("             |\\", "d"),
-    row("             | \\", "d"),
-    row("          ___|__\\___", "n"),
-    row("          \\_o___o__/", "n"),
+    row("            |\\", "d"),
+    row("            | \\", "d"),
+    row("    ________|__\\_____", "n"),
+    row("     \\  o   o   o  /", "n"),
+    row("      \\___________/", "n"),
     row("", "d"),
-    row("", "d"),
-    row("  <°(((x><   <°((x><", "d"),
+    row("   <°((x><     <°((x><", "d"),
     row("", "d"),
     row(".:.:.:.:.:.:.:.:.:.:.:.:.", "k"),
 ];
 
 pub const ELEVATOR: &[SpriteRow] = &[
-    row("    ┌─────────────────────────────┐", "s"),
-    row("    │        4    ▼    5          │", "s"),
-    row("    ├──────────────┬┬─────────────┤", "s"),
-    row("    │              ││             │", "s"),
-    row("    │              ││             │", "s"),
-    row("    │              ││             │  ┌───┐", "s"),
-    row("    │              ││             │  │ ▲ │", "s"),
-    row("    │              ││             │  │ ▼ │", "s"),
-    row("    │              ││             │  └───┘", "s"),
-    row("    │              ││             │", "s"),
-    row("    │              ││             │", "s"),
-    row("    │              ││             │", "s"),
-    row("    │              ││             │", "s"),
-    row("    └──────────────┴┴─────────────┘", "s"),
-    row("‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾", "d"),
+    row("┌─────────────────────────────┐", "s"),
+    row("│          4   ▼   5          │", "s"),
+    row("├─────────────────────────────┤", "s"),
+    row("│              ║              │", "s"),
+    row("│              ║              │", "s"),
+    row("│              ║              │", "s"),
+    row("│              ║              │", "s"),
+    row("│              ║              │   ┌───┐", "s"),
+    row("│              ║              │   │ ▲ │", "s"),
+    row("│              ║              │   │ ▼ │", "s"),
+    row("│              ║              │   └───┘", "s"),
+    row("│              ║              │", "s"),
+    row("│              ║              │", "s"),
+    row("│              ║              │", "s"),
+    row("│              ║              │", "s"),
+    row("└─────────────────────────────┘", "s"),
+];
+
+pub const ELEVATOR_LOW: &[SpriteRow] = &[
+    row("┌─────────────────────────────┐", "s"),
+    row("│          4   ▼   5          │", "s"),
+    row("├─────────────────────────────┤", "s"),
+    row("│              ║              │", "s"),
+    row("│              ║              │   ┌───┐", "s"),
+    row("│              ║              │   │ ▲ │", "s"),
+    row("│              ║              │   │ ▼ │", "s"),
+    row("│              ║              │   └───┘", "s"),
+    row("│              ║              │", "s"),
+    row("└─────────────────────────────┘", "s"),
+];
+
+pub const ELEVATOR_SMALL: &[SpriteRow] = &[
+    row("┌─────────────────────────────┐", "s"),
+    row("│          4   ▼   5          │", "s"),
+    row("├─────────────────────────────┤", "s"),
+    row("│              ║              │   ┌───┐", "s"),
+    row("│              ║              │   │ ▲ │", "s"),
+    row("│              ║              │   │ ▼ │", "s"),
+    row("│              ║              │   └───┘", "s"),
+    row("└─────────────────────────────┘", "s"),
 ];
 
 pub const CHEST: &[SpriteRow] = &[
-    row("    °    o", "g"),
-    row("  o    °    o", "g"),
+    row("             °   o", "g"),
+    row("          o    °    o", "g"),
     row("", "n"),
     row("    _______________________", "n"),
     row(
-        "  / $  $  $  $  $  $  $  $  \\",
-        "ggngggggggggggggggggggggggggn",
+        "  /   $  $  $  $  $  $  $   \\",
+        "nnnnnngnngnngnngnngnngnngn",
     ),
     row("  |=========================|", "n"),
     row("  |                         |", "n"),
@@ -213,39 +271,62 @@ pub const CHEST: &[SpriteRow] = &[
     row(".:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.", "k"),
 ];
 
+pub const OPEN_CHEST: &[SpriteRow] = &[
+    row("    _______________________", "n"),
+    row("   |                       |", "n"),
+    row("   |_______________________|", "n"),
+    row(
+        "  / $ $ $ $ $ $ $ $ $ $ $ $ \\",
+        "nnnngngngngngngngngngngngngn",
+    ),
+    row("  |=========================|", "n"),
+    row("  |           [°]           |", "nnnnnnnnnnnnnngggn"),
+    row("  |_________________________|", "n"),
+    row(".:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.", "k"),
+];
+
 pub const MIMIC: &[SpriteRow] = &[
     row("    _______________________", "n"),
     row("  /VVVVVVVVVVVVVVVVVVVVVVVVV\\", "w"),
-    row("  \\    °             °      /", "R"),
+    row("  \\     °             °     /", "wwwwwwwwRwwwwwwwwwwwwwRw"),
     row("   ^^^^^^^^^^^^^^^^^^^^^^^^^", "w"),
     row("  |           [°]           |", "nnnnnnnnnnnnnnRRRn"),
     row("  |_________________________|", "n"),
     row(".:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.", "k"),
 ];
 
-pub const LURKER_JAR: &[SpriteRow] = &[
-    row("          _", "s"),
-    row("      .-~\"~-.", "c"),
-    row("    /  ,  ,  \\", "c"),
-    row("   |  /  \\    |", "c"),
-    row("   | .-\"-.  \\ |", "c"),
-    row("   |/°   °\\   |", "cccccRcccRc"),
-    row("   |\\ vvv /   |", "ccccccwwwc"),
-    row("   '-.....-'", "c"),
-    row("  [=============]", "s"),
-    row("", "c"),
-    row(".  ,   .   , .", "c"),
-];
-
 pub const BELL_JAR: &[SpriteRow] = &[
-    row("       _", "s"),
+    row("      _", "s"),
     row("   .-~\"~-.", "c"),
     row(" /         \\", "c"),
     row("|           |", "c"),
     row("|   <°)><   |", "ccccdddddc"),
     row("|           |", "c"),
     row("'-.........-'", "c"),
-    row("[=============]", "s"),
+    row("[===========]", "s"),
     row("", "c"),
-    row("  .  ,   .   , .", "c"),
+    row(" .  ,   ,  .", "k"),
+];
+
+pub const LURKER_JAR: &[SpriteRow] = &[
+    row("      _", "s"),
+    row("   .-~\"~-.", "c"),
+    row(" /  .-\"-.  \\", "ccccwwwwwc"),
+    row("|  /°   °\\  |", "cccwRwwwRwc"),
+    row("|  \\ vvv /  |", "cccwwwwwwwc"),
+    row("|   '---'   |", "ccccwwwwwc"),
+    row("'-.........-'", "c"),
+    row("[===========]", "s"),
+    row("", "c"),
+    row(" .  ,   ,  .", "k"),
+];
+
+pub const BROKEN_JAR: &[SpriteRow] = &[
+    row("|\\/\\_   _/\\/|", "c"),
+    row("|           |", "c"),
+    row("|           |", "c"),
+    row("'-.........-'", "c"),
+    row("[===========]", "s"),
+    row("", "c"),
+    row(" .  ,   ,  .", "k"),
 ];

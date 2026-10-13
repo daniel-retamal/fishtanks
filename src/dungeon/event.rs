@@ -145,14 +145,14 @@ pub const EVENTS: &[EventSpec] = &[
         name: "A Pirate Wreck",
         floor: 1,
         art: &[
-            row("              |\\", "d"),
-            row("              |=\\", "dr"),
-            row("              |  \\", "d"),
-            row("         _____|___\\____", "n"),
-            row("         \\  o   o   o /", "n"),
-            row("          \\__________/", "n"),
+            row("               |\\", "d"),
+            row("               |=\\", "ddddddddddddddddr"),
+            row("               |  \\", "d"),
+            row("       ________|___\\____", "n"),
+            row("       \\   o   o   o   /", "n"),
+            row("        \\_____________/", "n"),
             row("", " "),
-            row("       .:.:.:.:.:.:.:.:.:.", "k"),
+            row("    .:.:.:.:.:.:.:.:.:.:.:.", "k"),
         ],
         text: "A pirate wreck lists in the sand. Its hold is open and its flag is furled.",
         choices: &[
@@ -191,9 +191,9 @@ pub const EVENTS: &[EventSpec] = &[
             row("           /    \\", "B"),
             row("          ><    ><", "B"),
             row("", " "),
-            row("     ~  ~~   ~   ~~  ~", "B"),
+            row("     ~  ~~   ~~   ~~  ~", "B"),
         ],
-        text: "La Pincoya dances on the shore. Facing the sea, she brings plenty; facing the land, she takes it.",
+        text: "La Pincoya dances on the shore. Facing the sea, she giveth; facing the land, she taketh away.",
         choices: &[
             checked(
                 "Watch",

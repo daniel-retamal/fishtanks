@@ -50,9 +50,13 @@ impl Widget for DungeonOverlay<'_> {
                 };
                 room::draw(buf, &sheet, self.screen);
             }
-            (View::Map(chart), Some(expedition)) => {
-                map::draw(buf, expedition, chart, &self.state.scroll, self.screen)
-            }
+            (View::Map(chart), Some(expedition)) => map::draw(
+                buf,
+                expedition,
+                chart,
+                (&self.state.scroll, &self.state.sheet_scroll),
+                self.screen,
+            ),
             (View::Room(lobby), Some(expedition)) => {
                 let Some(panel) = expedition.panel(lobby.fish, self.wrecks) else {
                     return;

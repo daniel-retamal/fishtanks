@@ -22,7 +22,15 @@ use rand::SeedableRng;
 use rand::rngs::SmallRng;
 
 const SIZES: [(u16, u16); 6] = [(120, 38), (100, 30), (80, 24), (60, 18), (40, 14), (28, 10)];
-const ROOM_SIZES: [(u16, u16); 5] = [(110, 20), (80, 24), (60, 18), (40, 14), (28, 10)];
+const ROOM_SIZES: [(u16, u16); 7] = [
+    (120, 38),
+    (110, 20),
+    (100, 30),
+    (80, 24),
+    (60, 18),
+    (40, 14),
+    (28, 10),
+];
 const SETTLE_TICKS: usize = 600;
 const FIGHT_TURNS: usize = 400;
 const SIZE: (u16, u16) = (120, 38);
@@ -269,6 +277,31 @@ fn the_rooms_gone_wrong_on_film() {
             )];
             tui.run("/dungeon");
             tui.snap(&format!("{} gone wrong", kind.title()));
+            tui.key(KeyCode::Esc);
+        }
+        for (kind, label) in [
+            (RoomKind::Chest, "Sunken Chest opened"),
+            (RoomKind::BellJar, "Bell Jar broken"),
+        ] {
+            at(
+                &mut tui,
+                diving(strong_party(), CROWD_SEED, &Ground::default()),
+                kind,
+            );
+            let visit = tui
+                .app
+                .dungeon
+                .expedition
+                .as_mut()
+                .and_then(|e| e.visit.as_mut())
+                .expect("a room");
+            visit.stage = Stage::Spoils;
+            visit.said = vec![fishtank::dungeon::beat::LogLine::new(
+                "Found: $40.",
+                fishtank::dungeon::beat::Tone::Gold,
+            )];
+            tui.run("/dungeon");
+            tui.snap(label);
             tui.key(KeyCode::Esc);
         }
         tui.write_reel();

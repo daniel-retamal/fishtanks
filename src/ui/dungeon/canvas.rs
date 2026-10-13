@@ -150,6 +150,80 @@ impl Canvas {
             .map(|&(glyph, ink)| (glyph.to_string(), ink))
             .collect()
     }
+
+    fn drawn(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.rows.iter().enumerate().flat_map(|(y, row)| {
+            row.iter()
+                .enumerate()
+                .filter(|(_, (glyph, _))| *glyph != BLANK)
+                .map(move |(x, _)| (x, y))
+        })
+    }
+
+    pub fn trimmed(&self) -> Canvas {
+        let none: Option<(usize, usize, usize, usize)> = None;
+        let Some((left, top, right, bottom)) = self.drawn().fold(none, |bounds, (x, y)| {
+            Some(match bounds {
+                None => (x, y, x, y),
+                Some((l, t, r, b)) => (l.min(x), t.min(y), r.max(x), b.max(y)),
+            })
+        }) else {
+            return Canvas::default();
+        };
+        let mut canvas = Canvas::default();
+        for y in top..=bottom {
+            for x in left..=right {
+                let cell = self.rows[y].get(x).copied();
+                match cell {
+                    Some((glyph, ink)) if glyph != BLANK => {
+                        canvas.set(x - left, y - top, glyph, ink)
+                    }
+                    _ => canvas.reach(x - left, y - top),
+                }
+            }
+        }
+        canvas
+    }
+
+    pub fn centred_row(&mut self, y: usize, width: usize, spans: &[(String, Style)]) {
+        let used: usize = spans
+            .iter()
+            .map(|(text, _)| crate::ui::table::visual_width(text))
+            .sum();
+        let mut x = width.saturating_sub(used) / 2;
+        for (text, ink) in spans {
+            x += self.text(x, y, text, *ink);
+        }
+    }
+
+    pub fn draw_centred(&self, buf: &mut Buffer, area: Rect) {
+        let x = area.x + area.width.saturating_sub(self.width()) / 2;
+        let y = area.y + area.height.saturating_sub(self.height()) / 2;
+        self.draw(buf, x as i32, y as i32, area);
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct Picture {
+    variants: Vec<Canvas>,
+}
+
+impl Picture {
+    pub fn of(variants: Vec<Canvas>) -> Picture {
+        Picture {
+            variants: variants
+                .iter()
+                .map(Canvas::trimmed)
+                .filter(|canvas| canvas.height() > 0)
+                .collect(),
+        }
+    }
+
+    pub fn fit(&self, width: u16, height: u16) -> Option<&Canvas> {
+        self.variants
+            .iter()
+            .find(|canvas| canvas.width() <= width && canvas.height() <= height)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

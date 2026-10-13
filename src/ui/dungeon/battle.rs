@@ -389,6 +389,7 @@ pub(super) fn tone_colour(tone: Tone) -> Color {
         Tone::Tell => YELLOW,
         Tone::Round | Tone::Quiet => DARK_GRAY,
         Tone::Down => RED,
+        Tone::Focus => WHITE,
     }
 }
 

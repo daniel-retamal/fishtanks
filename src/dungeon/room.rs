@@ -243,13 +243,27 @@ pub enum Verb {
     Ride,
     Pick,
     Pack,
+    Browse,
+}
+
+#[derive(Clone)]
+pub enum Portrait {
+    Fish(Box<Fish>),
+    Item(Item),
+}
+
+#[derive(Clone)]
+pub struct Card {
+    pub title: String,
+    pub portrait: Portrait,
+    pub caption: Vec<LogLine>,
+    pub lit: bool,
 }
 
 #[derive(Clone)]
 pub enum Scene {
     Rows(&'static [SpriteRow]),
-    Fish(Box<Fish>),
-    Item(Item),
+    Card(Card),
     Vending(Vec<(Item, u64)>),
     Lift { from: u32, to: u32 },
 }
@@ -621,6 +635,10 @@ impl Expedition {
             tab: None,
             back: false,
         };
+        if let Some(event) = visit.event().filter(|_| visit.kind == RoomKind::Event) {
+            panel.title = event.name.to_string();
+            panel.art = Scene::Rows(event.art);
+        }
         if visit.stage == Stage::Spoils {
             panel.text = visit.said.clone();
             panel.rows = vec![Row::new("Move on", Act::MoveOn)];
@@ -785,8 +803,6 @@ impl Expedition {
             panel.rows = vec![Row::new("Move on", Act::MoveOn)];
             return;
         };
-        panel.title = event.name.to_string();
-        panel.art = Scene::Rows(event.art);
         if visit.stage == Stage::Sprung {
             return self.sprung(visit, panel);
         }
@@ -868,7 +884,7 @@ impl Expedition {
         panel.text = vec![
             line("Each Boon is written on top. The Curse it comes with is written underneath."),
             line(String::new()),
-            LogLine::new(format!("Signing: {name}"), Tone::Status),
+            LogLine::new(format!("Signing: {name}"), Tone::Focus),
         ];
         let worn = self.party[fish]
             .deep
@@ -902,7 +918,7 @@ impl Expedition {
                 panel.text = vec![
                     line("Three doses on the tray, each one labelled."),
                     line(String::new()),
-                    LogLine::new(format!("For: {name}"), Tone::Status),
+                    LogLine::new(format!("For: {name}"), Tone::Focus),
                 ];
                 for (index, token) in tokens.iter().enumerate() {
                     let Some(mutation) = Mutation::parse(token) else {
@@ -926,7 +942,7 @@ impl Expedition {
                 panel.text = vec![
                     line("A centrifuge spins one change back out."),
                     line(String::new()),
-                    LogLine::new(format!("For: {name}"), Tone::Status),
+                    LogLine::new(format!("For: {name}"), Tone::Focus),
                 ];
                 for (index, mutation) in undoable(subject).iter().enumerate() {
                     panel
@@ -948,7 +964,7 @@ impl Expedition {
                 panel.text = vec![
                     line("Glass tubes with things in them, and a tray of doses."),
                     line(String::new()),
-                    LogLine::new(format!("For: {name}"), Tone::Status),
+                    LogLine::new(format!("For: {name}"), Tone::Focus),
                 ];
                 let wearable = !wearable_mutations(subject).is_empty();
                 let undo = !undoable(subject).is_empty()
@@ -988,7 +1004,7 @@ impl Expedition {
             line(String::new()),
             LogLine::new(
                 format!("Feeding: {name} · {} packed", counted(meals, haul::MEAL)),
-                Tone::Status,
+                Tone::Focus,
             ),
         ];
         let feed = Row::new("Feed", Act::Feed)
@@ -1186,7 +1202,7 @@ impl Expedition {
                 life.curses.push(boon.curse());
                 visit.stage = Stage::Spoils;
                 visit.said = vec![
-                    LogLine::new(format!("{name} signs for {}.", boon.name()), Tone::Status),
+                    LogLine::new(format!("{name} signs for {}.", boon.name()), Tone::Focus),
                     LogLine::new(boon.description(), Tone::Heal),
                     LogLine::new(format!("Underneath: {}.", boon.curse().name()), Tone::Hurt),
                     LogLine::new(boon.curse().description(), Tone::Hurt),
@@ -1204,7 +1220,7 @@ impl Expedition {
                 visit.spend(act);
                 visit.said = vec![LogLine::new(
                     format!("{name} takes the dose: {}.", pick.token()),
-                    Tone::Status,
+                    Tone::Focus,
                 )];
                 Next::Stay
             }
@@ -1236,7 +1252,7 @@ impl Expedition {
                 visit.stage = Stage::Open;
                 visit.said = vec![LogLine::new(
                     format!("{name} takes {}.", mutation.token()),
-                    Tone::Status,
+                    Tone::Focus,
                 )];
                 Next::Stay
             }
@@ -1257,7 +1273,7 @@ impl Expedition {
                 let name = self.party[fish].name.clone();
                 visit.said = vec![LogLine::new(
                     format!("{name} loses {}.", mutation.token()),
-                    Tone::Status,
+                    Tone::Focus,
                 )];
                 Next::Stay
             }
@@ -1270,7 +1286,7 @@ impl Expedition {
                 visit.stage = Stage::Open;
                 visit.said = vec![LogLine::new(
                     format!("{name} is free of {}.", curse.name()),
-                    Tone::Status,
+                    Tone::Heal,
                 )];
                 Next::Stay
             }
@@ -1519,7 +1535,7 @@ impl Expedition {
         visit.stage = Stage::Spoils;
         visit.said = vec![LogLine::new(
             format!("The shrine grants {}.", blessing.name()),
-            Tone::Status,
+            Tone::Heal,
         )];
         match blessing {
             Blessing::Revive => {

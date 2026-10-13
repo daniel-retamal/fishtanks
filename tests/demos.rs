@@ -1722,7 +1722,7 @@ fn the_deep_demo_runs_keystroke_for_keystroke() {
     tui.key(KeyCode::Enter);
     tui.key(KeyCode::Down).key(KeyCode::Enter);
     tui.key(KeyCode::Down).key(KeyCode::Enter);
-    tui.screen().expect_find("Picked: 3 of 4");
+    tui.screen().expect_find("(3 of 4)");
     tui.snap("2. all three picked; TAB goes on to the Items");
     tui.key(KeyCode::Tab);
     tui.key(KeyCode::Right).key(KeyCode::Right);

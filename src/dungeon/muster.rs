@@ -5,10 +5,35 @@ use super::Difficulty;
 use super::beat::{LogLine, Tone};
 use super::expedition::MAX_PARTY;
 use super::items::{Item, PACK_STACKS};
-use super::kit::Kit;
-use super::room::{Act, Panel, Row, Scene, Tab, Verb};
+use super::room::{Act, Card, Panel, Portrait, Row, Scene, Tab, Verb};
+use super::sheet;
 
 pub const DIFFICULTIES: [Difficulty; 2] = [Difficulty::Normal, Difficulty::Hardcore];
+pub const IN_THE_PARTY: &str = "in the party";
+
+pub fn fish_card(fish: &Fish, home: &str, lit: bool) -> Card {
+    let mut caption = sheet::caption(fish, home);
+    if lit {
+        caption.push(LogLine::new(IN_THE_PARTY, Tone::Focus));
+    }
+    Card {
+        title: fish.name.clone(),
+        portrait: Portrait::Fish(Box::new(fish.clone())),
+        caption,
+        lit,
+    }
+}
+
+fn packed_note(supply: &Supply) -> String {
+    format!("{} of {}", supply.packed, supply.held)
+}
+
+fn packed_tone(supply: &Supply) -> Tone {
+    match supply.packed {
+        0 => Tone::Quiet,
+        _ => Tone::Focus,
+    }
+}
 
 #[derive(Clone)]
 pub struct Candidate {
@@ -90,6 +115,22 @@ impl Muster {
         }
     }
 
+    fn party_line(&self) -> LogLine {
+        let names: Vec<&str> = self
+            .picked()
+            .into_iter()
+            .map(|i| self.candidates[i].fish.name.as_str())
+            .collect();
+        let count = format!("{} of {MAX_PARTY}", names.len());
+        match names.is_empty() {
+            true => LogLine::new(format!("Party: nobody yet ({count})"), Tone::Quiet),
+            false => LogLine::new(
+                format!("Party: {} ({count})", names.join(", ")),
+                Tone::Focus,
+            ),
+        }
+    }
+
     fn party_panel(&self) -> Panel {
         let shown = self.candidates.get(self.selected());
         let picked = self.picked().len();
@@ -98,15 +139,10 @@ impl Muster {
             .iter()
             .enumerate()
             .map(|(index, candidate)| {
-                let kit = Kit::of(&candidate.fish);
                 let note = match candidate.picked {
-                    true => ("in the party".to_string(), Tone::Heal),
+                    true => (IN_THE_PARTY.to_string(), Tone::Focus),
                     false => (
-                        format!(
-                            "{} · {}",
-                            candidate.fish.species.display_name(),
-                            candidate.tank
-                        ),
+                        candidate.fish.species.display_name().to_string(),
                         Tone::Quiet,
                     ),
                 };
@@ -114,19 +150,17 @@ impl Muster {
                 Row::new(candidate.fish.name.clone(), Act::Choice(index as u8))
                     .note(note.0, note.1)
                     .usable(!full)
-                    .about(vec![LogLine::new(
-                        format!(
-                            "Vigor {} · Bite {} · Speed {}",
-                            kit.vigor, kit.bite, kit.speed
-                        ),
-                        Tone::Plain,
-                    )])
+                    .about(sheet::fish(&candidate.fish))
             })
             .collect();
         Panel {
             title: "The Deep · Party".to_string(),
             art: match shown {
-                Some(candidate) => Scene::Fish(Box::new(candidate.fish.clone())),
+                Some(candidate) => Scene::Card(fish_card(
+                    &candidate.fish,
+                    &candidate.tank,
+                    candidate.picked,
+                )),
                 None => Scene::Rows(&[]),
             },
             figures: Vec::new(),
@@ -137,7 +171,7 @@ impl Muster {
                     Tone::Plain,
                 ),
                 LogLine::new(String::new(), Tone::Plain),
-                LogLine::new(format!("Picked: {picked} of {MAX_PARTY}"), Tone::Status),
+                self.party_line(),
             ],
             rows,
             which_fish: false,
@@ -157,22 +191,24 @@ impl Muster {
             .map(|(index, supply)| {
                 let room = supply.packed > 0 || stacks < PACK_STACKS;
                 Row::new(supply.item.name(), Act::Choice(index as u8))
-                    .note(
-                        format!("{} of {}", supply.packed, supply.held),
-                        match supply.packed > 0 {
-                            true => Tone::Heal,
-                            false => Tone::Quiet,
-                        },
-                    )
+                    .note(packed_note(supply), packed_tone(supply))
                     .usable(room)
-                    .about(vec![LogLine::new(supply.item.about(), Tone::Plain)])
+                    .about(sheet::item(supply.item))
             })
             .collect();
         let shown = self.supplies.get(self.selected());
         Panel {
             title: "The Deep · Items".to_string(),
             art: match shown {
-                Some(supply) => Scene::Item(supply.item),
+                Some(supply) => Scene::Card(Card {
+                    title: supply.item.name().to_string(),
+                    portrait: Portrait::Item(supply.item),
+                    caption: vec![LogLine::new(
+                        format!("{} packed", packed_note(supply)),
+                        packed_tone(supply),
+                    )],
+                    lit: supply.packed > 0,
+                }),
                 None => Scene::Rows(&[]),
             },
             figures: Vec::new(),
@@ -183,7 +219,13 @@ impl Muster {
                     Tone::Plain,
                 ),
                 LogLine::new(String::new(), Tone::Plain),
-                LogLine::new(format!("Packed: {stacks} of {PACK_STACKS}"), Tone::Status),
+                LogLine::new(
+                    format!("Stacks: {stacks} of {PACK_STACKS}"),
+                    match stacks {
+                        0 => Tone::Quiet,
+                        _ => Tone::Focus,
+                    },
+                ),
             ],
             rows,
             which_fish: false,
@@ -206,7 +248,7 @@ impl Muster {
             figures: Vec::new(),
             draw_figures: false,
             text: vec![
-                LogLine::new(format!("The party: {}", names.join(", ")), Tone::Plain),
+                LogLine::new(format!("The party: {}", names.join(", ")), Tone::Focus),
                 LogLine::new(
                     format!("Items {} of {PACK_STACKS}", self.stacks()),
                     Tone::Quiet,

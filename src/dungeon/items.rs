@@ -135,6 +135,7 @@ impl Item {
                 ConsumableKind::Computer => "Every botfish acts twice as often for three turns.",
                 ConsumableKind::VoidSeed => "One enemy is erased.",
                 ConsumableKind::GoldenPearl => "Every fish that fell comes back.",
+                ConsumableKind::Bait => "Not for a fight. A chest opened with Bait holds more.",
                 _ => "Not for a fight.",
             },
         }

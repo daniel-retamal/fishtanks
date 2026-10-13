@@ -26,6 +26,7 @@ pub mod room;
 pub mod room_art;
 pub mod rules;
 pub mod screen;
+pub mod sheet;
 pub mod sim;
 pub mod skill;
 pub mod specials;

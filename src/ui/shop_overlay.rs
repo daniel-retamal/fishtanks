@@ -386,7 +386,7 @@ impl BuyCategory {
     }
 }
 
-const PENGUIN_LINES: &[&str] = &["  __   ", " ( o>  ", " ///\\  ", " \\V_/_ "];
+pub(crate) const PENGUIN_LINES: &[&str] = &["  __   ", " ( o>  ", " ///\\  ", " \\V_/_ "];
 
 pub const JUNK_SELL_PRICE: u32 = 1;
 
