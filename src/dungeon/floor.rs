@@ -12,9 +12,6 @@ pub const LAST_FLOOR: u32 = 10;
 pub const HAUL_CATCHES: u64 = 10;
 pub const HARDCORE_PAY: u64 = 2;
 pub const BLIND_DEEP_PERCENT: u32 = 125;
-pub const ENCOUNTERS_PER_FLOOR: u64 = 5;
-pub const DENS_PER_FLOOR: u64 = 1;
-pub const CHESTS_PER_FLOOR: u64 = 3;
 pub const CHEST_SHARES: u64 = 1;
 pub const BASE_WEIGHT: u32 = 2;
 pub const VARIANT_WEIGHT: u32 = 1;
@@ -28,11 +25,24 @@ pub struct FloorSpec {
     pub tank: TankKind,
     pub tuning: Scale,
     pub crowd: (u8, u8),
+    pub light: Light,
 }
 
-const CROWD: (u8, u8) = (2, 4);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Light {
+    Bright,
+    Dark,
+}
 
-const fn floor(depth: u32, name: &'static str, tank: TankKind, percent: u32) -> FloorSpec {
+pub const CROWD: (u8, u8) = (2, 4);
+
+const fn floor(
+    depth: u32,
+    name: &'static str,
+    tank: TankKind,
+    percent: u32,
+    light: Light,
+) -> FloorSpec {
     FloorSpec {
         depth,
         name,
@@ -42,20 +52,21 @@ const fn floor(depth: u32, name: &'static str, tank: TankKind, percent: u32) -> 
             bite_percent: percent,
         },
         crowd: CROWD,
+        light,
     }
 }
 
 pub const FLOORS: [FloorSpec; LAST_FLOOR as usize] = [
-    floor(1, "The Shallows", TankKind::Base, 70),
-    floor(2, "The Reef", TankKind::CoralReef, 45),
-    floor(3, "The Candy Abyss", TankKind::Candy, 42),
-    floor(4, "The Graveyard", TankKind::Haunted, 65),
-    floor(5, "The Dunes", TankKind::Desert, 50),
-    floor(6, "The Hot Zone", TankKind::Rad, 82),
-    floor(7, "The Mainframe", TankKind::Matrix, 62),
-    floor(8, "The Inferno", TankKind::Hell, 70),
-    floor(9, "The Gate", TankKind::Heaven, 115),
-    floor(10, "The Eye", TankKind::Void, 85),
+    floor(1, "The Shallows", TankKind::Base, 70, Light::Bright),
+    floor(2, "The Reef", TankKind::CoralReef, 45, Light::Bright),
+    floor(3, "The Candy Abyss", TankKind::Candy, 42, Light::Bright),
+    floor(4, "The Graveyard", TankKind::Haunted, 65, Light::Dark),
+    floor(5, "The Dunes", TankKind::Desert, 50, Light::Bright),
+    floor(6, "The Hot Zone", TankKind::Rad, 82, Light::Bright),
+    floor(7, "The Mainframe", TankKind::Matrix, 62, Light::Dark),
+    floor(8, "The Inferno", TankKind::Hell, 70, Light::Bright),
+    floor(9, "The Gate", TankKind::Heaven, 125, Light::Bright),
+    floor(10, "The Eye", TankKind::Void, 85, Light::Dark),
 ];
 
 pub const BLIND_DEEP: &str = "The Blind Deep";
@@ -132,12 +143,7 @@ pub fn haul(floor: u32, difficulty: Difficulty) -> u64 {
 }
 
 pub fn shares_per_floor() -> u64 {
-    let (least, most) = CROWD;
-    let crowd = (u64::from(least) + u64::from(most)) / 2;
-    ENCOUNTERS_PER_FLOOR * crowd * Rank::Common.shares()
-        + DENS_PER_FLOOR * Rank::Elite.shares()
-        + Rank::Boss.shares()
-        + CHESTS_PER_FLOOR * CHEST_SHARES
+    super::map::expected_shares()
 }
 
 pub fn gold_share(floor: u32, difficulty: Difficulty) -> u64 {

@@ -3,7 +3,7 @@ use std::env;
 use fishtank::dungeon::Difficulty;
 use fishtank::dungeon::fighter::Scale;
 use fishtank::dungeon::floor::LAST_FLOOR;
-use fishtank::dungeon::sim::{Report, Tier, autopsy, survival_at};
+use fishtank::dungeon::sim::{Report, Tier, autopsy, dived, survival_at};
 
 const DEFAULT_RUNS: u64 = 200;
 const PERCENT: f64 = 100.0;
@@ -24,6 +24,10 @@ fn main() {
         .position(|arg| arg == "--scale")
         .and_then(|at| args.get(at + 1))
         .and_then(|percent| percent.parse().ok());
+    if env::args().any(|arg| arg == "--dive") {
+        dives(runs);
+        return;
+    }
     if env::args().any(|arg| arg == "--sweep") {
         let only: Option<u32> = args
             .iter()
@@ -97,5 +101,34 @@ fn sweep(runs: u64, only: Option<u32>) {
             })
             .collect();
         println!("F{depth:<2} {}", cells.join("  "));
+    }
+}
+
+fn dives(runs: u64) {
+    println!("Whole dives from the Shallows, {runs} runs; floors cleared");
+    for tier in Tier::ALL {
+        let mut cleared = vec![0u64; LAST_FLOOR as usize + 1];
+        let mut joined = vec![0u64; LAST_FLOOR as usize + 1];
+        let mut first = None;
+        for seed in 0..runs {
+            let result = dived(tier, Difficulty::Normal, seed);
+            let floors = result.floors as usize;
+            cleared[floors] += 1;
+            joined[floors] += u64::from(result.joined);
+            if floors == LAST_FLOOR as usize && first.is_none() {
+                first = Some(seed);
+            }
+        }
+        let cells: Vec<String> = cleared
+            .iter()
+            .zip(&joined)
+            .map(|(n, j)| format!("{n}(+{:.1})", *j as f64 / (*n).max(1) as f64))
+            .collect();
+        println!(
+            "{:<8} {}  first clear at seed {:?}",
+            tier.name(),
+            cells.join(" "),
+            first
+        );
     }
 }

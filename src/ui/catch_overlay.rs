@@ -664,7 +664,7 @@ fn necro_sprite_rows(eye_open: &[bool]) -> Vec<Vec<(char, Color)>> {
     ]
 }
 
-fn food_sprite_rows() -> Vec<Vec<(char, Color)>> {
+pub(crate) fn food_sprite_rows() -> Vec<Vec<(char, Color)>> {
     vec![
         vec![
             (' ', BREAD),
@@ -734,18 +734,45 @@ fn food_sprite_rows() -> Vec<Vec<(char, Color)>> {
 }
 
 fn consumable_rows(kind: ConsumableKind, state: &CatchState) -> Option<Vec<Vec<(char, Color)>>> {
+    still_rows(kind, state.anim_phase, state.glisten_phase)
+}
+
+fn still_rows(
+    kind: ConsumableKind,
+    anim_phase: bool,
+    glisten_phase: f32,
+) -> Option<Vec<Vec<(char, Color)>>> {
     Some(match kind {
-        ConsumableKind::Coffee => coffee_sprite_rows(state.anim_phase),
+        ConsumableKind::Coffee => coffee_sprite_rows(anim_phase),
         ConsumableKind::Bait => bait_sprite_rows(),
         ConsumableKind::Milk(v) => milk_sprite_rows(v),
-        ConsumableKind::DemonCore => demoncore_sprite_rows(state.glisten_phase),
+        ConsumableKind::DemonCore => demoncore_sprite_rows(glisten_phase),
         ConsumableKind::Computer => computer_sprite_rows(),
         ConsumableKind::BlankWafer => blank_wafer_sprite_rows(),
         ConsumableKind::Part(part) => part_sprite_rows(part),
         ConsumableKind::Fabricator => fabricator_sprite_rows(),
         ConsumableKind::BlankBlueprint => blank_blueprint_sprite_rows(),
         ConsumableKind::VoidSeed => void_seed_sprite_rows(),
-        ConsumableKind::GoldenPearl => golden_pearl_sprite_rows(state.glisten_phase),
+        ConsumableKind::GoldenPearl => golden_pearl_sprite_rows(glisten_phase),
         ConsumableKind::Necronomicon => return None,
     })
 }
+
+pub(crate) fn stock_sprite(stock: crate::loot::StockItem) -> Vec<Vec<(char, Color)>> {
+    match stock {
+        crate::loot::StockItem::Junk => {
+            JunkSprite::new(
+                &mut <rand::rngs::SmallRng as rand::SeedableRng>::seed_from_u64(STILL_JUNK),
+            )
+            .rows
+        }
+        crate::loot::StockItem::Consumable(ConsumableKind::Necronomicon) => {
+            necro_sprite_rows(&[true; NECRO_EYE_COUNT])
+        }
+        crate::loot::StockItem::Consumable(kind) => {
+            still_rows(kind, false, 0.0).unwrap_or_default()
+        }
+    }
+}
+
+const STILL_JUNK: u64 = 7;

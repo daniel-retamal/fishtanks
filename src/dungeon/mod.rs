@@ -6,19 +6,26 @@ pub mod beat;
 pub mod bestiary;
 pub mod boon;
 pub mod effect;
+pub mod event;
 pub mod expedition;
 pub mod fighter;
 pub mod floor;
 #[cfg(test)]
 pub mod glyphs;
+pub mod haul;
 pub mod info;
 pub mod items;
 pub mod kit;
 pub mod life;
+pub mod map;
 pub mod moves;
+pub mod muster;
 pub mod passives;
 pub mod reveal;
+pub mod room;
+pub mod room_art;
 pub mod rules;
+pub mod screen;
 pub mod sim;
 pub mod skill;
 pub mod specials;
@@ -46,6 +53,13 @@ impl Difficulty {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Wreck {
+    pub floor: u32,
+    pub day: String,
+    pub haul: haul::Haul,
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Dungeon {
     #[serde(default)]
@@ -56,4 +70,6 @@ pub struct Dungeon {
     pub expedition: Option<expedition::Expedition>,
     #[serde(default)]
     pub remembered: Vec<String>,
+    #[serde(default)]
+    pub wrecks: Vec<Wreck>,
 }

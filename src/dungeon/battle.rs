@@ -599,6 +599,7 @@ impl Battle {
         if !party_left {
             self.phase = Phase::Over(Outcome::Wiped);
             self.note("Every fish is belly up.", Tone::Down);
+            self.keep_the_fallen();
             return true;
         }
         false
@@ -1384,6 +1385,19 @@ impl Battle {
         }
     }
 
+    fn keep_the_fallen(&mut self) {
+        if !self.setup.difficulty.kills() {
+            return;
+        }
+        let down: Vec<usize> = self
+            .side(Side::Party)
+            .filter(|&i| self.fighters[i].belly_up && !self.fighters[i].gone)
+            .collect();
+        for fish in down {
+            self.death_blow(fish);
+        }
+    }
+
     fn death_blow(&mut self, target: usize) {
         let name = self.fighters[target].name.clone();
         if passives::escapes(self, target) {
@@ -2163,6 +2177,12 @@ impl Battle {
                 .iter()
                 .filter(|f| f.side == Side::Foes && f.gone)
                 .count() as u32,
+            spoils: self
+                .fighters
+                .iter()
+                .filter(|f| f.side == Side::Foes)
+                .filter_map(|f| f.spec().map(|spec| (spec.name, f.damage_taken)))
+                .collect(),
         }
     }
 }
@@ -2177,6 +2197,7 @@ pub struct Aftermath {
     pub purse_spent: u128,
     pub items: Vec<Pack>,
     pub beaten: u32,
+    pub spoils: Vec<(&'static str, u32)>,
 }
 
 pub fn big_move(fighter: &Fighter) -> Option<usize> {

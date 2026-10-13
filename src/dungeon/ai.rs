@@ -99,7 +99,48 @@ fn aim(battle: &mut Battle, actor: usize, reach: Reach) -> Option<usize> {
     }
 }
 
+fn takes_hold(battle: &Battle, actor: usize, skill: &Skill) -> bool {
+    let kinds: Vec<StatusKind> = skill
+        .effects
+        .iter()
+        .filter_map(|effect| match effect {
+            Effect::Inflict(status) => Some(status.kind),
+            _ => None,
+        })
+        .collect();
+    if kinds.len() < skill.effects.len() {
+        return true;
+    }
+    let side = battle.fighters[actor].side;
+    let targets: Vec<usize> = match skill.reach {
+        Reach::Me => vec![actor],
+        Reach::OneFoe
+        | Reach::TwoFoes
+        | Reach::AllFoes
+        | Reach::RandomFoes(_)
+        | Reach::MarkedFoes
+        | Reach::BellyUpFoe => battle.standing(side.other()),
+        Reach::Everyone => (0..battle.fighters.len())
+            .filter(|&i| battle.fighters[i].standing())
+            .collect(),
+        Reach::OneAlly
+        | Reach::OtherAllies
+        | Reach::AllAllies
+        | Reach::BellyUpAlly
+        | Reach::FallenAlly
+        | Reach::WeakestAlly => battle.standing(side),
+    };
+    targets.iter().any(|&target| {
+        kinds
+            .iter()
+            .any(|&kind| !battle.fighters[target].has_status(kind))
+    })
+}
+
 fn sensible(battle: &Battle, actor: usize, skill: &Skill) -> bool {
+    if !takes_hold(battle, actor, skill) {
+        return false;
+    }
     let side = battle.fighters[actor].side;
     let allies: Vec<usize> = battle.standing(side);
     skill.effects.iter().all(|effect| match effect {

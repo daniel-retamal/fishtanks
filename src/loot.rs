@@ -1255,6 +1255,16 @@ impl LootPool {
             .map_or(&[], |(_, members)| members.as_slice())
     }
 
+    pub fn consumables(&self) -> Vec<ConsumableKind> {
+        self.slots
+            .iter()
+            .filter_map(|&(_, slot)| match slot {
+                PoolSlot::Consumable(kind) => Some(kind),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub fn species(&self) -> Vec<FishSpecies> {
         self.schools
             .iter()

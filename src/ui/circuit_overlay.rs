@@ -59,15 +59,15 @@ const NODE_OPEN: char = '[';
 const NODE_CLOSE: char = ']';
 const WIRE_ARROW: char = '▶';
 const WIRE_COLOR: Color = DARK_GRAY;
-const OFF_VIEW_VERTICAL: char = '┊';
-const OFF_VIEW_HORIZONTAL: char = '┈';
+pub(crate) const OFF_VIEW_VERTICAL: char = '┊';
+pub(crate) const OFF_VIEW_HORIZONTAL: char = '┈';
 const GUTTER_PAD: usize = 3;
 const GRAPH_MARGIN: usize = 1;
 
-const NORTH: u8 = 1;
-const SOUTH: u8 = 2;
-const WEST: u8 = 4;
-const EAST: u8 = 8;
+pub(crate) const NORTH: u8 = 1;
+pub(crate) const SOUTH: u8 = 2;
+pub(crate) const WEST: u8 = 4;
+pub(crate) const EAST: u8 = 8;
 const ARROW: u8 = 16;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -720,7 +720,7 @@ impl RowLine<'_> {
     }
 }
 
-fn wire_char(mask: u8) -> Option<char> {
+pub(crate) fn wire_char(mask: u8) -> Option<char> {
     if mask & ARROW != 0 {
         return Some(WIRE_ARROW);
     }

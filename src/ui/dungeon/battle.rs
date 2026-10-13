@@ -17,27 +17,27 @@ use crate::dungeon::expedition::MAX_PARTY;
 use crate::dungeon::fighter::{Origin, Side};
 use crate::dungeon::info::{Info, Ink};
 use crate::dungeon::skill::{EMPTY_BUBBLE, FULL_BUBBLE, cost_label};
-use crate::dungeon::state::{Answer, Command, DungeonState, Menu, Pending};
+use crate::dungeon::state::{Answer, Command, FightState, Menu, Pending};
 use crate::economy::grouped;
 use crate::fishes::fish::{Direction, Fish};
 use crate::ui::hint_bar::HintBar;
 use crate::ui::hints::{
-    HINT_CHOOSE, HINT_ENTER_ANSWER, HINT_ENTER_CONFIRM, HINT_ENTER_SELECT, HINT_ENTER_SWIM_HOME,
-    HINT_ESC_BACK, HINT_ESC_LEAVE, HINT_TARGET, HINT_WHICH_FISH,
+    HINT_CHOOSE, HINT_ENTER_ANSWER, HINT_ENTER_CONFIRM, HINT_ENTER_GO_ON, HINT_ENTER_SELECT,
+    HINT_ENTER_SWIM_HOME, HINT_ESC_BACK, HINT_ESC_LEAVE, HINT_TARGET, HINT_WHICH_FISH,
 };
 use crate::ui::layout::{Screen, Scrollbar};
 use crate::ui::modal::{Modal, ModalSpec, clear};
 use crate::ui::table::{draw_box_border, draw_box_title, ellipsize, visual_width, wrap_words};
 use crate::ui::{draw_fish_centred, fish_rows, put};
 
-const BACKGROUND: Color = Color::Reset;
-const FRAME: Color = GRAY;
-const MARGIN_FROM: u16 = 100;
-const MARGIN: u16 = 1;
-const BORDER: u16 = 1;
-const BORDERS: u16 = BORDER * 2;
-const PAD: u16 = 1;
-const GAP: u16 = 1;
+pub(super) const BACKGROUND: Color = Color::Reset;
+pub(super) const FRAME: Color = GRAY;
+pub(super) const MARGIN_FROM: u16 = 100;
+pub(super) const MARGIN: u16 = 1;
+pub(super) const BORDER: u16 = 1;
+pub(super) const BORDERS: u16 = BORDER * 2;
+pub(super) const PAD: u16 = 1;
+pub(super) const GAP: u16 = 1;
 const PERCENT: u16 = 100;
 const LOG_SHARE_PERCENT: u16 = 28;
 const LOG_MIN_W: u16 = 18;
@@ -55,39 +55,39 @@ const INFO_MIN_W: u16 = 28;
 const INFO_MAX_W: u16 = 40;
 const INFO_MIN_H: u16 = 7;
 const LABEL_W: u16 = 12;
-const COST_GAP: u16 = 2;
+pub(super) const COST_GAP: u16 = 2;
 const LINE_GAP: u16 = 3;
 const CONTROL_MIN_ROWS: u16 = 3;
-const TITLE_INSET: u16 = 2;
-const SEPARATOR: &str = " · ";
+pub(super) const TITLE_INSET: u16 = 2;
+pub(super) const SEPARATOR: &str = " · ";
 const LEAD: &str = "▸";
-const CURSOR: &str = "> ";
-const NO_CURSOR: &str = "  ";
+pub(super) const CURSOR: &str = "> ";
+pub(super) const NO_CURSOR: &str = "  ";
 const MORE: &str = "▸";
 const ROLLING: &str = "↓";
 const BELLY_UP: &str = "belly up";
 const CONTINUATION: &str = "  ";
-const RULE: char = '─';
-const SPLIT_DOWN: char = '┬';
-const SPLIT_UP: char = '┴';
+pub(super) const RULE: char = '─';
+pub(super) const SPLIT_DOWN: char = '┬';
+pub(super) const SPLIT_UP: char = '┴';
 const TEE_RIGHT: char = '├';
 const TEE_LEFT: char = '┤';
-const UPRIGHT: char = '│';
+pub(super) const UPRIGHT: char = '│';
 const HP_GOOD_PERCENT: u32 = 50;
 const HP_LOW_PERCENT: u32 = 25;
 
-type Span = (String, Style);
+pub(super) type Span = (String, Style);
 
-fn style(fg: Color) -> Style {
+pub(super) fn style(fg: Color) -> Style {
     Style::default().fg(fg).bg(BACKGROUND)
 }
 
-fn inverse(bg: Color) -> Style {
+pub(super) fn inverse(bg: Color) -> Style {
     Style::default().fg(BLACK).bg(bg)
 }
 
 #[derive(Clone, Copy)]
-enum Art<'a> {
+pub(super) enum Art<'a> {
     Fish(&'a Fish),
     Rows(&'a [SpriteRow]),
 }
@@ -109,7 +109,7 @@ impl Art<'_> {
 }
 
 struct Scene<'a> {
-    state: &'a DungeonState,
+    state: &'a FightState,
     foes: Vec<usize>,
     party: Vec<usize>,
     actor: Option<usize>,
@@ -117,7 +117,7 @@ struct Scene<'a> {
 }
 
 impl<'a> Scene<'a> {
-    fn of(state: &'a DungeonState) -> Self {
+    fn of(state: &'a FightState) -> Self {
         let shown = state.shown.views.len().min(state.battle.fighters.len());
         let on = |side: Side| -> Vec<usize> {
             (0..shown)
@@ -187,7 +187,7 @@ impl<'a> Scene<'a> {
     }
 }
 
-fn vitals(view: &View) -> Vec<Span> {
+pub(super) fn vitals(view: &View) -> Vec<Span> {
     let mut spans = Vec::new();
     match view.belly_up {
         true => spans.push((BELLY_UP.to_string(), style(LIGHT_RED))),
@@ -213,7 +213,7 @@ fn vitals(view: &View) -> Vec<Span> {
     spans
 }
 
-fn hp_colour(hp: u32, max: u32) -> Color {
+pub(super) fn hp_colour(hp: u32, max: u32) -> Color {
     let percent = match max {
         0 => 0,
         max => hp * 100 / max,
@@ -225,14 +225,14 @@ fn hp_colour(hp: u32, max: u32) -> Color {
     }
 }
 
-fn spans_width(spans: &[Span]) -> u16 {
+pub(super) fn spans_width(spans: &[Span]) -> u16 {
     spans
         .iter()
         .map(|(text, _)| visual_width(text) as u16)
         .sum()
 }
 
-fn put_spans(buf: &mut Buffer, x: u16, y: u16, spans: &[Span], clip: Rect) -> u16 {
+pub(super) fn put_spans(buf: &mut Buffer, x: u16, y: u16, spans: &[Span], clip: Rect) -> u16 {
     let mut col = x as i32;
     for (text, style) in spans {
         col += i32::from(put(buf, col, y as i32, text, *style, clip));
@@ -240,7 +240,7 @@ fn put_spans(buf: &mut Buffer, x: u16, y: u16, spans: &[Span], clip: Rect) -> u1
     (col - x as i32).max(0) as u16
 }
 
-fn draw_rows(buf: &mut Buffer, rows: &[SpriteRow], x: u16, y: u16, clip: Rect) {
+pub(super) fn draw_rows(buf: &mut Buffer, rows: &[SpriteRow], x: u16, y: u16, clip: Rect) {
     for (dy, row) in rows.iter().enumerate() {
         let mut col = x as i32;
         for (index, glyph) in row.text.chars().enumerate() {
@@ -260,7 +260,7 @@ fn draw_rows(buf: &mut Buffer, rows: &[SpriteRow], x: u16, y: u16, clip: Rect) {
     }
 }
 
-fn draw_art(buf: &mut Buffer, art: Art, area: Rect, belly_up: bool) {
+pub(super) fn draw_art(buf: &mut Buffer, art: Art, area: Rect, belly_up: bool) {
     match art {
         Art::Rows(rows) => {
             let x = area.x + area.width.saturating_sub(art.width()) / 2;
@@ -285,19 +285,23 @@ fn draw_art(buf: &mut Buffer, art: Art, area: Rect, belly_up: bool) {
     }
 }
 
-fn frame_width(screen: Screen) -> u16 {
+pub(super) fn frame_width(screen: Screen) -> u16 {
     match screen.whole.width >= MARGIN_FROM {
         true => screen.whole.width - MARGIN * 2,
         false => screen.whole.width,
     }
 }
 
-fn hints(state: &DungeonState, position: Option<(usize, usize)>) -> HintBar {
+fn hints(state: &FightState, position: Option<(usize, usize)>) -> HintBar {
     if state.is_busy() {
         return HintBar::new(HINT_ESC_LEAVE);
     }
-    if state.outcome().is_some() {
-        return HintBar::new(HINT_ESC_LEAVE).action(HINT_ENTER_SWIM_HOME);
+    if let Some(outcome) = state.outcome() {
+        let next = match outcome {
+            Outcome::Wiped => HINT_ENTER_SWIM_HOME,
+            Outcome::Won | Outcome::Fled => HINT_ENTER_GO_ON,
+        };
+        return HintBar::new(HINT_ESC_LEAVE).action(next);
     }
     if state.offering().is_some() {
         return HintBar::new(HINT_ESC_LEAVE)
@@ -375,7 +379,7 @@ fn turn_spans(row: &[Entry]) -> Vec<Span> {
     spans
 }
 
-fn tone_colour(tone: Tone) -> Color {
+pub(super) fn tone_colour(tone: Tone) -> Color {
     match tone {
         Tone::Plain | Tone::Hit => GRAY,
         Tone::Hurt => LIGHT_RED,
@@ -388,7 +392,7 @@ fn tone_colour(tone: Tone) -> Color {
     }
 }
 
-fn log_lines(log: &[LogLine], width: u16) -> Vec<Span> {
+pub(super) fn log_lines(log: &[LogLine], width: u16) -> Vec<Span> {
     let width = width.max(1) as usize;
     let indent = visual_width(CONTINUATION);
     let mut lines = Vec::new();
@@ -470,7 +474,7 @@ fn main_rows(scene: &Scene) -> Vec<MenuRow> {
         .collect()
 }
 
-fn row_colour(usable: bool) -> Color {
+pub(super) fn row_colour(usable: bool) -> Color {
     match usable {
         true => WHITE,
         false => DARK_GRAY,
@@ -579,7 +583,7 @@ fn draw_list(buf: &mut Buffer, rect: Rect, title: &str, rows: &[MenuRow]) {
     }
 }
 
-fn inner(rect: Rect) -> Rect {
+pub(super) fn inner(rect: Rect) -> Rect {
     Rect::new(
         rect.x + BORDER.min(rect.width),
         rect.y + BORDER.min(rect.height),
@@ -1159,13 +1163,13 @@ impl Wide {
     }
 }
 
-fn put_char(buf: &mut Buffer, x: u16, y: u16, glyph: char) {
+pub(super) fn put_char(buf: &mut Buffer, x: u16, y: u16, glyph: char) {
     if x < buf.area.right() && y < buf.area.bottom() {
         buf[(x, y)].set_char(glyph).set_style(style(FRAME));
     }
 }
 
-fn rule(buf: &mut Buffer, rect: Rect, y: u16) {
+pub(super) fn rule(buf: &mut Buffer, rect: Rect, y: u16) {
     if rect.width < BORDERS {
         return;
     }
@@ -1474,7 +1478,7 @@ fn draw_column(
     );
 }
 
-fn titled(title: &str) -> String {
+pub(super) fn titled(title: &str) -> String {
     format!(" {title} ")
 }
 
@@ -1560,7 +1564,7 @@ fn draw_result(buf: &mut Buffer, scene: &Scene, screen: Screen, hints: &HintBar)
     }
 }
 
-pub fn draw(buf: &mut Buffer, state: &DungeonState, screen: Screen) {
+pub fn draw(buf: &mut Buffer, state: &FightState, screen: Screen) {
     let scene = Scene::of(state);
     let width = frame_width(screen);
     let inner_w = width.saturating_sub(BORDERS);

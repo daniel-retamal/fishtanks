@@ -1,24 +1,36 @@
-# JOURNEY · the Deep: take the new game's three fish into a fight, bite once, leave, and find the dive waiting.
-# Who acts first and what the enemies do is random, so the journey waits out the beats and expects only what every fight shows.
+# JOURNEY · the Deep: pick the new game's three fish, pack a meal, ride the first elevator on Normal, walk into the first room, leave, and find the dive waiting.
+# Every map is rolled fresh, so the journey only expects what every first room shows: its own menu and the way out.
 
 run /dungeon
+expect The Deep · Party
+expect ENTER pick
+key enter
+expect in the party
+key down
+key enter
+key down
+key enter
+expect TAB pack
+snap three fish picked
+key tab
+expect The Deep · Items
+expect Food
+key right
+expect 1 of 10
+snap one meal packed
+key enter
+expect Elevator
+expect Normal
+expect ENTER ride
+key enter
 expect The Shallows
+expect ENTER go
+snap the first floor
+key enter
 expect ESC leave
-tick 900
-expect Bite
-expect ENTER select
-snap a fish chooses what to do
-key enter
-expect ←→ target
-expect ENTER confirm
-snap the bite picks its target
-key enter
-tick 900
-expect Bite
-snap the bite has landed and the next fish chooses
+snap the first room
 key esc
-absent The Shallows
+absent ESC leave
 run /dungeon
-expect The Shallows
-expect Bite
-snap the dive was waiting where it was left
+expect ESC leave
+snap the room was waiting where it was left

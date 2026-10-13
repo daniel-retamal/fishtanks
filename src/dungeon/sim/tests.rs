@@ -61,3 +61,13 @@ fn hardcore_pays_twice_for_the_same_fights() {
     assert_eq!(normal.0, hardcore.0);
     assert!((hardcore.1 - normal.1 * floor::HARDCORE_PAY as f64).abs() < 1.0);
 }
+
+#[test]
+fn a_starter_party_can_clear_the_deep() {
+    let cleared =
+        (0..STARTER_RUNS).find(|&seed| dive(Tier::Starter, Difficulty::Normal, seed) >= LAST_FLOOR);
+    assert!(
+        cleared.is_some(),
+        "no starter dive of {STARTER_RUNS} cleared all ten floors"
+    );
+}

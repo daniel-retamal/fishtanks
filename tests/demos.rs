@@ -1700,41 +1700,67 @@ fn the_casino_demo_runs_keystroke_for_keystroke() {
 
 const DEEP_WAIT_TICKS: usize = 900;
 const DEEP_MAX_TURNS: usize = 200;
-const DEEP_PARTY: usize = 3;
+
+fn deep_view(tui: &Tui) -> &'static str {
+    use fishtank::dungeon::screen::View;
+    match tui.app.dungeon_overlay().map(|state| &state.view) {
+        Some(View::Muster(_)) => "muster",
+        Some(View::Map(_)) => "map",
+        Some(View::Room(_)) => "room",
+        Some(View::Fight(_)) => "fight",
+        None => "closed",
+    }
+}
 
 #[test]
 fn the_deep_demo_runs_keystroke_for_keystroke() {
     let mut tui = Tui::as_player(120, 38);
     tui.film(Path::new(REEL_DIR), "demo-the-deep");
     tui.run("/dungeon");
-    tui.screen().expect_find("The Shallows");
-    tui.tick_n(DEEP_WAIT_TICKS);
-    tui.screen().expect_find("> Bite");
-    tui.snap("1. a fish chooses; the info box explains Bite");
+    tui.screen().expect_find("The Deep · Party");
+    tui.snap("1. /dungeon opens the party pick; ENTER picks the highlighted fish");
     tui.key(KeyCode::Enter);
-    tui.screen().expect_find("←→ target");
-    tui.snap("2. ENTER picks a target; ←→ moves it");
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.screen().expect_find("Picked: 3 of 4");
+    tui.snap("2. all three picked; TAB goes on to the Items");
+    tui.key(KeyCode::Tab);
+    tui.key(KeyCode::Right).key(KeyCode::Right);
+    tui.screen().expect_find("2 of 10");
+    tui.snap("3. right arrow packs a meal; ENTER walks to the elevator");
     tui.key(KeyCode::Enter);
-    tui.tick_n(DEEP_WAIT_TICKS);
-    tui.snap("3. the bite and the enemies' turns arrive a beat apart");
+    tui.screen().expect_find("Hardcore");
+    tui.snap("4. the first elevator: Normal or Hardcore, for the whole dive");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("from your tanks");
+    tui.snap("5. the floor map: three passages down to the boss and the elevator");
+    tui.key(KeyCode::Right);
+    tui.snap("6. left and right arrows pick the next room");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("ESC leave");
+    tui.snap("7. a room: read it, choose a row, ENTER");
     tui.key(KeyCode::Esc);
-    tui.screen().expect_absent("The Shallows");
+    tui.screen().expect_absent("ESC leave");
     tui.run("/dungeon");
-    tui.screen().expect_find("The Shallows");
-    tui.snap("4. /dungeon finds the dive where it was left");
+    tui.screen().expect_find("ESC leave");
+    tui.snap("8. ESC left the Deep; /dungeon finds the room where it was left");
+    tui.key(KeyCode::Up).key(KeyCode::Enter);
     for _ in 0..DEEP_MAX_TURNS {
-        if tui.screen().contains("ENTER swim home") {
-            break;
+        match deep_view(&tui) {
+            "fight" => {
+                tui.tick_n(DEEP_WAIT_TICKS);
+                tui.key(KeyCode::Enter).key(KeyCode::Enter);
+            }
+            "room" => {
+                tui.key(KeyCode::Enter);
+            }
+            _ => break,
         }
-        tui.key(KeyCode::Enter);
-        tui.key(KeyCode::Enter);
-        tui.tick_n(DEEP_WAIT_TICKS);
     }
-    tui.screen().expect_find("ENTER swim home");
-    tui.snap("5. the room is quiet: the result");
-    tui.key(KeyCode::Enter);
-    let home: usize = tui.app.tanks.iter().map(|tank| tank.fish.len()).sum();
-    assert_eq!(home, DEEP_PARTY);
+    tui.screen().expect_find("ENTER go");
+    tui.snap(
+        "9. the bottom row left the room (a fight, if it came to one, played out); the map waits",
+    );
     tui.write_reel();
     assert_no_broken_borders(&tui);
 }

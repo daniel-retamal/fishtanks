@@ -57,6 +57,49 @@ pub fn even_indices(avail: usize, count: usize) -> Vec<usize> {
     out
 }
 
+pub const SECS_A_DAY: u64 = 86_400;
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const DAYS_FROM_YEAR_ZERO: i64 = 719_468;
+const DAYS_AN_ERA: i64 = 146_097;
+const MONTH_DAYS_NUMERATOR: i64 = 153;
+const MONTH_SHIFT: i64 = 2;
+const MARCH_BASED: i64 = 3;
+const DAYS_A_YEAR: i64 = 365;
+const LEAP_EVERY: i64 = 4;
+const CENTURY: i64 = 100;
+const DAYS_IN_FOUR_YEARS: i64 = 1_460;
+const DAYS_IN_A_CENTURY: i64 = 36_524;
+const DAYS_IN_AN_ERA_LESS_ONE: i64 = 146_096;
+const MONTHS_IN_A_YEAR: i64 = 12;
+const MONTH_LENGTH_DIVISOR: i64 = 5;
+
+pub fn day_and_month(days_since_epoch: i64) -> String {
+    let z = days_since_epoch + DAYS_FROM_YEAR_ZERO;
+    let era = z.div_euclid(DAYS_AN_ERA);
+    let doe = z - era * DAYS_AN_ERA;
+    let yoe = (doe - doe / DAYS_IN_FOUR_YEARS + doe / DAYS_IN_A_CENTURY
+        - doe / DAYS_IN_AN_ERA_LESS_ONE)
+        / DAYS_A_YEAR;
+    let doy = doe - (DAYS_A_YEAR * yoe + yoe / LEAP_EVERY - yoe / CENTURY);
+    let mp = (MONTH_LENGTH_DIVISOR * doy + MONTH_SHIFT) / MONTH_DAYS_NUMERATOR;
+    let day = doy - (MONTH_DAYS_NUMERATOR * mp + MONTH_SHIFT) / MONTH_LENGTH_DIVISOR + 1;
+    let month = match mp < MONTHS_IN_A_YEAR - MARCH_BASED + 1 {
+        true => mp + MARCH_BASED,
+        false => mp - (MONTHS_IN_A_YEAR - MARCH_BASED + 1) + 1,
+    };
+    format!("{day} {}", MONTHS[(month - 1) as usize])
+}
+
+pub fn today() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0);
+    day_and_month((secs / SECS_A_DAY) as i64)
+}
+
 #[cfg(test)]
 mod tests {
     use rand::{SeedableRng, rngs::SmallRng};
@@ -65,6 +108,13 @@ mod tests {
 
     const DEFAULT_FRAME: f32 = 1.0 / 30.0;
     const FAST_FRAME: f32 = 1.0 / 120.0;
+
+    #[test]
+    fn a_day_is_named_by_its_date() {
+        assert_eq!(day_and_month(0), "1 Jan");
+        assert_eq!(day_and_month(20_738), "12 Oct");
+        assert_eq!(day_and_month(19_782), "29 Feb");
+    }
 
     #[test]
     fn a_metronome_counts_whole_intervals_and_keeps_the_rest() {

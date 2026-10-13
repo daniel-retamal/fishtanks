@@ -24,11 +24,12 @@ pub enum Flow {
     CasinoWinnings,
     CasinoStakes,
     DungeonSpending,
+    Treasure,
     Godsend,
 }
 
 impl Flow {
-    pub const ALL: [Flow; 18] = [
+    pub const ALL: [Flow; 19] = [
         Flow::FishSales,
         Flow::StockSales,
         Flow::TankSales,
@@ -46,6 +47,7 @@ impl Flow {
         Flow::CasinoWinnings,
         Flow::CasinoStakes,
         Flow::DungeonSpending,
+        Flow::Treasure,
         Flow::Godsend,
     ];
 
@@ -68,6 +70,7 @@ impl Flow {
             Flow::CasinoWinnings => "Casino winnings",
             Flow::CasinoStakes => "Casino stakes",
             Flow::DungeonSpending => "The Deep",
+            Flow::Treasure => "Treasure",
             Flow::Godsend => "Godsend",
         }
     }

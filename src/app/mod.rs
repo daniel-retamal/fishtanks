@@ -106,7 +106,7 @@ enum Overlay {
     Ledger(LedgerState),
     Casino(Box<crate::casino::state::CasinoState>),
     Toybox(Box<crate::ui::toybox::ToyboxState>),
-    Dungeon(Box<crate::dungeon::state::DungeonState>),
+    Dungeon(Box<crate::dungeon::screen::DungeonState>),
 }
 
 pub const CAJETANS_GRACE_SECS: f32 = 3.0 * 60.0 + 33.0;
@@ -1154,7 +1154,12 @@ impl App {
                 full_area,
             ),
             Some(Overlay::Dungeon(state)) => frame.render_widget(
-                crate::ui::dungeon::DungeonOverlay::new(state, screen),
+                crate::ui::dungeon::DungeonOverlay::new(
+                    state,
+                    self.dungeon.expedition.as_ref(),
+                    &self.dungeon.wrecks,
+                    screen,
+                ),
                 full_area,
             ),
             Some(Overlay::Console(_)) | None => {}

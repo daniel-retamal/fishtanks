@@ -12,6 +12,7 @@ use crate::fishes::species::{ALL_SPECIES, BodyChars, BodyTemplate, FishSpecies, 
 use crate::fishes::unfish::SPAWNABLE_UNFISH;
 use crate::settings::Settings;
 use crate::tank::{Sky, Tank, TankKind};
+use crate::ui::index_query::{ASCENDING_MARK, DESCENDING_MARK};
 use crate::ui::tank_view::TankView;
 
 use super::skill::{EMPTY_BUBBLE, FULL_BUBBLE};
@@ -118,5 +119,6 @@ pub fn proven() -> BTreeSet<char> {
             .filter_map(char::from_u32),
     );
     glyphs.extend(FULL_BUBBLE.chars().chain(EMPTY_BUBBLE.chars()));
+    glyphs.extend(ASCENDING_MARK.chars().chain(DESCENDING_MARK.chars()));
     glyphs
 }

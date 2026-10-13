@@ -1,4 +1,5 @@
 use rand::RngExt;
+use serde::{Deserialize, Serialize};
 
 use crate::entities::food::FOOD_WEIGHT_GAIN_G;
 use crate::fishes::mutations::{Mutation, apply_mutation};
@@ -27,7 +28,7 @@ pub const DEMON_CORE_MUTATIONS: u8 = 3;
 pub const STEADY_TURNS: u8 = 99;
 pub const GOLDEN_PEARL_PERCENT: u32 = 50;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Item {
     Food,
     Stock(StockItem),
@@ -70,6 +71,22 @@ impl Item {
                 _ => Aim::Nobody,
             },
         }
+    }
+
+    pub fn packable(self) -> bool {
+        self.usable_in_a_fight() || self == Item::Stock(StockItem::BAIT)
+    }
+
+    pub fn for_the_pack() -> Vec<Item> {
+        [Item::Food, Item::Stock(StockItem::Junk)]
+            .into_iter()
+            .chain(
+                ConsumableKind::all()
+                    .into_iter()
+                    .map(|kind| Item::Stock(StockItem::Consumable(kind))),
+            )
+            .filter(|item| item.packable())
+            .collect()
     }
 
     pub fn usable_in_a_fight(self) -> bool {
@@ -124,7 +141,7 @@ impl Item {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Pack {
     pub item: Item,
     pub count: u32,

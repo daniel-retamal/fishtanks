@@ -9,12 +9,15 @@ use crate::fishes::species::{FishSpecies, SizeCategory};
 use crate::loot::{ConsumableKind, MilkVariant, StockItem};
 
 use super::Difficulty;
-use super::battle::{Battle, BattleSetup, Choice, Outcome, Stakes};
+use super::battle::{Battle, Choice};
 use super::effect::{Effect, Power, Reach};
-use super::fighter::{Fighter, Scale, Side};
+use super::expedition::{Expedition, Ground, Next, Place};
+use super::fighter::{Scale, Side};
 use super::floor::{self, LAST_FLOOR};
 use super::items::{Item, Pack};
 use super::life::{DeepLife, Grade};
+use super::map::RoomKind;
+use super::room::Act;
 use super::skill::Skill;
 use super::traits::Trait;
 
@@ -197,167 +200,244 @@ pub fn pack() -> Vec<Pack> {
     ]
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Room {
-    Encounter,
-    Den,
-    Rest,
-    Lair,
-}
+pub const REST_BELOW_PERCENT: u32 = 60;
+pub const STARTER_RUNS: u64 = 1_000;
+const MAX_ROOMS: usize = 200;
 
-const PLAN: [Room; 9] = [
-    Room::Encounter,
-    Room::Encounter,
-    Room::Rest,
-    Room::Encounter,
-    Room::Den,
-    Room::Encounter,
-    Room::Rest,
-    Room::Encounter,
-    Room::Lair,
-];
-
-#[derive(Clone, Copy, Debug)]
-struct Wound {
-    hp: Option<u32>,
-    belly_up: bool,
-}
-
-struct Dive {
-    party: Vec<Fish>,
-    wounds: Vec<Wound>,
-    items: Vec<Pack>,
-    difficulty: Difficulty,
-    scale: Scale,
+struct Diver {
+    expedition: Expedition,
+    ground: Ground,
     rng: SmallRng,
 }
 
-impl Dive {
-    fn fight(&mut self, depth: u32, foes: Vec<Fighter>, stakes: Stakes) -> Result<(), String> {
-        let cause = foes
-            .iter()
-            .map(|foe| foe.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        let setup = BattleSetup {
-            floor: depth,
-            difficulty: self.difficulty,
-            stakes,
-            purse: 0,
-            items: self.items.clone(),
-            seed: self.rng.random(),
-            ambushed: false,
-            haunts: Vec::new(),
-            scale: self.scale,
-            known: Vec::new(),
-            every_graeae: false,
-        };
-        let mut battle = Battle::new(self.party.clone(), foes, setup);
-        for (member, wound) in self.wounds.iter().enumerate() {
-            if let Some(hp) = wound.hp {
-                battle.carry(member, hp, wound.belly_up);
-            }
-        }
-        battle.begin();
-        for _ in 0..MAX_CHOICES {
-            if battle.offer().is_some() {
-                battle.answer(false);
-                continue;
-            }
-            let Some(actor) = battle.actor() else {
-                break;
-            };
-            if let Some(line) = battle.prayer.line().filter(|_| shielded_by_prayer(&battle)) {
-                battle.pray(line);
-            }
-            let choice = decide(&battle, actor);
-            if battle.choose(choice).is_empty() && battle.actor() == Some(actor) {
-                battle.choose(Choice::Guard);
-            }
-        }
-        let outcome = battle.outcome();
-        let aftermath = battle.finish();
-        self.items = aftermath.items;
-        let alive: Vec<bool> = (0..aftermath.party.len())
-            .map(|member| !aftermath.dead.contains(&member))
-            .collect();
-        self.wounds = (0..aftermath.party.len())
-            .map(|member| {
-                let (hp, belly_up) = aftermath
-                    .hp
-                    .iter()
-                    .find(|(m, _, _)| *m == member)
-                    .map_or((None, false), |(_, hp, down)| (Some(*hp), *down));
-                Wound { hp, belly_up }
-            })
-            .collect();
-        let (party, wounds) = aftermath
-            .party
-            .into_iter()
-            .zip(std::mem::take(&mut self.wounds))
-            .zip(alive)
-            .filter_map(|(pair, alive)| alive.then_some(pair))
-            .unzip();
-        self.party = party;
-        self.wounds = wounds;
-        match outcome {
-            Some(Outcome::Won | Outcome::Fled) => Ok(()),
-            _ => Err(cause),
+fn hp_percent(expedition: &Expedition) -> u32 {
+    let kits = expedition.kits();
+    let (hp, max) = (0..expedition.party.len()).fold((0, 0), |(hp, max), member| {
+        (
+            hp + expedition.hp(member, &kits[member]),
+            max + kits[member].vigor,
+        )
+    });
+    hp * PERCENT / max.max(1)
+}
+
+fn hurt(expedition: &Expedition) -> bool {
+    hp_percent(expedition) < REST_BELOW_PERCENT
+        || (0..expedition.party.len()).any(|member| expedition.wound(member).belly_up)
+}
+
+impl Diver {
+    fn new(
+        party: Vec<Fish>,
+        depth: u32,
+        difficulty: Difficulty,
+        scale: Option<Scale>,
+        seed: u64,
+    ) -> Diver {
+        let ground = Ground::default();
+        let homes = vec![String::new(); party.len()];
+        let mut expedition = Expedition::set_out(party, homes, difficulty, pack(), seed, &ground);
+        expedition.floor = depth;
+        expedition.dive = seed as u32;
+        expedition.tuning = scale;
+        Diver {
+            expedition,
+            ground,
+            rng: SmallRng::seed_from_u64(seed ^ SEED_STRIDE),
         }
     }
 
-    fn dares(&self, foes: &[Fighter]) -> bool {
-        let party: u32 = self
-            .wounds
+    fn floor(&mut self) -> Result<(), String> {
+        for _ in 0..MAX_ROOMS {
+            if self.expedition.at_the_elevator() {
+                return Ok(());
+            }
+            match self.expedition.place() {
+                Place::Fight => self.fight()?,
+                Place::Room => self.room()?,
+                Place::Choosing => {
+                    let index = self.route();
+                    if !self.expedition.go(index, &self.ground) {
+                        return Err("a dead end".to_string());
+                    }
+                }
+            }
+        }
+        Err("lost on the floor".to_string())
+    }
+
+    fn route(&mut self) -> u8 {
+        let map = self.expedition.map();
+        let row = self.expedition.route.path.len();
+        let ahead = self.expedition.ahead();
+        let hurt = hurt(&self.expedition);
+        let scored: Vec<(u8, u32)> = ahead
             .iter()
-            .zip(&self.party)
-            .map(|(wound, fish)| match wound.belly_up {
-                true => 0,
-                false => wound.hp.unwrap_or_else(|| super::kit::Kit::of(fish).vigor),
+            .map(|&index| {
+                let kind = map
+                    .room(row, usize::from(index))
+                    .map_or(RoomKind::Encounter, |room| room.kind);
+                let score = self.appeal(kind, hurt) * PERCENT + self.rng.random_range(0..PERCENT);
+                (index, score)
             })
+            .collect();
+        scored
+            .iter()
+            .max_by_key(|(_, score)| *score)
+            .map_or(0, |&(index, _)| index)
+    }
+
+    fn appeal(&self, kind: RoomKind, hurt: bool) -> u32 {
+        let rich = self.expedition.haul.gold >= self.expedition.price(super::room::CLEAN_SHARES);
+        match (kind, hurt) {
+            (RoomKind::Vent | RoomKind::Shrine, true) => 6,
+            (RoomKind::Cleaning, true) if rich => 6,
+            (RoomKind::Den, true) => 0,
+            (RoomKind::Encounter | RoomKind::Wreck, true) => 1,
+            (RoomKind::Encounter | RoomKind::Chest | RoomKind::Wreck, false) => 4,
+            (RoomKind::Den, false) => 3,
+            (RoomKind::Laboratory | RoomKind::School, _) => 3,
+            (RoomKind::Event | RoomKind::BellJar, _) => 2,
+            (RoomKind::Vent | RoomKind::Shrine | RoomKind::Vending, _) => 2,
+            (RoomKind::Cleaning | RoomKind::Chest, _) => 1,
+            (RoomKind::Altar | RoomKind::Boss | RoomKind::Elevator, _) => 0,
+        }
+    }
+
+    fn act(&mut self, act: Act, fish: usize) -> Result<(), String> {
+        match self.expedition.act(act, fish, &self.ground) {
+            Next::Raise(name) => {
+                self.expedition.fallen.retain(|fallen| *fallen != name);
+                Ok(())
+            }
+            Next::Home => Err("rode up".to_string()),
+            Next::Stay | Next::Map | Next::Fight => Ok(()),
+        }
+    }
+
+    fn room(&mut self) -> Result<(), String> {
+        let Some(panel) = self.expedition.panel(0, &self.ground.wrecks) else {
+            return Ok(());
+        };
+        let usable: Vec<Act> = panel
+            .rows
+            .iter()
+            .filter(|row| row.usable)
+            .map(|row| row.act)
+            .collect();
+        let has = |act: Act| usable.contains(&act);
+        let kind = self
+            .expedition
+            .visit
+            .as_ref()
+            .map_or(RoomKind::Encounter, |visit| visit.kind);
+        if has(Act::MoveOn) {
+            return self.act(Act::MoveOn, 0);
+        }
+        if has(Act::Fight) && kind != RoomKind::Den {
+            return self.act(Act::Fight, 0);
+        }
+        let choice = match kind {
+            RoomKind::Den => match self.dares() {
+                true => Act::Fight,
+                false => Act::Leave,
+            },
+            RoomKind::Chest if has(Act::LookFirst) => Act::LookFirst,
+            RoomKind::Chest if has(Act::OpenWithBait) => Act::OpenWithBait,
+            RoomKind::Chest => Act::Open,
+            RoomKind::BellJar => Act::Break,
+            RoomKind::Event => usable.first().copied().unwrap_or(Act::MoveOn),
+            RoomKind::Shrine => usable.first().copied().unwrap_or(Act::Leave),
+            RoomKind::Laboratory if has(Act::Dose) => Act::Dose,
+            RoomKind::Vent if has(Act::Rest) => Act::Rest,
+            RoomKind::Vent => return self.feed(),
+            RoomKind::Cleaning if has(Act::Clean) => Act::Clean,
+            RoomKind::Cleaning => usable
+                .iter()
+                .copied()
+                .find(|act| matches!(act, Act::BringBack(_)))
+                .unwrap_or(Act::Leave),
+            RoomKind::School => usable
+                .iter()
+                .copied()
+                .find(|act| matches!(act, Act::Hire(_)))
+                .unwrap_or(Act::Leave),
+            RoomKind::Vending if has(Act::Buy(0)) && self.meals() < MEALS_PACKED => Act::Buy(0),
+            _ => Act::Leave,
+        };
+        self.act(choice, 0)
+    }
+
+    fn meals(&self) -> u32 {
+        self.expedition
+            .pack
+            .iter()
+            .find(|pack| pack.item == Item::Food)
+            .map_or(0, |pack| pack.count)
+    }
+
+    fn feed(&mut self) -> Result<(), String> {
+        let kits = self.expedition.kits();
+        let hungry = (0..self.expedition.party.len()).find(|&member| {
+            self.expedition.hp(member, &kits[member]) * PERCENT < kits[member].vigor * REST_PERCENT
+        });
+        match (hungry, self.meals() > 0) {
+            (Some(member), true) => self.act(Act::Feed, member),
+            _ => self.act(Act::Leave, 0),
+        }
+    }
+
+    fn dares(&self) -> bool {
+        let Some(visit) = self.expedition.visit.as_ref() else {
+            return false;
+        };
+        let kits = self.expedition.kits();
+        let party: u32 = (0..self.expedition.party.len())
+            .map(|member| self.expedition.hp(member, &kits[member]))
             .sum();
-        let threat: u32 = foes.iter().map(|foe| foe.max_hp).sum();
+        let threat: u32 = visit
+            .foes
+            .iter()
+            .filter_map(|foe| foe.fighter(self.expedition.floor, self.expedition.scale()))
+            .map(|foe| foe.max_hp)
+            .sum();
         party * PERCENT >= threat * DEN_NERVE_PERCENT
     }
 
-    fn rest(&mut self) {
-        for (member, wound) in self.wounds.iter_mut().enumerate() {
-            let full = super::kit::Kit::of(&self.party[member]).vigor;
-            let hp = wound.hp.unwrap_or(full);
-            wound.hp = Some((hp + full * REST_PERCENT / PERCENT).min(full));
-            wound.belly_up = false;
+    fn fight(&mut self) -> Result<(), String> {
+        let Some((mut battle, _)) = self.expedition.battle() else {
+            return Err("a fight that cannot start".to_string());
+        };
+        let cause = battle
+            .side(Side::Foes)
+            .map(|i| battle.fighters[i].name.clone())
+            .collect::<Vec<_>>()
+            .join(", ");
+        play(&mut battle);
+        let settled = self.expedition.settle(battle.finish());
+        match settled.next {
+            Next::Home => Err(cause),
+            _ => Ok(()),
         }
     }
+}
 
-    fn clear(&mut self, depth: u32, dives: u32) -> Result<(), String> {
-        for room in PLAN {
-            let survived = match room {
-                Room::Encounter => {
-                    let foes = floor::encounter(depth, self.scale, &[], &mut self.rng);
-                    self.fight(depth, foes, Stakes::Encounter)
-                }
-                Room::Den => {
-                    let foes = floor::den(depth, self.scale, &mut self.rng);
-                    match self.dares(&foes) {
-                        true => self.fight(depth, foes, Stakes::Den),
-                        false => Ok(()),
-                    }
-                }
-                Room::Lair => {
-                    let foes = floor::lair(depth, self.scale, dives);
-                    self.fight(depth, foes, Stakes::Boss)
-                }
-                Room::Rest => {
-                    self.rest();
-                    Ok(())
-                }
-            };
-            survived.map_err(|cause| format!("{room:?}: {cause}"))?;
-            if self.party.is_empty() {
-                return Err(format!("{room:?}: every fish died"));
-            }
+fn play(battle: &mut Battle) {
+    for _ in 0..MAX_CHOICES {
+        if battle.offer().is_some() {
+            battle.answer(false);
+            continue;
         }
-        Ok(())
+        let Some(actor) = battle.actor() else {
+            break;
+        };
+        if let Some(line) = battle.prayer.line().filter(|_| shielded_by_prayer(battle)) {
+            battle.pray(line);
+        }
+        let choice = decide(battle, actor);
+        if battle.choose(choice).is_empty() && battle.actor() == Some(actor) {
+            battle.choose(Choice::Guard);
+        }
     }
 }
 
@@ -374,26 +454,44 @@ pub fn fate_at(
 ) -> Result<(), String> {
     let mut rng = SmallRng::seed_from_u64(seed);
     let party = tier.party(&mut rng);
-    let wounds = vec![
-        Wound {
-            hp: None,
-            belly_up: false,
-        };
-        party.len()
-    ];
-    let mut dive = Dive {
-        party,
-        wounds,
-        items: pack(),
-        difficulty,
-        scale,
-        rng,
-    };
-    dive.clear(depth, seed as u32)
+    let mut diver = Diver::new(party, depth, difficulty, Some(scale), seed);
+    diver.floor()
 }
 
 pub fn clears(tier: Tier, depth: u32, difficulty: Difficulty, seed: u64) -> bool {
     fate(tier, depth, difficulty, seed).is_ok()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Dived {
+    pub floors: u32,
+    pub party: usize,
+    pub joined: u32,
+}
+
+pub fn dive(tier: Tier, difficulty: Difficulty, seed: u64) -> u32 {
+    dived(tier, difficulty, seed).floors
+}
+
+pub fn dived(tier: Tier, difficulty: Difficulty, seed: u64) -> Dived {
+    let mut rng = SmallRng::seed_from_u64(seed);
+    let party = tier.party(&mut rng);
+    let mut diver = Diver::new(party, 1, difficulty, None, seed);
+    let mut floors = 0;
+    while floors < LAST_FLOOR {
+        if diver.floor().is_err() {
+            break;
+        }
+        floors = diver.expedition.floor;
+        if floors < LAST_FLOOR {
+            diver.expedition.descend(&diver.ground);
+        }
+    }
+    Dived {
+        floors,
+        party: diver.expedition.party.len(),
+        joined: diver.expedition.joined,
+    }
 }
 
 fn seed_of(run: u64, depth: u32) -> u64 {

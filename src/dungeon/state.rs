@@ -89,7 +89,7 @@ pub enum Menu {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Step {
+pub enum FightStep {
     Stay,
     Close,
     Played,
@@ -104,7 +104,7 @@ pub struct Shown {
     pub thinking: Option<usize>,
 }
 
-pub struct DungeonState {
+pub struct FightState {
     pub battle: Battle,
     pub title: String,
     pub menu: Menu,
@@ -115,13 +115,13 @@ pub struct DungeonState {
     wait: f32,
 }
 
-impl DungeonState {
+impl FightState {
     pub fn fresh(battle: Battle, beats: Vec<Beat>, title: String) -> Self {
         let (views, order) = match beats.first() {
             Some(beat) => (beat.views.clone(), beat.order.clone()),
             None => (battle.views(), battle.turn_order(TURN_BAR_LENGTH)),
         };
-        let mut state = DungeonState {
+        let mut state = FightState {
             shown: Shown {
                 views,
                 order,
@@ -150,7 +150,7 @@ impl DungeonState {
             Some(_) => Menu::Offer(0),
             None => Menu::Main(0),
         };
-        DungeonState {
+        FightState {
             battle,
             title,
             menu,
@@ -219,7 +219,7 @@ impl DungeonState {
         self.shown.thinking = None;
     }
 
-    fn play(&mut self, input: Input) -> Step {
+    fn play(&mut self, input: Input) -> FightStep {
         let beats = play(&mut self.battle, &input);
         self.played.push(input);
         self.queue.extend(beats);
@@ -228,27 +228,27 @@ impl DungeonState {
             Phase::Running | Phase::Choosing(_) | Phase::Over(_) => Menu::Main(0),
         };
         self.tick(0.0);
-        Step::Played
+        FightStep::Played
     }
 
-    pub fn key(&mut self, action: &InputAction) -> Step {
+    pub fn key(&mut self, action: &InputAction) -> FightStep {
         if matches!(action, InputAction::Cancel) && self.leaves_on_escape() {
-            return Step::Close;
+            return FightStep::Close;
         }
         if self.is_busy() {
-            return Step::Stay;
+            return FightStep::Stay;
         }
         if self.battle.outcome().is_some() {
             return match action {
-                InputAction::Confirm => Step::Done,
-                _ => Step::Stay,
+                InputAction::Confirm => FightStep::Done,
+                _ => FightStep::Stay,
             };
         }
         if self.battle.offer().is_some() {
             return self.offer_key(action);
         }
         let Some(actor) = self.battle.actor() else {
-            return Step::Stay;
+            return FightStep::Stay;
         };
         match self.menu {
             Menu::Main(selected) => self.main_key(action, actor, selected),
@@ -257,7 +257,7 @@ impl DungeonState {
             Menu::Target { pending, target } => self.target_key(action, actor, pending, target),
             Menu::Offer(_) => {
                 self.menu = Menu::Main(0);
-                Step::Stay
+                FightStep::Stay
             }
         }
     }
@@ -268,7 +268,7 @@ impl DungeonState {
             || matches!(self.menu, Menu::Main(_) | Menu::Offer(_))
     }
 
-    fn offer_key(&mut self, action: &InputAction) -> Step {
+    fn offer_key(&mut self, action: &InputAction) -> FightStep {
         let selected = match self.menu {
             Menu::Offer(selected) => selected,
             _ => 0,
@@ -276,27 +276,27 @@ impl DungeonState {
         match action {
             InputAction::Up | InputAction::Down => {
                 self.menu = Menu::Offer(cycle(selected, Answer::ALL.len(), action));
-                Step::Stay
+                FightStep::Stay
             }
             InputAction::Confirm => self.play(Input::Answer(Answer::ALL[selected] == Answer::Sign)),
-            _ => Step::Stay,
+            _ => FightStep::Stay,
         }
     }
 
-    fn main_key(&mut self, action: &InputAction, actor: usize, selected: usize) -> Step {
+    fn main_key(&mut self, action: &InputAction, actor: usize, selected: usize) -> FightStep {
         match action {
             InputAction::Up | InputAction::Down => {
                 self.menu = Menu::Main(cycle(selected, Command::ALL.len(), action));
-                Step::Stay
+                FightStep::Stay
             }
             InputAction::Confirm => self.command(actor, Command::ALL[selected]),
-            _ => Step::Stay,
+            _ => FightStep::Stay,
         }
     }
 
-    fn command(&mut self, actor: usize, command: Command) -> Step {
+    fn command(&mut self, actor: usize, command: Command) -> FightStep {
         if !self.usable(actor, command) {
-            return Step::Stay;
+            return FightStep::Stay;
         }
         match command {
             Command::Bite => {
@@ -306,70 +306,70 @@ impl DungeonState {
                         target,
                     };
                 }
-                Step::Stay
+                FightStep::Stay
             }
             Command::Skills => {
                 self.menu = Menu::Skills(0);
-                Step::Stay
+                FightStep::Stay
             }
             Command::Items => {
                 self.menu = Menu::Items(0);
-                Step::Stay
+                FightStep::Stay
             }
             Command::Guard => self.play(Input::Choose(Choice::Guard)),
             Command::Flee => self.play(Input::Choose(Choice::Flee)),
         }
     }
 
-    fn skills_key(&mut self, action: &InputAction, actor: usize, selected: usize) -> Step {
+    fn skills_key(&mut self, action: &InputAction, actor: usize, selected: usize) -> FightStep {
         let count = self.battle.fighters[actor].skills.len();
         match action {
             InputAction::Up | InputAction::Down => {
                 self.menu = Menu::Skills(cycle(selected, count, action));
-                Step::Stay
+                FightStep::Stay
             }
             InputAction::Cancel => {
                 self.menu = Menu::Main(Command::Skills.index());
-                Step::Stay
+                FightStep::Stay
             }
             InputAction::Confirm => self.pick(actor, Pending::Skill(selected)),
-            _ => Step::Stay,
+            _ => FightStep::Stay,
         }
     }
 
-    fn items_key(&mut self, action: &InputAction, selected: usize) -> Step {
+    fn items_key(&mut self, action: &InputAction, selected: usize) -> FightStep {
         let packs = self.packed();
         match action {
             InputAction::Up | InputAction::Down => {
                 self.menu = Menu::Items(cycle(selected, packs.len(), action));
-                Step::Stay
+                FightStep::Stay
             }
             InputAction::Cancel => {
                 self.menu = Menu::Main(Command::Items.index());
-                Step::Stay
+                FightStep::Stay
             }
             InputAction::Confirm => match packs.get(selected) {
                 Some(&pack) => match self.battle.actor() {
                     Some(actor) => self.pick(actor, Pending::Item(pack)),
-                    None => Step::Stay,
+                    None => FightStep::Stay,
                 },
-                None => Step::Stay,
+                None => FightStep::Stay,
             },
-            _ => Step::Stay,
+            _ => FightStep::Stay,
         }
     }
 
-    fn pick(&mut self, actor: usize, pending: Pending) -> Step {
+    fn pick(&mut self, actor: usize, pending: Pending) -> FightStep {
         if !self.ready(actor, pending) {
-            return Step::Stay;
+            return FightStep::Stay;
         }
         let targets = self.targets(actor, pending);
         match (self.needs_a_target(actor, pending), targets.first()) {
             (true, Some(&target)) => {
                 self.menu = Menu::Target { pending, target };
-                Step::Stay
+                FightStep::Stay
             }
-            (true, None) => Step::Stay,
+            (true, None) => FightStep::Stay,
             (false, _) => {
                 let choice = self.choice(actor, pending, None);
                 self.play(Input::Choose(choice))
@@ -383,7 +383,7 @@ impl DungeonState {
         actor: usize,
         pending: Pending,
         target: usize,
-    ) -> Step {
+    ) -> FightStep {
         let targets = self.targets(actor, pending);
         match action {
             InputAction::Left | InputAction::Right | InputAction::Up | InputAction::Down => {
@@ -394,7 +394,7 @@ impl DungeonState {
                         target: next,
                     };
                 }
-                Step::Stay
+                FightStep::Stay
             }
             InputAction::Cancel => {
                 self.menu = match pending {
@@ -404,13 +404,13 @@ impl DungeonState {
                         Menu::Items(self.packed().iter().position(|&p| p == pack).unwrap_or(0))
                     }
                 };
-                Step::Stay
+                FightStep::Stay
             }
             InputAction::Confirm if targets.contains(&target) => {
                 let choice = self.choice(actor, pending, Some(target));
                 self.play(Input::Choose(choice))
             }
-            _ => Step::Stay,
+            _ => FightStep::Stay,
         }
     }
 
@@ -591,7 +591,7 @@ mod tests {
     const SLICES: f32 = 4.0;
     const MAX_TICKS: usize = 10_000;
 
-    fn opened() -> DungeonState {
+    fn opened() -> FightState {
         let mut rng = SmallRng::seed_from_u64(SEED);
         let party = vec![
             Fish::new(FishSpecies::Merluza, "Adam".to_string(), 0.0, 0.0, &mut rng),
@@ -613,10 +613,10 @@ mod tests {
         };
         let mut battle = Battle::new(party, foes, setup);
         let beats = battle.begin();
-        DungeonState::fresh(battle, beats, "The Shallows".to_string())
+        FightState::fresh(battle, beats, "The Shallows".to_string())
     }
 
-    fn play_out(state: &mut DungeonState) -> (usize, bool) {
+    fn play_out(state: &mut FightState) -> (usize, bool) {
         let dt = BEAT_SECS / SLICES;
         let mut most = 0;
         let mut thought = false;
@@ -667,7 +667,7 @@ mod tests {
     fn nothing_can_be_chosen_while_the_beats_play() {
         let mut state = opened();
         assert!(state.is_busy());
-        assert_eq!(state.key(&InputAction::Confirm), Step::Stay);
+        assert_eq!(state.key(&InputAction::Confirm), FightStep::Stay);
         assert!(state.played.is_empty());
     }
 
@@ -676,8 +676,8 @@ mod tests {
         let mut state = opened();
         play_out(&mut state);
         state.menu = Menu::Skills(0);
-        assert_eq!(state.key(&InputAction::Cancel), Step::Stay);
+        assert_eq!(state.key(&InputAction::Cancel), FightStep::Stay);
         assert_eq!(state.menu, Menu::Main(Command::Skills.index()));
-        assert_eq!(state.key(&InputAction::Cancel), Step::Close);
+        assert_eq!(state.key(&InputAction::Cancel), FightStep::Close);
     }
 }
