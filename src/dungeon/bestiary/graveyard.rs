@@ -1,6 +1,8 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{Effect, Power, Reach, Special, StatusKind};
 use crate::dungeon::traits::{BodyParts, Haunt, Trait};
+use crate::dungeon::treasure::{Find, Treasure};
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -362,7 +364,9 @@ pub const ROWS: &[EnemySpec] = &[
             about: "six ribs, each blocking one hit before the spine can be bitten",
         }],
         traits: &[Trait::Parts(BodyParts::Ribs)],
-        loot: &[Loot::Named("the Leviathan's Rib (charm)")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::Charm(
+            Charm::LeviathansRib,
+        )))],
         variant_of: None,
         note: "",
     },
@@ -401,7 +405,10 @@ pub const ROWS: &[EnemySpec] = &[
             about: "while the [⟡] stands, it rises again at half HP",
         }],
         traits: &[Trait::Phylactery],
-        loot: &[Loot::Rare, Loot::Hardcore("Phoenix Roe")],
+        loot: &[
+            Loot::Rare,
+            Loot::Hardcore(Find::Exactly(Treasure::PhoenixRoe)),
+        ],
         variant_of: None,
         note: "",
     },

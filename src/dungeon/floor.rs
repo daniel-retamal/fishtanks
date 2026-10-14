@@ -7,6 +7,8 @@ use super::Difficulty;
 use super::bestiary::{self, EnemySpec, Rank};
 use super::fighter::{Fighter, Ghost, Scale};
 use super::traits::Trait;
+use super::treasure::{Find, Treasure};
+use crate::fishes::toy::ToyPart;
 
 pub const LAST_FLOOR: u32 = 10;
 pub const HAUL_CATCHES: u64 = 10;
@@ -26,6 +28,7 @@ pub struct FloorSpec {
     pub tuning: Scale,
     pub crowd: (u8, u8),
     pub light: Light,
+    pub finds: &'static [Find],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +45,7 @@ const fn floor(
     tank: TankKind,
     percent: u32,
     light: Light,
+    finds: &'static [Find],
 ) -> FloorSpec {
     FloorSpec {
         depth,
@@ -53,21 +57,81 @@ const fn floor(
         },
         crowd: CROWD,
         light,
+        finds,
     }
 }
 
 pub const FLOORS: [FloorSpec; LAST_FLOOR as usize] = [
-    floor(1, "The Shallows", TankKind::Base, 70, Light::Bright),
-    floor(2, "The Reef", TankKind::CoralReef, 45, Light::Bright),
-    floor(3, "The Candy Abyss", TankKind::Candy, 42, Light::Bright),
-    floor(4, "The Graveyard", TankKind::Haunted, 65, Light::Dark),
-    floor(5, "The Dunes", TankKind::Desert, 50, Light::Bright),
-    floor(6, "The Hot Zone", TankKind::Rad, 82, Light::Bright),
-    floor(7, "The Mainframe", TankKind::Matrix, 62, Light::Dark),
-    floor(8, "The Inferno", TankKind::Hell, 70, Light::Bright),
-    floor(9, "The Gate", TankKind::Heaven, 115, Light::Bright),
-    floor(10, "The Eye", TankKind::Void, 85, Light::Dark),
+    floor(
+        1,
+        "The Shallows",
+        TankKind::Base,
+        70,
+        Light::Bright,
+        SHALLOWS,
+    ),
+    floor(2, "The Reef", TankKind::CoralReef, 45, Light::Bright, REEF),
+    floor(
+        3,
+        "The Candy Abyss",
+        TankKind::Candy,
+        42,
+        Light::Bright,
+        CANDY,
+    ),
+    floor(
+        4,
+        "The Graveyard",
+        TankKind::Haunted,
+        65,
+        Light::Dark,
+        GRAVEYARD,
+    ),
+    floor(5, "The Dunes", TankKind::Desert, 50, Light::Bright, DUNES),
+    floor(
+        6,
+        "The Hot Zone",
+        TankKind::Rad,
+        82,
+        Light::Bright,
+        HOT_ZONE,
+    ),
+    floor(
+        7,
+        "The Mainframe",
+        TankKind::Matrix,
+        62,
+        Light::Dark,
+        MAINFRAME,
+    ),
+    floor(8, "The Inferno", TankKind::Hell, 70, Light::Bright, INFERNO),
+    floor(9, "The Gate", TankKind::Heaven, 115, Light::Bright, GATE),
+    floor(10, "The Eye", TankKind::Void, 85, Light::Dark, EYE),
 ];
+
+const SHALLOWS: &[Find] = &[
+    Find::Exactly(Treasure::PincoyasShell),
+    Find::Exactly(Treasure::Toy(ToyPart::DivingHelmet)),
+];
+const REEF: &[Find] = &[
+    Find::Exactly(Treasure::Toy(ToyPart::JellyfishCap)),
+    Find::Exactly(Treasure::KrakenInk),
+];
+const CANDY: &[Find] = &[Find::Exactly(Treasure::MarkedCard)];
+const GRAVEYARD: &[Find] = &[Find::Exactly(Treasure::Toy(ToyPart::Anchor))];
+const DUNES: &[Find] = &[Find::Cowbell];
+const HOT_ZONE: &[Find] = &[
+    Find::Vial,
+    Find::Fusion,
+    Find::Exactly(Treasure::RadiantCore),
+];
+const MAINFRAME: &[Find] = &[Find::Chip];
+const INFERNO: &[Find] = &[
+    Find::Exactly(Treasure::MarkedCard),
+    Find::Exactly(Treasure::MammonsCoin),
+];
+const GATE: &[Find] = &[Find::Exactly(Treasure::Feather)];
+const EYE: &[Find] = &[Find::Exactly(Treasure::WishShard)];
 
 pub const BLIND_DEEP: &str = "The Blind Deep";
 

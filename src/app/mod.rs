@@ -63,6 +63,7 @@ mod persistence;
 mod room;
 mod snapshot;
 mod toybox;
+mod treasure;
 mod zen;
 
 pub use cheats::Launch;
@@ -397,6 +398,23 @@ impl App {
             .sum()
     }
 
+    fn buff_stacks(&self, kind: ConsumableKind) -> u32 {
+        self.active_consumables
+            .iter()
+            .filter(|c| c.kind == kind)
+            .map(|c| c.stacks)
+            .sum()
+    }
+
+    fn catch_charm(&self) -> Option<crate::economy::Rarity> {
+        use crate::dungeon::treasure::Treasure;
+        let held = |treasure| self.buff_stacks(ConsumableKind::Treasure(treasure)) > 0;
+        if held(Treasure::KrakenInk) {
+            return Some(crate::economy::Rarity::Legendary);
+        }
+        held(Treasure::PincoyasShell).then_some(crate::economy::Rarity::Rare)
+    }
+
     fn bait_stacks(&self) -> u32 {
         self.active_consumables
             .iter()
@@ -451,14 +469,23 @@ impl App {
     }
 
     fn devils_luck(&self) -> u32 {
-        Self::devils_luck_in(self.tank())
+        self.devils_luck_at(self.current_tank)
     }
 
-    fn devils_luck_in(tank: &Tank) -> u32 {
+    fn devils_luck_at(&self, tank_idx: usize) -> u32 {
+        let tank = &self.tanks[tank_idx];
         if !tank.kind.config().devils_luck {
             return 0;
         }
-        (tank.fish.len() + tank.soul_count()) as u32
+        let first = self
+            .tanks
+            .iter()
+            .position(|tank| tank.kind.config().devils_luck);
+        let bound = match first == Some(tank_idx) {
+            true => self.dungeon.mammon,
+            false => 0,
+        };
+        (tank.fish.len() + tank.soul_count()) as u32 + bound
     }
 
     fn grace_stacks(&self) -> u32 {
@@ -647,24 +674,9 @@ impl App {
             ConsumableKind::Fabricator => return self.open_foundry(),
             ConsumableKind::Coffee | ConsumableKind::Bait => {
                 self.consume_item(kind);
-                let entry = self.inventory.entry(stock).or_insert(0);
-                *entry = entry.saturating_sub(1);
-                self.inventory.retain(|_, v| *v > 0);
-                let now_empty = if let Some(Overlay::Inventory(state)) = &mut self.active_overlay {
-                    state.update_from(&self.inventory, &self.blueprints, &mut rand::rng());
-                    state.items.is_empty()
-                } else {
-                    false
-                };
-                if now_empty {
-                    self.close_overlay();
-                }
-                let bh = self.bar_height();
-                let tw = self.terminal_width;
-                let th = self.terminal_height.saturating_sub(bh);
-                let dead_names = self.graveyard_names();
-                self.tanks[self.current_tank].resize(tw, th, &dead_names);
+                self.spend_one(stock);
             }
+            ConsumableKind::Treasure(treasure) => return self.use_treasure(treasure, source),
         }
         true
     }
@@ -738,7 +750,7 @@ impl App {
             .with_native(tank.kind)
             .with_bait(self.bait_stacks())
             .without(&self.withheld_loot())
-            .with_devils_luck(Self::devils_luck_in(tank))
+            .with_devils_luck(self.devils_luck_at(tank_idx))
             .with_grace(self.grace_stacks())
             .keeping_species(|species| self.has_room_for_a_new(species))
     }
@@ -746,6 +758,9 @@ impl App {
     pub(super) fn roll_catch(&self, tank_idx: usize, rng: &mut impl RngExt) -> LootKind {
         self.catch_pool(tank_idx)
             .with_cows(&Self::cow_counts_in(&self.tanks[tank_idx]))
+            .charmed(self.catch_charm(), |species| {
+                self.has_room_for_a_new(species)
+            })
             .roll(rng)
     }
 
@@ -915,6 +930,7 @@ impl App {
                     TankEvent::Lazarus => {
                         self.bring_back_a_lost_kind(i);
                     }
+                    TankEvent::Fill { hollow } => self.fill_the_hollow(i, &hollow),
                 }
             }
         }
@@ -973,6 +989,9 @@ impl App {
     }
 
     fn ghost(&self) -> String {
+        if let Some(line) = self.deep_line() {
+            return line;
+        }
         if self.void_ritual.is_blocking() || !self.editor.text.starts_with('/') {
             return String::new();
         }
@@ -1072,8 +1091,9 @@ impl App {
         }
 
         {
+            let wishing = matches!(self.void_ritual, VoidRitualState::Wish { .. });
             let ritual_blocking = self.void_ritual.is_blocking()
-                && self.tanks[self.current_tank].kind.config().hosts_ritual;
+                && (wishing || self.tanks[self.current_tank].kind.config().hosts_ritual);
             let mut tv = TankView::new(self.tank())
                 .with_names(self.settings.show_names && !self.zen)
                 .with_nets(self.settings.show_nets && !self.zen)
@@ -1105,6 +1125,10 @@ impl App {
         );
 
         let screen = Screen::new(full_area, tank_area);
+        let deep_screen = match self.deep_keeps_the_bar() {
+            true => Screen::only(tank_area),
+            false => screen,
+        };
         match &self.active_overlay {
             Some(Overlay::Index(state)) => {
                 frame.render_widget(IndexOverlay::new(state, screen), full_area)
@@ -1209,7 +1233,7 @@ impl App {
                     state,
                     self.dungeon.expedition.as_ref(),
                     self.above(),
-                    screen,
+                    deep_screen,
                 ),
                 full_area,
             ),

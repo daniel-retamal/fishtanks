@@ -342,6 +342,10 @@ impl Diver {
         if has(Act::Fight) && kind != RoomKind::Den {
             return self.act(Act::Fight, 0);
         }
+        if let Some(line) = self.asked_to_pray() {
+            self.expedition.pray(line, &self.ground);
+            return Ok(());
+        }
         let choice = match kind {
             RoomKind::Den => match self.dares() {
                 true => Act::Fight,
@@ -371,6 +375,12 @@ impl Diver {
             _ => Act::Leave,
         };
         self.act(choice, 0)
+    }
+
+    fn asked_to_pray(&self) -> Option<&'static str> {
+        let visit = self.expedition.visit.as_ref()?;
+        visit.event()?.asks_a_prayer()?;
+        (visit.stage == super::room::Stage::Open).then(|| super::event::prayer_line(visit.seed))
     }
 
     fn meals(&self) -> u32 {

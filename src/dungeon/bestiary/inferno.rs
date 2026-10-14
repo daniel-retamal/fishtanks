@@ -1,6 +1,8 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{DamageKind, Effect, Power, Reach, Special, StatusKind};
 use crate::dungeon::traits::{Haunt, Trait};
+use crate::dungeon::treasure::{Find, Treasure};
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -273,7 +275,9 @@ pub const ROWS: &[EnemySpec] = &[
             about: "at each third of his HP he offers a contract: sign and his HP and your haul both double",
         }],
         traits: &[Trait::DevilsBargain],
-        loot: &[Loot::Named("the Devil's Coin (charm)")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::Charm(
+            Charm::DevilsCoin,
+        )))],
         variant_of: None,
         note: "",
     },
@@ -310,7 +314,7 @@ pub const ROWS: &[EnemySpec] = &[
             },
         ],
         traits: &[Trait::Greed, Trait::Paid],
-        loot: &[Loot::Named("Mammon's Coin")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::MammonsCoin))],
         variant_of: None,
         note: "",
     },

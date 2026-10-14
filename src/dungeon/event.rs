@@ -8,21 +8,24 @@ use crate::fishes::graveyard::Fate;
 use crate::fishes::mutations::Mutation;
 use crate::fishes::species::{FishSpecies, Sin, SizeCategory};
 use crate::loot::StockItem;
+use crate::void_ritual::{PRAYERS, phrase_matches};
 
 use super::beat::Tone;
 use super::bestiary::SpriteRow;
 use super::boon::Curse;
 use super::effect::StatusKind;
 use super::event_art::{
-    ANEMONES, BOTTLE, CHOCOLATE_RIVER, COFFIN, CORAL_MAZE, CRASHED_SAUCER, CROP_CIRCLE,
-    FRESH_GRAVE, GIANT_PEARL, GINGERBREAD_HOUSE, OASIS, PINCOYA, PIRATE_WRECK, SEANCE_TABLE,
-    SUGAR_ALTAR,
+    ANEMONES, BOTTLE, CAPTCHA, CAULDRON, CHOCOLATE_RIVER, CHOIR, COFFIN, CONTRACT, CORAL_MAZE,
+    CRASHED_SAUCER, CROP_CIRCLE, DOOR, EMAIL, FERRY, FRESH_GRAVE, GATEKEEPER, GIANT_PEARL,
+    GINGERBREAD_HOUSE, GLOWING_POOL, LAB_DOOR, OASIS, PINCOYA, PIRATE_WRECK, PRAYER, REFLECTION,
+    SCALES, SEANCE_TABLE, SPECIMEN_TANK, SUGAR_ALTAR, TERMS,
 };
 use super::fighter::Ghost;
 use super::floor::FloorSpec;
 use super::items::Item;
 use super::kit::Kit;
 use super::traits::Trait;
+use super::treasure::{Find, Treasure};
 
 pub const LUCK_PERCENT: i32 = 50;
 pub const LUCKY_PERCENT: i32 = 15;
@@ -36,6 +39,8 @@ pub const LINGER_TURNS: u8 = 2;
 pub const OVEREAT_SLOW: u32 = 3;
 pub const ALTAR_MEALS: u32 = 2;
 pub const ANSWER_MEALS: u32 = 2;
+pub const OUTSIDE_TURNS: u8 = 3;
+pub const ECHOES: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Omen {
@@ -54,6 +59,12 @@ pub enum Check {
     Lacks(Trait),
     Offering,
     Grudge,
+    Sinless,
+    EverySinless,
+    Feather,
+    Sighted,
+    Voice,
+    Prayer,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,6 +77,7 @@ pub enum Subject {
     Carrier(Trait),
     Kind(FishSpecies),
     Dead,
+    Chosen,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +107,16 @@ pub enum Outcome {
     GiveUp(Mutation, Rarity),
     Haunt,
     Answer,
+    Mutate,
+    MutateAll,
+    Lose(u64),
+    Mark,
+    MarkAll,
+    Join,
+    Free,
+    Outside,
+    Waits(&'static str),
+    Find(Find),
 }
 
 impl Outcome {
@@ -106,15 +128,23 @@ impl Outcome {
             | Outcome::Abducted
             | Outcome::Fight { .. }
             | Outcome::Encounter
-            | Outcome::Haunt => Tone::Hurt,
-            Outcome::Rest => Tone::Heal,
-            Outcome::Nothing
+            | Outcome::Haunt
+            | Outcome::Lose(_)
+            | Outcome::Mark
+            | Outcome::MarkAll
+            | Outcome::Outside
+            | Outcome::Waits(_) => Tone::Hurt,
+            Outcome::Rest | Outcome::Join | Outcome::Free => Tone::Heal,
+            Outcome::Mutate
+            | Outcome::MutateAll
+            | Outcome::Nothing
             | Outcome::Gold(_)
             | Outcome::Treasure(_)
             | Outcome::Omen(_)
             | Outcome::Keep(_)
             | Outcome::Meals(_)
             | Outcome::GiveUp(..)
+            | Outcome::Find(_)
             | Outcome::Answer => Tone::Plain,
         }
     }
@@ -124,10 +154,34 @@ impl Outcome {
 pub struct Turn {
     pub text: &'static str,
     pub outcome: Outcome,
+    pub also: Outcome,
+}
+
+impl Turn {
+    const fn and(self, also: Outcome) -> Turn {
+        Turn { also, ..self }
+    }
+
+    pub fn outcomes(self) -> [Outcome; 2] {
+        [self.outcome, self.also]
+    }
+
+    pub fn tone(self) -> Tone {
+        let tones = self.outcomes().map(Outcome::tone);
+        match tones {
+            _ if tones.contains(&Tone::Hurt) => Tone::Hurt,
+            _ if tones.contains(&Tone::Heal) => Tone::Heal,
+            _ => Tone::Plain,
+        }
+    }
 }
 
 const fn turn(text: &'static str, outcome: Outcome) -> Turn {
-    Turn { text, outcome }
+    Turn {
+        text,
+        outcome,
+        also: Outcome::Nothing,
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -154,6 +208,7 @@ const fn subject_of(need: Need, check: Option<Check>) -> Subject {
         (Some(Check::Bite), _) => Subject::Strongest,
         (Some(Check::Lacks(wanted)), _) => Subject::Carrier(wanted),
         (Some(Check::Grudge), _) | (_, Need::Dead) => Subject::Dead,
+        (Some(Check::Feather), _) => Subject::Chosen,
         (_, Need::Trait(wanted)) => Subject::Carrier(wanted),
         (_, Need::Species(species)) => Subject::Kind(species),
         _ => Subject::Lead,
@@ -196,6 +251,18 @@ pub struct EventSpec {
 impl EventSpec {
     pub fn calls_the_dead(&self) -> bool {
         self.choices.iter().any(|choice| choice.need == Need::Dead)
+    }
+
+    pub fn picks_a_fish(&self) -> bool {
+        self.choices
+            .iter()
+            .any(|choice| choice.subject == Subject::Chosen)
+    }
+
+    pub fn asks_a_prayer(&self) -> Option<usize> {
+        self.choices
+            .iter()
+            .position(|choice| choice.check == Some(Check::Prayer))
     }
 }
 
@@ -637,6 +704,418 @@ pub const EVENTS: &[EventSpec] = &[
             sure("Leave", Need::Nothing, LEAVE),
         ],
     },
+    EventSpec {
+        name: "A Glowing Pool",
+        floor: 6,
+        art: GLOWING_POOL,
+        text: "A pool of green water, warm to the fin. Whatever swims in it comes out changed.",
+        choices: &[
+            sure(
+                "Dip one fish",
+                Need::Nothing,
+                turn("{fish} goes under and comes up changed.", Outcome::Mutate),
+            )
+            .on(Subject::Chosen),
+            sure(
+                "Dip everyone",
+                Need::Nothing,
+                turn(
+                    "The whole party goes under and comes up changed.",
+                    Outcome::MutateAll,
+                ),
+            ),
+            sure("Leave", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "A Locked Lab Door",
+        floor: 6,
+        art: LAB_DOOR,
+        text: "A steel door with a warning painted on it. Behind it, something hums.",
+        choices: &[
+            checked(
+                "Force it",
+                Check::Bite,
+                turn(
+                    "{fish} bends the door open. The lab inside is empty, its shelves are not.",
+                    Outcome::Find(Find::Vial),
+                ),
+                turn(
+                    "The alarm goes off, and Patient Zero answers it.",
+                    Outcome::Fight {
+                        enemy: "Patient Zero",
+                        count: 1,
+                    },
+                ),
+            ),
+            sure(
+                "Let a botfish open it",
+                Need::Species(FishSpecies::Botfish),
+                turn(
+                    "{fish} talks to the lock until it opens. Nobody hears a thing, and the samples are still in the fridge.",
+                    Outcome::Find(Find::Fusion),
+                ),
+            ),
+            sure("Leave", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "A Specimen Tank",
+        floor: 6,
+        art: SPECIMEN_TANK,
+        text: "A cracked tank holds a fish of {fish}'s kind, grown wrong.",
+        choices: &[
+            checked(
+                "Free it",
+                Check::Luck,
+                turn(
+                    "The glass gives. It swims out and joins the party, changed for good.",
+                    Outcome::Free,
+                ),
+                turn(
+                    "It is not friendly any more.",
+                    Outcome::Fight {
+                        enemy: "The Specimen",
+                        count: 1,
+                    },
+                ),
+            )
+            .on(Subject::Drawn),
+            sure("Leave it", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "An Email",
+        floor: 7,
+        art: EMAIL,
+        text: "An email floats by with an attachment. The subject line is your name.",
+        choices: &[
+            checked(
+                "Open it",
+                Check::Luck,
+                turn(
+                    "It was an invoice, paid to you by mistake.",
+                    Outcome::Gold(2),
+                ),
+                turn(
+                    "Phishing. Gold leaves the haul before anyone can stop it.",
+                    Outcome::Lose(2),
+                ),
+            ),
+            sure("Delete it", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "Select Every Square With a Fish",
+        floor: 7,
+        art: CAPTCHA,
+        text: "A grid of squares blocks the way. To pass, select every square with a fish.",
+        choices: &[
+            checked(
+                "Answer",
+                Check::Sighted,
+                turn(
+                    "{fish} picks every square. Access granted.",
+                    Outcome::Treasure(Rarity::Rare),
+                ),
+                turn(
+                    "{fish} cannot see the squares. Locked out, the party takes the long way round.",
+                    Outcome::Encounter,
+                ),
+            ),
+            sure(
+                "Let the Cheatfish do it",
+                Need::Species(FishSpecies::Cheatfish),
+                turn(
+                    "{fish} does not even look. Access granted.",
+                    Outcome::Treasure(Rarity::Rare),
+                ),
+            ),
+            sure("Go around", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "The Terms and Conditions",
+        floor: 7,
+        art: TERMS,
+        text: "Four thousand pages of terms and conditions, and a button that says Accept.",
+        choices: &[
+            sure(
+                "Accept",
+                Need::Nothing,
+                turn(
+                    "{fish} accepts. Something is delivered, and on page 4,000 {fish} signed something else.",
+                    Outcome::Treasure(Rarity::Rare),
+                )
+                .and(Outcome::Curse(Curse::FinePrint)),
+            ),
+            sure(
+                "Scroll to the end",
+                Need::Nothing,
+                turn(
+                    "{fish} reads every page and declines the clause on page 4,000. It will be tired in the next fight.",
+                    Outcome::Treasure(Rarity::Rare),
+                )
+                .and(Outcome::Linger {
+                    kind: StatusKind::Held,
+                    amount: 0,
+                }),
+            ),
+            sure("Close it", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "A Contract in Your Name",
+        floor: 8,
+        art: CONTRACT,
+        text: "A contract floats in the heat, already signed in your name.",
+        choices: &[
+            checked(
+                "Read the fine print",
+                Check::Sinless,
+                turn(
+                    "{fish} finds the loophole. The contract pays out.",
+                    Outcome::Gold(2),
+                ),
+                turn(
+                    "The fine print reads {fish} back to itself. It is marked.",
+                    Outcome::Mark,
+                ),
+            ),
+            sure(
+                "Burn it",
+                Need::Species(FishSpecies::Holyfish),
+                turn(
+                    "{fish} burns the contract. Something below was cheated, and it left its stake behind.",
+                    Outcome::Treasure(Rarity::Rare),
+                ),
+            ),
+            sure("Leave it", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "The Ferry",
+        floor: 8,
+        art: FERRY,
+        text: "A ferry waits at the edge of a burning river. The ferryman holds out a hand.",
+        choices: &[
+            sure(
+                "Pay the fare",
+                Need::Nothing,
+                turn(
+                    "The ferryman takes the fare. On the far bank, something was left for whoever paid.",
+                    Outcome::Lose(1),
+                )
+                .and(Outcome::Treasure(Rarity::Rare)),
+            ),
+            checked(
+                "Swim across",
+                Check::Luck,
+                turn(
+                    "The river lets the party through. On the far bank, something waits.",
+                    Outcome::Treasure(Rarity::Rare),
+                ),
+                turn(
+                    "The swimmers arrive, and every one of them is marked.",
+                    Outcome::MarkAll,
+                )
+                .and(Outcome::Treasure(Rarity::Rare)),
+            ),
+            sure("Stay on this side", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "A Cauldron",
+        floor: 8,
+        art: CAULDRON,
+        text: "A cauldron simmers over the coals. A fish inside is still swimming.",
+        choices: &[
+            checked(
+                "Pull it out",
+                Check::Bite,
+                turn(
+                    "{fish} pulls it out of the broth. It joins the party.",
+                    Outcome::Join,
+                ),
+                turn(
+                    "A Lava Eel was keeping it warm.",
+                    Outcome::Fight {
+                        enemy: "Lava Eel",
+                        count: 1,
+                    },
+                ),
+            ),
+            sure("Leave it", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "The Gatekeeper",
+        floor: 9,
+        art: GATEKEEPER,
+        text: "The Gatekeeper stands at a gate of light. It wants to read every fish before it lets them through.",
+        choices: &[
+            checked(
+                "Let it read each fish",
+                Check::EverySinless,
+                turn(
+                    "It reads every fish and finds nothing. The party goes through blessed.",
+                    Outcome::Rest,
+                ),
+                turn(
+                    "It names every sin it finds. Those fish will wait outside the next fight.",
+                    Outcome::Outside,
+                ),
+            ),
+            sure(
+                "Show a halo",
+                Need::Trait(Trait::Holy),
+                turn(
+                    "{fish} shows its halo. The Gatekeeper bows, and the party goes through blessed.",
+                    Outcome::Rest,
+                ),
+            ),
+            sure(
+                "Argue",
+                Need::Trait(Trait::PrideSin),
+                turn(
+                    "{fish} argues until the Gatekeeper gives up. Everyone goes through.",
+                    Outcome::Nothing,
+                ),
+            ),
+            sure("Turn back", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "The Scales",
+        floor: 9,
+        art: SCALES,
+        text: "A pair of scales, a feather on one pan. The other pan is empty and waiting.",
+        choices: &[
+            checked(
+                "Weigh a fish against the feather",
+                Check::Feather,
+                turn(
+                    "{fish} weighs no more than the feather, and the feather is given to it.",
+                    Outcome::Find(Find::Exactly(Treasure::Feather)),
+                ),
+                turn(
+                    "{fish} is heavier than the feather. It is found wanting.",
+                    Outcome::Curse(Curse::Wanting),
+                ),
+            ),
+            sure("Refuse", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "Choir Practice",
+        floor: 9,
+        art: CHOIR,
+        text: "A choir is practising in the clouds. There is room for one more voice.",
+        choices: &[
+            checked(
+                "Sing along",
+                Check::Voice,
+                turn(
+                    "{fish} sings in tune. The hymn rests the whole party.",
+                    Outcome::Rest,
+                ),
+                turn(
+                    "{fish} sings off key. The Choir notices you, and it will be waiting at the elevator.",
+                    Outcome::Waits("The Choir"),
+                ),
+            ),
+            sure("Listen", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "A Door in the Water",
+        floor: 10,
+        art: DOOR,
+        text: "A door stands in the water, with nothing on either side of it.",
+        choices: &[
+            checked(
+                "Open it",
+                Check::Luck,
+                turn(
+                    "On the other side, something left for whoever opened it.",
+                    Outcome::Treasure(Rarity::Legendary),
+                ),
+                turn(
+                    "A Door steps through.",
+                    Outcome::Fight {
+                        enemy: "Door",
+                        count: 1,
+                    },
+                ),
+            ),
+            sure(
+                "Knock",
+                Need::Nothing,
+                turn(
+                    "Something knocks back, twice, and slides a coin under the door.",
+                    Outcome::Gold(1),
+                ),
+            ),
+            sure("Leave", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "A Reflection",
+        floor: 10,
+        art: REFLECTION,
+        text: "A reflection of the party hangs in the water. It is almost you.",
+        choices: &[
+            checked(
+                "Talk to it",
+                Check::Has(Trait::Stare),
+                turn(
+                    "{fish} stares it down. The reflection looks away first and gives something up.",
+                    Outcome::Treasure(Rarity::Legendary),
+                ),
+                turn(
+                    "It talks back. Echoes of your fish climb out.",
+                    Outcome::Fight {
+                        enemy: "Echo",
+                        count: ECHOES,
+                    },
+                ),
+            )
+            .on(Subject::Carrier(Trait::Stare)),
+            sure(
+                "Break it",
+                Need::Nothing,
+                turn(
+                    "It breaks into shards, and one of them is still almost you.",
+                    Outcome::Find(Find::Exactly(Treasure::WishShard)),
+                ),
+            ),
+            sure("Leave", Need::Nothing, LEAVE),
+        ],
+    },
+    EventSpec {
+        name: "A Line of Prayer",
+        floor: 10,
+        art: PRAYER,
+        text: "A line of prayer is written on the dark. The Void waits for someone to say it.",
+        choices: &[
+            ChoiceSpec {
+                label: "Type it in the command bar",
+                need: Need::Nothing,
+                check: Some(Check::Prayer),
+                subject: Subject::Lead,
+                cost: 1,
+                pass: turn(
+                    "{fish} says it. The Void listens, and gives.",
+                    Outcome::Find(Find::Exactly(Treasure::WishShard)),
+                ),
+                fail: turn(
+                    "{fish} says the wrong word, and the word stays with it.",
+                    Outcome::Curse(Curse::WrongWord),
+                ),
+            },
+            sure("Stay silent", Need::Nothing, LEAVE),
+        ],
+    },
 ];
 
 pub fn answer(sin: Option<Sin>) -> Turn {
@@ -671,8 +1150,32 @@ pub fn holds_a_grudge(ghost: &Ghost) -> bool {
 }
 
 pub fn of_floor(depth: u32) -> Vec<&'static EventSpec> {
-    EVENTS.iter().filter(|event| event.floor == depth).collect()
+    let table = FloorSpec::of(depth).depth;
+    EVENTS.iter().filter(|event| event.floor == table).collect()
 }
+
+pub fn prayer_line(seed: u64) -> &'static str {
+    let verses = PRAYERS[(seed as usize) % PRAYERS.len()];
+    verses[(seed as usize / PRAYERS.len()) % verses.len()]
+}
+
+pub fn heard(words: &str, seed: u64) -> bool {
+    phrase_matches(words, prayer_line(seed))
+}
+
+pub fn sinful(kit: &Kit) -> bool {
+    kit.traits.iter().any(|worn| SINS.contains(worn))
+}
+
+const SINS: [Trait; 7] = [
+    Trait::GreedSin,
+    Trait::LustSin,
+    Trait::GluttonySin,
+    Trait::WrathSin,
+    Trait::EnvySin,
+    Trait::PrideSin,
+    Trait::SlothSin,
+];
 
 pub fn find(name: &str) -> Option<&'static EventSpec> {
     EVENTS.iter().find(|event| event.name == name)
@@ -730,6 +1233,8 @@ pub struct Trial<'a> {
     pub size: SizeCategory,
     pub depth: u32,
     pub offered: bool,
+    pub light: bool,
+    pub said: bool,
 }
 
 pub fn passes(check: Check, trial: &Trial, rng: &mut impl RngExt) -> bool {
@@ -753,5 +1258,20 @@ pub fn passes(check: Check, trial: &Trial, rng: &mut impl RngExt) -> bool {
             .any(|&member| wears(&trial.kits[member], wanted)),
         Check::Offering => trial.offered,
         Check::Grudge => true,
+        Check::Sinless => !sinful(kit),
+        Check::EverySinless => !trial
+            .standing
+            .iter()
+            .any(|&member| sinful(&trial.kits[member])),
+        Check::Feather => trial.light,
+        Check::Sighted => !wears(kit, Trait::Contact(0)),
+        Check::Voice => {
+            let sings = trial.standing.iter().any(|&member| {
+                let kit = &trial.kits[member];
+                wears(kit, Trait::Parrot) || wears(kit, Trait::Loud)
+            });
+            sings || lucky(trial.kits, rng)
+        }
+        Check::Prayer => trial.said,
     }
 }

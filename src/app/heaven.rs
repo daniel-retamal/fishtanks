@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
+use rand::RngExt;
+
 use crate::fishes::fish::Fish;
 use crate::fishes::graveyard::Fate;
+use crate::fishes::quirk::{Quirk, Worn};
 use crate::fishes::species::FishSpecies;
 use crate::tank::{Afterlife, Tank, WorldSignal};
 
@@ -105,6 +108,30 @@ impl App {
             .iter()
             .rposition(|grave| !grave.is_unfish() && !alive.contains(&grave.species));
         lost.is_some_and(|grave| self.raise_from_grave(grave, tank))
+    }
+
+    pub(super) fn fill_the_hollow(&mut self, tank: usize, name: &str) {
+        let dead: Vec<&Fish> = self
+            .graveyard
+            .iter()
+            .filter(|grave| !grave.is_unfish())
+            .collect();
+        if dead.is_empty() {
+            return;
+        }
+        let mut rng = rand::rng();
+        let pick = dead[rng.random_range(0..dead.len())];
+        let worn = Worn {
+            name: pick.name.clone(),
+            species: pick.species,
+            color: pick.color,
+        };
+        let Some(fish) = self.tanks[tank].fish.iter_mut().find(|f| f.name == name) else {
+            return;
+        };
+        if let Some(Quirk::Hollow(hollow)) = fish.quirk_mut() {
+            hollow.wear(worn, &mut rng);
+        }
     }
 
     pub(super) fn kill_fish(&mut self, name: &str) -> bool {

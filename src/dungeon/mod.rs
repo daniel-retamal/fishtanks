@@ -34,6 +34,7 @@ pub mod specials;
 pub mod state;
 pub mod tables;
 pub mod traits;
+pub mod treasure;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Difficulty {
@@ -81,4 +82,6 @@ pub struct Dungeon {
     pub remembered: Vec<String>,
     #[serde(default)]
     pub wrecks: Vec<Wreck>,
+    #[serde(default)]
+    pub mammon: u32,
 }

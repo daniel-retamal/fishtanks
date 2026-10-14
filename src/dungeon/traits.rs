@@ -238,7 +238,6 @@ pub enum Reader {
     Fight,
     Kit,
     Map,
-    DeepFish,
 }
 
 impl Trait {
@@ -432,6 +431,7 @@ impl Trait {
             | Trait::Fangs
             | Trait::Chimera
             | Trait::Lazarus(_)
+            | Trait::Vessel
             | Trait::Cow => Reader::Fight,
             Trait::Wrath
             | Trait::Sloth
@@ -447,7 +447,6 @@ impl Trait {
             | Trait::Cartographer
             | Trait::Angler
             | Trait::Uplink => Reader::Map,
-            Trait::Vessel => Reader::DeepFish,
         }
     }
 }

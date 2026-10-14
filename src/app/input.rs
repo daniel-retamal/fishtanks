@@ -684,6 +684,11 @@ impl App {
         &self,
         target: ConsumeTarget,
     ) -> Vec<crate::ui::consume_picker::ConsumePickerEntry> {
+        if let ConsumeTarget::Treasure(treasure) = target
+            && treasure.using() == crate::dungeon::treasure::Use::OnTheDead
+        {
+            return self.the_dead_for(treasure);
+        }
         let mut out = Vec::new();
         for (ti, tank) in self.tanks.iter().enumerate() {
             for (fi, fish) in tank.fish.iter().enumerate() {
@@ -799,17 +804,24 @@ impl App {
                     (s.target, (e.tank_idx, e.fish_idx, e.fish_name.clone()))
                 };
                 let stock = target.stock();
-                let (ti, _, fn_name) = sel_entry;
+                let (ti, fi, fn_name) = sel_entry;
                 if let ConsumeTarget::Etch(index) = target {
                     self.etch_from_picker(index, &fn_name);
                     return;
                 }
-                let mut rng = rand::rng();
-                let Some(pos) = self.tanks[ti].fish.iter().position(|f| f.name == fn_name) else {
-                    return;
-                };
-                if !target.apply_to(&mut self.tanks[ti].fish[pos], &mut rng) {
-                    return;
+                if let ConsumeTarget::Treasure(treasure) = target {
+                    if !self.give_treasure(treasure, ti, fi, &fn_name) {
+                        return;
+                    }
+                } else {
+                    let mut rng = rand::rng();
+                    let Some(pos) = self.tanks[ti].fish.iter().position(|f| f.name == fn_name)
+                    else {
+                        return;
+                    };
+                    if !target.apply_to(&mut self.tanks[ti].fish[pos], &mut rng) {
+                        return;
+                    }
                 }
                 let entry = self.inventory.entry(stock).or_insert(0);
                 *entry = entry.saturating_sub(1);
@@ -1572,7 +1584,7 @@ impl App {
                                     let qty = self.inventory.entry(stock).or_insert(0);
                                     *qty = qty.saturating_sub(sell_qty);
                                 }
-                                SellEntry::Seed { kind, .. } | SellEntry::Robotics { kind, .. } => {
+                                SellEntry::Seed { kind, .. } | SellEntry::Stock { kind, .. } => {
                                     let sell_qty = confirm.sell_qty;
                                     let qty = self
                                         .inventory
@@ -1752,7 +1764,7 @@ impl App {
         }
         for kind in ConsumableKind::seeds()
             .into_iter()
-            .chain(ConsumableKind::robotics_stock())
+            .chain(ConsumableKind::resold())
         {
             if self
                 .inventory
@@ -3085,7 +3097,7 @@ impl App {
                 ConsumableKind::Milk(variant).sell_price(),
             ),
             commands::SellTarget::Seed { kind, qty }
-            | commands::SellTarget::Robotics { kind, qty } => {
+            | commands::SellTarget::Stock { kind, qty } => {
                 self.sell_stock_checked(StockItem::Consumable(kind), qty, kind.sell_price())
             }
         }

@@ -1818,3 +1818,78 @@ fn the_deep_floors_demo_runs_keystroke_for_keystroke() {
     tui.write_reel();
     assert_no_broken_borders(&tui);
 }
+
+#[test]
+fn the_deep_treasures_demo_runs_keystroke_for_keystroke() {
+    use fishtank::dungeon::treasure::Treasure;
+    use fishtank::loot::{ConsumableKind, StockItem};
+    let held = |tui: &Tui, treasure: Treasure| {
+        tui.app
+            .inventory
+            .get(&StockItem::Consumable(ConsumableKind::Treasure(treasure)))
+            .copied()
+            .unwrap_or(0)
+    };
+    let mut tui = Tui::as_player(120, 38);
+    tui.film(Path::new(REEL_DIR), "demo-the-deep-treasures");
+    tui.run("!debugmode");
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter).key(KeyCode::Tab);
+    tui.key(KeyCode::Enter).key(KeyCode::Enter);
+    tui.screen().expect_find("from your tanks");
+    tui.snap("1. Adam alone on the first floor");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"A Line of Prayer\"");
+    let seed = tui
+        .app
+        .dungeon
+        .expedition
+        .as_ref()
+        .and_then(|e| e.visit.as_ref())
+        .map(|visit| visit.seed)
+        .expect("the prayer room");
+    let line = fishtank::dungeon::event::prayer_line(seed);
+    let first = line.split(' ').next().unwrap_or(line);
+    tui.screen().expect_find(&format!("\"{first}"));
+    tui.snap("2. /room \"A Line of Prayer\": the line in quotes, and again as grey ghost text in the command bar");
+    tui.type_text(&line.to_lowercase());
+    tui.snap("3. typed into the command bar");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("The Void listens");
+    tui.screen().expect_find("Found: Wish Shard.");
+    tui.snap("4. ENTER says it: a Wish Shard");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"A Glowing Pool\"");
+    tui.screen().expect_find("Choosing: Adam");
+    tui.snap("5. /room \"A Glowing Pool\": ←→ picks the fish to dip");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Adam takes");
+    tui.snap("6. ENTER dips Adam: a mutation, gift and quirk");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"The Scales\"");
+    tui.key(KeyCode::Enter);
+    tui.snap("7. /room \"The Scales\", ENTER: Adam weighed against the feather");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Elevator\"");
+    tui.screen().expect_find("bank it all, go home");
+    tui.key(KeyCode::Enter);
+    assert!(tui.app.dungeon.expedition.is_none(), "Up banks it all");
+    assert_eq!(held(&tui, Treasure::WishShard), 1, "the shard came home");
+    tui.snap("8. /room \"Elevator\", ENTER (Up): home, the haul banked");
+    tui.run("/give wish shard");
+    tui.run("/consume wish shard");
+    tui.screen().expect_find(fishtank::void_ritual::WISH_PROMPT);
+    tui.snap("9. /give wish shard, /consume wish shard: three shards make the Void's wish, in the Fishtank");
+    tui.run("give coffee");
+    assert!(
+        tui.app.inventory.contains_key(&StockItem::COFFEE),
+        "the wish gave coffee"
+    );
+    tui.snap("10. give coffee: the wish is granted on the spot");
+    tui.run("/give kraken ink");
+    tui.run("/consume kraken ink");
+    tui.screen().expect_find("kraken ink");
+    tui.snap("11. /give kraken ink, /consume kraken ink: the next cast lands a Legendary");
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}

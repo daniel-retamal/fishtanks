@@ -6,6 +6,7 @@ use crate::fishes::species::FishSpecies;
 use super::effect::{Effect, Reach};
 use super::skill::Skill;
 use super::traits::Trait;
+use super::treasure::Find;
 
 pub mod anywhere;
 pub mod candy_abyss;
@@ -124,8 +125,8 @@ pub enum Loot {
     Rare,
     Gold,
     RareEvery(u32),
-    Named(&'static str),
-    Hardcore(&'static str),
+    Named(Find),
+    Hardcore(Find),
     Fish {
         species: FishSpecies,
         one_in: u32,

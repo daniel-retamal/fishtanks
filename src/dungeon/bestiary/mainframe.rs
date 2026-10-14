@@ -1,6 +1,8 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{Effect, Reach, Special, StatusKind};
 use crate::dungeon::traits::Trait;
+use crate::dungeon::treasure::{Find, Treasure};
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -227,7 +229,7 @@ pub const ROWS: &[EnemySpec] = &[
         }],
         passives: &[],
         traits: &[],
-        loot: &[Loot::Named("a Salvaged Chip")],
+        loot: &[Loot::Named(Find::Chip)],
         variant_of: None,
         note: "",
     },
@@ -249,7 +251,7 @@ pub const ROWS: &[EnemySpec] = &[
         }],
         passives: &[],
         traits: &[],
-        loot: &[Loot::Named("a Salvaged Chip")],
+        loot: &[Loot::Named(Find::Chip)],
         variant_of: None,
         note: "",
     },
@@ -289,7 +291,9 @@ pub const ROWS: &[EnemySpec] = &[
             about: "while one fork lives, the other cannot be killed",
         }],
         traits: &[Trait::Background],
-        loot: &[Loot::Named("the Daemon's Fork (charm)")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::Charm(
+            Charm::DaemonsFork,
+        )))],
         variant_of: None,
         note: "A background process with horns.",
     },
@@ -327,8 +331,8 @@ pub const ROWS: &[EnemySpec] = &[
         ],
         traits: &[Trait::Learns, Trait::Upgrade(2)],
         loot: &[
-            Loot::Named("Root Access (charm)"),
-            Loot::Named("a Salvaged Chip"),
+            Loot::Named(Find::Exactly(Treasure::Charm(Charm::RootAccess))),
+            Loot::Named(Find::Chip),
         ],
         variant_of: None,
         note: "",

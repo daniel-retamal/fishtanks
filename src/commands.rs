@@ -47,7 +47,7 @@ pub enum SellTarget {
     Bait { qty: u32 },
     Milk { variant: MilkVariant, qty: u32 },
     Seed { kind: ConsumableKind, qty: u32 },
-    Robotics { kind: ConsumableKind, qty: u32 },
+    Stock { kind: ConsumableKind, qty: u32 },
 }
 
 impl SellTarget {
@@ -1149,10 +1149,10 @@ fn resolve_stackable_sell(name_lower: &str, qty: u32) -> Option<SellTarget> {
                     .map(|kind| SellTarget::Seed { kind, qty })
             })
             .or_else(|| {
-                ConsumableKind::robotics_stock()
+                ConsumableKind::resold()
                     .into_iter()
                     .find(|kind| kind.lowercase_name() == name_lower)
-                    .map(|kind| SellTarget::Robotics { kind, qty })
+                    .map(|kind| SellTarget::Stock { kind, qty })
             }),
     }
 }
@@ -2828,14 +2828,14 @@ mod tests {
         let (fish, tanks) = no_names();
         assert!(matches!(
             parse("/sell blank wafer 5", fish, tanks),
-            Action::Sell(SellTarget::Robotics {
+            Action::Sell(SellTarget::Stock {
                 kind: ConsumableKind::BlankWafer,
                 qty: 5,
             })
         ));
         assert!(matches!(
             parse("/sell blank circuit blueprint", fish, tanks),
-            Action::Sell(SellTarget::Robotics {
+            Action::Sell(SellTarget::Stock {
                 kind: ConsumableKind::BlankBlueprint,
                 qty: 1,
             })

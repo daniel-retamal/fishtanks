@@ -772,6 +772,7 @@ fn still_rows(
         ConsumableKind::BlankBlueprint => blank_blueprint_sprite_rows(),
         ConsumableKind::VoidSeed => void_seed_sprite_rows(),
         ConsumableKind::GoldenPearl => golden_pearl_sprite_rows(glisten_phase),
+        ConsumableKind::Treasure(treasure) => crate::loot::treasure_sprite_rows(treasure),
         ConsumableKind::Necronomicon => return None,
     })
 }

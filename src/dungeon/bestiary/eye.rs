@@ -1,6 +1,7 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, NOW_AND_THEN, Passive, Rank, row};
 use crate::dungeon::effect::{Effect, Power, Reach, StatusKind};
 use crate::dungeon::traits::{Haunt, Trait};
+use crate::dungeon::treasure::{Find, Treasure};
 use crate::fishes::species::FishSpecies;
 
 pub const ROWS: &[EnemySpec] = &[
@@ -279,7 +280,7 @@ pub const ROWS: &[EnemySpec] = &[
         ],
         passives: &[],
         traits: &[],
-        loot: &[Loot::Named("a Wish Shard")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::WishShard))],
         variant_of: None,
         note: "",
     },
@@ -302,7 +303,7 @@ pub const ROWS: &[EnemySpec] = &[
             about: "every turn it uses a random boss skill from an earlier floor, at half strength",
         }],
         traits: &[Trait::HalfRemembered, Trait::NeverBites],
-        loot: &[Loot::Named("a Wish Shard")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::WishShard))],
         variant_of: None,
         note: "",
     },
@@ -346,7 +347,7 @@ pub const ROWS: &[EnemySpec] = &[
         ],
         traits: &[Trait::PrayerShield, Trait::Cycle, Trait::NeverBites],
         loot: &[
-            Loot::Named("a wish"),
+            Loot::Named(Find::Wish),
             Loot::Fish {
                 species: FishSpecies::Quimera,
                 one_in: NOW_AND_THEN,

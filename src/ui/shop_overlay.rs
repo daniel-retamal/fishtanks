@@ -482,7 +482,7 @@ pub enum SellEntry {
         kind: ConsumableKind,
         qty: u32,
     },
-    Robotics {
+    Stock {
         kind: ConsumableKind,
         qty: u32,
     },
@@ -499,7 +499,7 @@ impl SellEntry {
             | (SellEntry::Blueprint { name: a }, SellEntry::Blueprint { name: b }) => a == b,
             (SellEntry::Milk { variant: a, .. }, SellEntry::Milk { variant: b, .. }) => a == b,
             (SellEntry::Seed { kind: a, .. }, SellEntry::Seed { kind: b, .. })
-            | (SellEntry::Robotics { kind: a, .. }, SellEntry::Robotics { kind: b, .. }) => a == b,
+            | (SellEntry::Stock { kind: a, .. }, SellEntry::Stock { kind: b, .. }) => a == b,
             (SellEntry::Junk { .. }, SellEntry::Junk { .. })
             | (SellEntry::Coffee { .. }, SellEntry::Coffee { .. })
             | (SellEntry::Bait { .. }, SellEntry::Bait { .. }) => true,
@@ -523,7 +523,7 @@ impl SellEntry {
                 )
             }
             SellEntry::Tank { name, .. } => format!("{} (Fishtank)", name),
-            SellEntry::Seed { kind, qty } | SellEntry::Robotics { kind, qty } => {
+            SellEntry::Seed { kind, qty } | SellEntry::Stock { kind, qty } => {
                 format!("{} ({})", kind.display_name(), qty)
             }
             SellEntry::Blueprint { name } => format!("{} ({})", name, CIRCUIT_BLUEPRINT_NAME),
@@ -555,7 +555,7 @@ impl SellEntry {
                 ConsumableKind::Milk(crate::loot::MilkVariant::Plain).sell_price()
             }
             SellEntry::Tank { sell_price, .. } => *sell_price,
-            SellEntry::Seed { kind, .. } | SellEntry::Robotics { kind, .. } => kind.sell_price(),
+            SellEntry::Seed { kind, .. } | SellEntry::Stock { kind, .. } => kind.sell_price(),
             SellEntry::Blueprint { .. } => CIRCUIT_BLUEPRINT_SELL_PRICE,
         };
         Money::from(price)
@@ -570,7 +570,7 @@ impl SellEntry {
             | SellEntry::Bait { .. }
             | SellEntry::Milk { .. }
             | SellEntry::Seed { .. }
-            | SellEntry::Robotics { .. }
+            | SellEntry::Stock { .. }
             | SellEntry::Blueprint { .. } => Flow::StockSales,
         }
     }
@@ -583,7 +583,7 @@ impl SellEntry {
             | SellEntry::Bait { qty }
             | SellEntry::Milk { qty, .. }
             | SellEntry::Seed { qty, .. }
-            | SellEntry::Robotics { qty, .. } => *qty,
+            | SellEntry::Stock { qty, .. } => *qty,
         }
     }
 }
@@ -647,10 +647,10 @@ impl SellMenuState {
                 items.push(SellEntry::Milk { variant, qty: q });
             }
         }
-        for kind in ConsumableKind::robotics_stock() {
+        for kind in ConsumableKind::resold() {
             let qty = qty_of(StockItem::Consumable(kind));
             if qty > 0 {
-                items.push(SellEntry::Robotics { kind, qty });
+                items.push(SellEntry::Stock { kind, qty });
             }
         }
         for name in blueprint_names {
@@ -1633,7 +1633,7 @@ fn draw_sell_confirm_popup(
         SellEntry::Junk { qty } => Some((" Sell Junk ".to_string(), *qty)),
         SellEntry::Coffee { qty } => Some((" Sell Coffee ".to_string(), *qty)),
         SellEntry::Bait { qty } => Some((" Sell Bait ".to_string(), *qty)),
-        SellEntry::Seed { kind, qty } | SellEntry::Robotics { kind, qty } => {
+        SellEntry::Seed { kind, qty } | SellEntry::Stock { kind, qty } => {
             Some((format!(" Sell {} ", kind.display_name()), *qty))
         }
         SellEntry::Milk { .. }

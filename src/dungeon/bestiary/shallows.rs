@@ -1,6 +1,9 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{Effect, Power, Reach, Special, StatusKind};
 use crate::dungeon::traits::Trait;
+use crate::dungeon::treasure::{Find, Treasure};
+use crate::fishes::toy::ToyPart;
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -419,8 +422,8 @@ pub const ROWS: &[EnemySpec] = &[
         passives: &[],
         traits: &[Trait::NeverBites],
         loot: &[
-            Loot::Named("the Caleuche's Lantern (charm)"),
-            Loot::Named("Pincoya's Shell"),
+            Loot::Named(Find::Exactly(Treasure::Charm(Charm::CaleuchesLantern))),
+            Loot::Named(Find::Exactly(Treasure::PincoyasShell)),
         ],
         variant_of: None,
         note: "The ghost ship of Chiloé, crewed by the drowned, lit up like a party.",
@@ -468,8 +471,8 @@ pub const ROWS: &[EnemySpec] = &[
         passives: &[],
         traits: &[Trait::NeverBites],
         loot: &[
-            Loot::Named("a Periscope (toy part)"),
-            Loot::Named("Pincoya's Shell"),
+            Loot::Named(Find::Exactly(Treasure::Toy(ToyPart::Periscope))),
+            Loot::Named(Find::Exactly(Treasure::PincoyasShell)),
         ],
         variant_of: None,
         note: "A submarine nobody remembers launching.",

@@ -13,9 +13,11 @@ use crate::dungeon::room::Act;
 use crate::dungeon::screen::{Chart, DungeonState, Lobby, Step, View};
 use crate::dungeon::state::FightState;
 use crate::dungeon::traits::Trait;
+use crate::dungeon::treasure::Treasure;
 use crate::dungeon::{Above, Difficulty};
 use crate::fishes::fish::Fish;
 use crate::fishes::graveyard::Fate;
+use crate::fishes::toy::FittedPart;
 use crate::fishes::unfish::UnfishKind;
 use crate::ledger::Flow;
 use crate::loot::{ConsumableKind, LootKind, StockItem};
@@ -124,7 +126,17 @@ impl App {
         let Some(Overlay::Dungeon(mut state)) = self.active_overlay.take() else {
             return;
         };
-        let step = state.key(&action, self.dungeon.expedition.as_ref(), &ground);
+        let asked = state
+            .wanted_words(self.dungeon.expedition.as_ref())
+            .is_some();
+        let step = match asked {
+            true => match self.type_the_line(&action) {
+                Typed::Kept => Step::Stay,
+                Typed::Said(words) => state.pray(words),
+                Typed::Passed => state.key(&action, self.dungeon.expedition.as_ref(), &ground),
+            },
+            false => state.key(&action, self.dungeon.expedition.as_ref(), &ground),
+        };
         self.active_overlay = Some(Overlay::Dungeon(state));
         match step {
             Step::Stay => {}
@@ -143,7 +155,57 @@ impl App {
             }
             Step::Act(act, fish) => self.act_below(act, fish, &ground),
             Step::SetOut(difficulty) => self.set_out(difficulty, &ground),
+            Step::Pray(words) => self.pray_below(&words, &ground),
         }
+    }
+
+    fn type_the_line(&mut self, action: &InputAction) -> Typed {
+        let typing = !self.editor.text.is_empty();
+        match action {
+            InputAction::Char(c) => self.editor.insert(*c),
+            InputAction::Backspace if typing => self.editor.backspace(),
+            InputAction::Delete if typing => self.editor.delete(),
+            InputAction::Left if typing => self.editor.left(),
+            InputAction::Right if typing => self.editor.right(),
+            InputAction::Home if typing => self.editor.home(),
+            InputAction::End if typing => self.editor.end(),
+            InputAction::Cancel if typing => self.editor.clear(),
+            InputAction::Confirm if !self.editor.text.trim().is_empty() => {
+                let words = self.editor.text.trim().to_string();
+                self.editor.clear();
+                return Typed::Said(words);
+            }
+            _ => return Typed::Passed,
+        }
+        Typed::Kept
+    }
+
+    fn pray_below(&mut self, words: &str, ground: &Ground) {
+        let Some(expedition) = self.dungeon.expedition.as_mut() else {
+            return;
+        };
+        let before = Pulse::of(expedition);
+        let next = expedition.pray(words, ground);
+        let after = Pulse::of(expedition);
+        self.uplink(before, after);
+        self.follow(next);
+    }
+
+    pub(super) fn deep_line(&self) -> Option<String> {
+        let line = self
+            .dungeon_overlay()?
+            .wanted_words(self.dungeon.expedition.as_ref())?;
+        let typed = self.editor.text.to_uppercase();
+        let upper = line.to_uppercase();
+        Some(match upper.starts_with(&typed) {
+            true => line.chars().skip(typed.chars().count()).collect(),
+            false => String::new(),
+        })
+    }
+
+    pub(super) fn deep_keeps_the_bar(&self) -> bool {
+        self.dungeon_overlay()
+            .is_some_and(|state| state.keeps_the_bar(self.dungeon.expedition.as_ref()))
     }
 
     fn act_below(&mut self, act: Act, fish: usize, ground: &Ground) {
@@ -549,8 +611,18 @@ impl App {
         if expedition.haul.gold > 0 {
             self.earn(expedition.haul.gold, Flow::Treasure);
         }
-        for treasure in &expedition.haul.treasures {
-            self.stock_up(treasure.stock, treasure.count);
+        let mut rng = rand::rng();
+        for stack in &expedition.haul.treasures {
+            match stack.stock {
+                StockItem::Consumable(ConsumableKind::Treasure(Treasure::Toy(part))) => {
+                    for _ in 0..stack.count {
+                        self.casino.toybox.add(FittedPart::of(part, &mut rng));
+                    }
+                }
+                stock => {
+                    self.stock_up(stock, stack.count);
+                }
+            }
         }
     }
 
@@ -622,6 +694,12 @@ impl App {
             self.tanks[home].signal(signal);
         }
     }
+}
+
+enum Typed {
+    Kept,
+    Said(String),
+    Passed,
 }
 
 #[derive(Clone, Copy)]

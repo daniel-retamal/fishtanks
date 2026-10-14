@@ -113,7 +113,7 @@ impl<'a> TankView<'a> {
 
 impl Widget for TankView<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let ritual_active = self.ritual_text.is_some() && self.tank.kind.config().hosts_ritual;
+        let ritual_active = self.ritual_text.is_some();
 
         match &self.tank.background {
             TankBackground::Plain { plants } => {

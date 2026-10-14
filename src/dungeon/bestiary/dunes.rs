@@ -1,7 +1,9 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{Effect, Reach, Special, StatusKind};
 use crate::dungeon::specials::FOREVER;
 use crate::dungeon::traits::Trait;
+use crate::dungeon::treasure::{Find, Treasure};
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -293,8 +295,8 @@ pub const ROWS: &[EnemySpec] = &[
         passives: &[],
         traits: &[Trait::NeverBites],
         loot: &[
-            Loot::Named("a Tractor Beam (charm)"),
-            Loot::Named("a Tuned Cowbell"),
+            Loot::Named(Find::Exactly(Treasure::Charm(Charm::TractorBeam))),
+            Loot::Named(Find::Cowbell),
         ],
         variant_of: None,
         note: "",

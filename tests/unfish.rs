@@ -628,3 +628,70 @@ fn every_unfish_survives_a_save() {
     let back: Fish = ron::from_str(&ron::to_string(&copy).expect("saves")).expect("loads");
     assert!(back.leeched);
 }
+
+fn hollow_of(tank: &Tank) -> &fishtank::fishes::quirk::Hollow {
+    tank.fish
+        .iter()
+        .find_map(|fish| match fish.quirk() {
+            Some(Quirk::Hollow(hollow)) => Some(hollow),
+            _ => None,
+        })
+        .expect("a hollow")
+}
+
+fn hurry_the_hollow(tank: &mut Tank) {
+    for fish in &mut tank.fish {
+        if let Some(Quirk::Hollow(hollow)) = fish.quirk_mut() {
+            hollow.clock = 0.0;
+        }
+    }
+}
+
+#[test]
+fn a_hollow_wears_one_of_your_dead_for_a_while_and_empties_again() {
+    let mut tui = fishtank::testing::Tui::new();
+    tui.run("/sell fish \"Adam\"");
+    assert!(tui.app.graveyard.iter().any(|fish| fish.name == "Adam"));
+    let mut rng = rand::rng();
+    assert!(tui.app.tanks[0].spawn_unfish_of(UnfishKind::Hollow, &mut rng));
+    assert!(hollow_of(&tui.app.tanks[0]).worn.is_none());
+    hurry_the_hollow(&mut tui.app.tanks[0]);
+    tui.tick_n(1);
+    let worn = hollow_of(&tui.app.tanks[0])
+        .worn
+        .clone()
+        .expect("it filled");
+    assert_eq!(worn.name, "Adam");
+    assert_eq!(worn.species, FishSpecies::Merluza);
+    hurry_the_hollow(&mut tui.app.tanks[0]);
+    tui.tick_n(1);
+    assert!(hollow_of(&tui.app.tanks[0]).worn.is_none(), "and empties");
+}
+
+#[test]
+fn an_empty_hollow_is_a_white_skin_with_grey_specks_and_a_full_one_wears_its_colours() {
+    let mut tank = lab();
+    let at = add(&mut tank, unfish(UnfishKind::Hollow, "Hollow"), 10.0, 5.0);
+    let cells = tank.fish[at].line_sprite();
+    let body: String = cells.rows[cells.body_row]
+        .iter()
+        .map(|(ch, _)| *ch)
+        .collect();
+    assert!(
+        body.contains(fishtank::fishes::quirk::HOLLOW_SPECK),
+        "{body}"
+    );
+    if let Some(Quirk::Hollow(hollow)) = tank.fish[at].quirk_mut() {
+        hollow.worn = Some(fishtank::fishes::quirk::Worn {
+            name: "Adam".into(),
+            species: FishSpecies::Merluza,
+            color: Color::Red,
+        });
+    }
+    let full = tank.fish[at].line_sprite();
+    assert!(
+        full.rows[full.body_row]
+            .iter()
+            .any(|(_, color)| *color == Color::Red)
+    );
+}

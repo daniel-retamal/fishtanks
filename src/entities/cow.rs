@@ -48,7 +48,7 @@ pub fn cow_default_sway_speed() -> f32 {
 const COW_MIN_TORSO: usize = 3;
 const COW_MAX_TORSO: usize = 12;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub enum CowVariant {
     Brown,
     WhiteBlack,

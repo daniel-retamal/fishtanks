@@ -188,6 +188,7 @@ impl Tank {
         let mut events = self.echo_due(dt);
         events.extend(self.escapes(dt, &mut rng));
         events.extend(self.lazarus(dt, &mut rng));
+        events.extend(self.hollows(&mut rng));
         events
     }
 

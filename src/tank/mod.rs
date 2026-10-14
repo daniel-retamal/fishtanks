@@ -84,6 +84,9 @@ pub enum TankEvent {
     UfoFinished,
     CallHome,
     Lazarus,
+    Fill {
+        hollow: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -558,6 +561,7 @@ pub struct Tank {
     pub inks: Vec<InkBlot>,
     pub sheddings: Vec<Shedding>,
     pub watched: bool,
+    pub radiance: f32,
 }
 
 impl Tank {
@@ -606,7 +610,12 @@ impl Tank {
             inks: Vec::new(),
             sheddings: Vec::new(),
             watched: false,
+            radiance: 0.0,
         }
+    }
+
+    pub fn is_radioactive(&self) -> bool {
+        self.kind.config().auto_mutate_all || self.radiance > 0.0
     }
 
     pub fn capacity(&self) -> usize {
@@ -683,8 +692,8 @@ impl Tank {
     }
 
     pub(super) fn mark_for_devil(&self, fish: &mut Fish) {
-        if self.kind.config().marks_for_devil && fish.species.config().markable {
-            fish.devil_marked = true;
+        if self.kind.config().marks_for_devil {
+            fish.mark();
         }
     }
 

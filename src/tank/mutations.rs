@@ -65,7 +65,8 @@ fn restore_cow_from_snapshot(snapshot: &Cow, x: f32, y: f32) -> Cow {
 
 impl Tank {
     pub(super) fn tick_mutations(&mut self, dt: f32) {
-        if self.kind.config().auto_mutate_all {
+        if self.is_radioactive() {
+            self.radiance = (self.radiance - dt).max(0.0);
             self.tick_rad_mutations(dt);
             return;
         }

@@ -265,3 +265,53 @@ fn a_hacha_is_hidden_by_its_counter_light() {
     let kit = Kit::of(&party(&[FishSpecies::Hacha])[0]);
     assert!(kit.traits.contains(&Trait::CounterLight));
 }
+
+#[test]
+fn a_hollow_fills_with_one_of_your_dead_and_fights_as_it() {
+    let ghost = crate::dungeon::fighter::Ghost {
+        name: "Abel".to_string(),
+        haunt: crate::dungeon::traits::Haunt::Dead,
+        vigor: 321,
+        bite: 17,
+        speed: 9,
+        sin: None,
+        fate: None,
+    };
+    let hollow = Fish::new_unfish(
+        crate::fishes::unfish::UnfishKind::Hollow,
+        "Hollow".to_string(),
+        0.0,
+        0.0,
+        &mut SmallRng::seed_from_u64(32),
+    );
+    let setup = |haunts: Vec<crate::dungeon::fighter::Ghost>| BattleSetup {
+        floor: 1,
+        difficulty: Difficulty::Normal,
+        stakes: Stakes::Encounter,
+        purse: 0,
+        items: Vec::new(),
+        seed: 32,
+        ambushed: false,
+        haunts,
+        scale: Scale::PLAIN,
+        known: Vec::new(),
+        every_graeae: false,
+    };
+    let foes = || vec![Fighter::of_enemy(&DUMMY, 1, Scale::PLAIN)];
+    let mut filled = Battle::new(vec![hollow.clone()], foes(), setup(vec![ghost]));
+    filled.begin();
+    let fish = filled.side(Side::Party).next().expect("the hollow");
+    assert_eq!(filled.fighters[fish].max_hp, 321);
+    assert_eq!(filled.fighters[fish].bite, 17);
+    assert!(
+        filled
+            .log
+            .iter()
+            .any(|line| line.text == "Hollow fills with Abel.")
+    );
+
+    let mut empty = Battle::new(vec![hollow.clone()], foes(), setup(Vec::new()));
+    empty.begin();
+    let fish = empty.side(Side::Party).next().expect("the hollow");
+    assert_eq!(empty.fighters[fish].max_hp, Kit::of(&hollow).vigor);
+}

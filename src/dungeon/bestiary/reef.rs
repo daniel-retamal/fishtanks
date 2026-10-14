@@ -1,6 +1,8 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{Effect, Reach, Special, StatusKind};
 use crate::dungeon::traits::{BodyParts, Trait};
+use crate::dungeon::treasure::{Find, Treasure};
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -287,8 +289,8 @@ pub const ROWS: &[EnemySpec] = &[
         }],
         traits: &[Trait::Parts(BodyParts::Tentacles)],
         loot: &[
-            Loot::Named("Kraken Ink"),
-            Loot::Named("the Kraken's Beak (charm)"),
+            Loot::Named(Find::Exactly(Treasure::KrakenInk)),
+            Loot::Named(Find::Exactly(Treasure::Charm(Charm::KrakensBeak))),
         ],
         variant_of: None,
         note: "",
@@ -328,7 +330,9 @@ pub const ROWS: &[EnemySpec] = &[
             about: "two Reef Sharks swim beside him",
         }],
         traits: &[Trait::Court],
-        loot: &[Loot::Named("the Millalobo's Crown (charm)")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::Charm(
+            Charm::MillalobosCrown,
+        )))],
         variant_of: None,
         note: "The king of the sea in Chilote myth, half sea lion.",
     },

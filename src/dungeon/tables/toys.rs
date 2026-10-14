@@ -14,6 +14,8 @@ pub const PLATED: u32 = 3;
 pub const LUSTRE: u32 = 3;
 pub const SPARKLE_PERCENT: u32 = 20;
 pub const PHASE_PERCENT: u32 = 30;
+pub const HELMET_ARMOUR: u32 = 2;
+pub const CAP_STING_PERCENT: u32 = 30;
 
 pub fn material_vigor(material: Material) -> u32 {
     match material {
@@ -70,6 +72,10 @@ pub fn wear_part(kit: &mut Kit, part: ToyPart) {
             kit.dodge += PROPELLER_DODGE;
         }
         ToyPart::WindUpKey => kit.add(Trait::WindUp),
+        ToyPart::DivingHelmet => kit.armour += HELMET_ARMOUR,
+        ToyPart::JellyfishCap => kit.add(Trait::Sting(CAP_STING_PERCENT)),
+        ToyPart::Periscope => kit.add(Trait::LooksUp),
+        ToyPart::Anchor => kit.add(Trait::Keel),
     }
 }
 

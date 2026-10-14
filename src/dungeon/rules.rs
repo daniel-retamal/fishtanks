@@ -117,7 +117,7 @@ pub fn assemble(battle: &mut Battle) {
                 Trait::PrayerShield => {
                     let name = battle.fighters[body].name.clone();
                     battle.note(
-                        format!("{name} cannot be touched. Type the line it shows you."),
+                        format!("{name} cannot be touched. Type its line in the command bar."),
                         Tone::Tell,
                     );
                 }

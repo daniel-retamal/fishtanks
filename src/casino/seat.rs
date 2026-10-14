@@ -171,6 +171,9 @@ impl Round {
 
     pub fn settle(self, returned: Money, label: String, house: &mut dyn House) -> RoundResult {
         let staked = self.on_the_line();
+        if returned < staked && house.play_marked_card() {
+            return self.never_happened(house);
+        }
         let multiple = Multiple::between(returned, staked);
         let verdict = match self.staked {
             Staked::Cash(_) => {
@@ -208,6 +211,35 @@ impl Round {
         }
     }
 }
+
+impl Round {
+    fn never_happened(self, house: &mut dyn House) -> RoundResult {
+        let staked = self.on_the_line();
+        let verdict = match self.staked {
+            Staked::Cash(_) => {
+                house.pay_out(staked);
+                Verdict::Cash {
+                    returned: staked,
+                    net: 0,
+                }
+            }
+            Staked::Fish { name, .. } => {
+                house.pay_out(self.extra);
+                Verdict::FishHome {
+                    name,
+                    winnings: self.extra,
+                }
+            }
+        };
+        RoundResult {
+            label: MARKED_CARD.to_string(),
+            multiple: Multiple::between(staked, staked),
+            verdict,
+        }
+    }
+}
+
+pub const MARKED_CARD: &str = "Marked Card: it never happened";
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Verdict {

@@ -171,3 +171,140 @@ pub const CRASHED_SAUCER: &[SpriteRow] = &[
     BLANK,
     row(".:.:.:.:.:.:.:.:.:.", "y"),
 ];
+
+pub const GLOWING_POOL: &[SpriteRow] = &[
+    row("   °   .   °", "G"),
+    row("  .-~~~~~~~-.", "G"),
+    row(" (  ~  ~  ~  )", "G"),
+    row(" (~  ~   ~  ~)", "G"),
+    row("  '-.......-'", "G"),
+    BLANK,
+    row(".:.:.:.:.:.:.:.", "k"),
+];
+
+pub const LAB_DOOR: &[SpriteRow] = &[
+    row(" _____________", "w"),
+    row("|  _________  |", "w"),
+    row("| |   /!\\   | |", "wwwwwwyyywwwwww"),
+    row("| |_________| |", "w"),
+    row("|      o      |", "wwwwwwwRwwwwwww"),
+    row("|_____________|", "w"),
+];
+
+pub const SPECIMEN_TANK: &[SpriteRow] = &[
+    row(".-----------.", "c"),
+    row("|           |", "c"),
+    row("|  ><(((°>  |", "cccGGGGGGGccc"),
+    row("|   °   °   |", "c"),
+    row("'-----------'", "c"),
+    row("  |       |", "d"),
+];
+
+pub const EMAIL: &[SpriteRow] = &[
+    row(" ___________", "w"),
+    row("|\\         /|", "w"),
+    row("| \\       / |", "w"),
+    row("|  \\_____/  |", "w"),
+    row("|___________|", "w"),
+    BLANK,
+    row("      @", "y"),
+];
+
+pub const CAPTCHA: &[SpriteRow] = &[
+    row("+---+---+---+", "w"),
+    row("|><>|   |><>|", "wBBBwwwwwBBBw"),
+    row("+---+---+---+", "w"),
+    row("|   |><>|   |", "wwwwwBBBwwwww"),
+    row("+---+---+---+", "w"),
+    row("|><>|   |   |", "wBBBwwwwwwwww"),
+    row("+---+---+---+", "w"),
+];
+
+pub const TERMS: &[SpriteRow] = &[
+    row(" ___________", "e"),
+    row("/ ========= \\", "eedddddddddee"),
+    row("| ========= |", "eedddddddddee"),
+    row("| ========= |", "eedddddddddee"),
+    row("| ===  [OK] |", "eedddeeGGGGee"),
+    row("\\___________/", "e"),
+];
+
+pub const CONTRACT: &[SpriteRow] = &[
+    row("  _________", "e"),
+    row(" / ~~~~~~~ \\", "eeedddddddee"),
+    row("|  ~~~~~~~  |", "eeedddddddeee"),
+    row("|  ~~~~~    |", "eeedddddeeeee"),
+    row("|      ~~@  |", "eeeeeeeddReee"),
+    row(" \\_________/", "e"),
+];
+
+pub const FERRY: &[SpriteRow] = &[
+    row("      ,-.", "d"),
+    row("     ( ° )", "dddddddRdd"),
+    row("     /| |\\", "d"),
+    row(" _____|_|_____", "nnnnnndddnnnnn"),
+    row(" \\___________/", "n"),
+    row("~^~~^~~^~~^~~^~", "R"),
+];
+
+pub const CAULDRON: &[SpriteRow] = &[
+    row("  ~  ><>  ~", "GGGGGBBBGGG"),
+    row(".-=========-.", "k"),
+    row("|           |", "k"),
+    row(" \\_________/", "k"),
+    row(" /\\ /\\ /\\ /\\", "R"),
+];
+
+pub const GATEKEEPER: &[SpriteRow] = &[
+    row("   _______", "y"),
+    row("  /  (o)  \\", "yyyyyyByyyy"),
+    row(" |  |   |  |", "y"),
+    row(" |  |   |  |", "y"),
+    row(" |  |   |  |", "y"),
+    row("_|__|___|__|_", "y"),
+];
+
+pub const SCALES: &[SpriteRow] = &[
+    row("       o", "y"),
+    row("       |", "y"),
+    row(".------+------.", "y"),
+    row("|      |      |", "y"),
+    row("\\~/    |    \\_/", "ywyyyyyyyyyyyyy"),
+    row("       |", "y"),
+    row("     __|__", "y"),
+];
+
+pub const CHOIR: &[SpriteRow] = &[
+    row(" o     o     o", "y"),
+    row("(^)   (^)   (^)", "w"),
+    row("/|\\   /|\\   /|\\", "w"),
+    row("/ \\   / \\   / \\", "w"),
+    BLANK,
+    row("~ ~ ~ ~ ~ ~ ~ ~", "d"),
+];
+
+pub const DOOR: &[SpriteRow] = &[
+    row("  _______", "n"),
+    row(" |  ___  |", "n"),
+    row(" | |   | |", "n"),
+    row(" | |___| |", "n"),
+    row(" |     o |", "nnnnnnnynn"),
+    row(" |_______|", "n"),
+    row("~~~ ~~~ ~~~", "B"),
+];
+
+pub const REFLECTION: &[SpriteRow] = &[
+    row("         |", "d"),
+    row("><(((°>  |  <°)))><", "BBBBBBBBBdbbbbbbbbb"),
+    row("         |", "d"),
+    BLANK,
+    row("~  ~  ~  ~  ~  ~  ~", "b"),
+];
+
+pub const PRAYER: &[SpriteRow] = &[
+    row("    .-~~~-.", "v"),
+    row("   (   O   )", "vvvvvvvmvvvv"),
+    row("    '-~~~-'", "v"),
+    BLANK,
+    row("~~~~~ ~~~ ~~~~~", "d"),
+];

@@ -12,6 +12,8 @@ pub struct ChipRecord {
     outputs: BTreeSet<String>,
     held: Vec<bool>,
     heard: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    sealed: bool,
 }
 
 impl From<Chip> for ChipRecord {
@@ -27,6 +29,7 @@ impl From<Chip> for ChipRecord {
             outputs: lines(&chip.compiled.outputs),
             held: chip.compiled.levels.held,
             heard: chip.heard,
+            sealed: chip.sealed,
             name: chip.name,
             board: chip.board,
         }
@@ -40,6 +43,7 @@ impl From<ChipRecord> for Chip {
             chip.compiled.levels.held = record.held;
         }
         chip.heard = record.heard;
+        chip.sealed = record.sealed;
         chip
     }
 }

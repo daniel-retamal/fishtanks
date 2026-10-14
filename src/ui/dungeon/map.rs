@@ -266,10 +266,7 @@ pub fn chart(expedition: &Expedition, chart: &Chart, room: usize) -> Chartwork {
 }
 
 fn boss_name(expedition: &Expedition) -> String {
-    FloorSpec::of(expedition.floor)
-        .boss(expedition.dive)
-        .name
-        .to_string()
+    expedition.boss().name.to_string()
 }
 
 pub fn side_lines(expedition: &Expedition, width: usize) -> Vec<Vec<Span>> {

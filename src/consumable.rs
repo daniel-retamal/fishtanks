@@ -1,7 +1,9 @@
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
+use crate::dungeon::treasure::{Treasure, Use};
 use crate::fishes::fish::Fish;
+use crate::fishes::mutations::Mutatable;
 use crate::fishes::mutations::{Mutation, apply_mutation_to_fish};
 use crate::fishes::parts::Part;
 use crate::loot::{ConsumableKind, MilkVariant, StockItem};
@@ -238,6 +240,7 @@ pub enum ConsumeTarget {
     Milk(MilkVariant),
     Part(Part),
     Etch(usize),
+    Treasure(Treasure),
 }
 
 impl ConsumeTarget {
@@ -246,6 +249,7 @@ impl ConsumeTarget {
             ConsumeTarget::Milk(variant) => variant.display_name(),
             ConsumeTarget::Part(part) => part.display_name(),
             ConsumeTarget::Etch(_) => ConsumableKind::Fabricator.display_name(),
+            ConsumeTarget::Treasure(treasure) => treasure.name(),
         }
     }
 
@@ -254,6 +258,9 @@ impl ConsumeTarget {
             ConsumeTarget::Milk(variant) => StockItem::Consumable(ConsumableKind::Milk(variant)),
             ConsumeTarget::Part(part) => StockItem::Consumable(ConsumableKind::Part(part)),
             ConsumeTarget::Etch(_) => StockItem::Consumable(ConsumableKind::Fabricator),
+            ConsumeTarget::Treasure(treasure) => {
+                StockItem::Consumable(ConsumableKind::Treasure(treasure))
+            }
         }
     }
 
@@ -263,6 +270,13 @@ impl ConsumeTarget {
             ConsumeTarget::Part(_) | ConsumeTarget::Etch(_) => {
                 format!(" {name} to the botfishes ({remaining}) ")
             }
+            ConsumeTarget::Treasure(treasure) => match treasure.using() {
+                Use::OnTheDead => format!(" {name} to the dead ({remaining}) "),
+                _ if matches!(treasure, Treasure::Chip(_)) => {
+                    format!(" {name} to the botfishes ({remaining}) ")
+                }
+                _ => format!(" {name} to the fishes ({remaining}) "),
+            },
         }
     }
 
@@ -271,13 +285,15 @@ impl ConsumeTarget {
             ConsumeTarget::Milk(_) => HINT_ENTER_CONSUME,
             ConsumeTarget::Part(_) => HINT_ENTER_INSTALL,
             ConsumeTarget::Etch(_) => HINT_ENTER_ETCH,
+            ConsumeTarget::Treasure(Treasure::Chip(_)) => HINT_ENTER_ETCH,
+            ConsumeTarget::Treasure(_) => HINT_ENTER_CONSUME,
         }
     }
 
     pub fn fattens(self) -> bool {
         match self {
             ConsumeTarget::Milk(variant) => variant.weight_gain_g() > 0,
-            ConsumeTarget::Part(_) | ConsumeTarget::Etch(_) => false,
+            ConsumeTarget::Part(_) | ConsumeTarget::Etch(_) | ConsumeTarget::Treasure(_) => false,
         }
     }
 
@@ -288,6 +304,13 @@ impl ConsumeTarget {
         match self {
             ConsumeTarget::Milk(_) => true,
             ConsumeTarget::Part(_) | ConsumeTarget::Etch(_) => fish.is_programmable(),
+            ConsumeTarget::Treasure(treasure) => match treasure {
+                Treasure::Vial(mutation) => fish.supports_now(mutation),
+                Treasure::Chip(_) => fish.is_programmable(),
+                Treasure::Charm(_) => fish.deep.as_ref().is_none_or(|life| life.charm.is_none()),
+                Treasure::Feather => !fish.wears_a_feather(),
+                _ => false,
+            },
         }
     }
 
@@ -298,7 +321,7 @@ impl ConsumeTarget {
                 true
             }
             ConsumeTarget::Part(part) => fish.script_mut().is_some_and(|bot| bot.install(part)),
-            ConsumeTarget::Etch(_) => false,
+            ConsumeTarget::Etch(_) | ConsumeTarget::Treasure(_) => false,
         }
     }
 }

@@ -1,6 +1,8 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{Effect, Reach, Special, StatusKind};
 use crate::dungeon::traits::{BodyParts, Trait};
+use crate::dungeon::treasure::{Find, Treasure};
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -253,7 +255,7 @@ pub const ROWS: &[EnemySpec] = &[
         }],
         passives: &[],
         traits: &[],
-        loot: &[Loot::Named("a Mutagen Vial")],
+        loot: &[Loot::Named(Find::Vial)],
         variant_of: None,
         note: "",
     },
@@ -288,7 +290,7 @@ pub const ROWS: &[EnemySpec] = &[
             },
         ],
         traits: &[Trait::NoBody, Trait::Exposure(6), Trait::NeverBites],
-        loot: &[Loot::Named("a Radiant Core")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::RadiantCore))],
         variant_of: None,
         note: "Radiation itself.",
     },
@@ -321,7 +323,9 @@ pub const ROWS: &[EnemySpec] = &[
             about: "five heads, each its own target and its own bite; it regrows one every two turns until the body falls",
         }],
         traits: &[Trait::Parts(BodyParts::Heads)],
-        loot: &[Loot::Named("a Core Fragment (charm)")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::Charm(
+            Charm::CoreFragment,
+        )))],
         variant_of: None,
         note: "",
     },

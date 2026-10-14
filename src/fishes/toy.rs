@@ -55,6 +55,14 @@ const NOZZLE: char = '=';
 const FLAMES: [char; 2] = ['≈', '~'];
 const PROPELLER_TURNS: [char; 2] = ['+', '×'];
 const KEY_TURNS: [char; 2] = ['O', '-'];
+const HELMET_BRIM: char = '(';
+const HELMET_DOME: char = '_';
+const CAP_EDGE_LEAD: char = '/';
+const CAP_EDGE_BACK: char = '\\';
+const CAP_BELL: char = '~';
+const PERISCOPE_TUBE: char = '|';
+const PERISCOPE_LENS: char = 'o';
+const ANCHOR: char = 'J';
 const SPIN_HZ: f32 = 8.0;
 const FLAME_HZ: f32 = 9.0;
 const KEY_HZ: f32 = 1.5;
@@ -471,16 +479,21 @@ pub enum ToyPart {
     Rocket,
     Propeller,
     WindUpKey,
+    DivingHelmet,
+    JellyfishCap,
+    Periscope,
+    Anchor,
 }
 
 pub struct PartSpec {
     pub name: &'static str,
     pub slot: Slot,
     pub rarity: Rarity,
+    pub deep: bool,
 }
 
 impl ToyPart {
-    pub const ALL: [ToyPart; 20] = [
+    pub const ALL: [ToyPart; 24] = [
         ToyPart::Lure,
         ToyPart::Bill,
         ToyPart::Drill,
@@ -501,6 +514,10 @@ impl ToyPart {
         ToyPart::Rocket,
         ToyPart::Propeller,
         ToyPart::WindUpKey,
+        ToyPart::DivingHelmet,
+        ToyPart::JellyfishCap,
+        ToyPart::Periscope,
+        ToyPart::Anchor,
     ];
 
     pub fn spec(self) -> PartSpec {
@@ -527,8 +544,25 @@ impl ToyPart {
             ToyPart::Rocket => ("Rocket", Tail, Rare),
             ToyPart::Propeller => ("Propeller", Tail, Rare),
             ToyPart::WindUpKey => ("Wind-up Key", Tail, Rare),
+            ToyPart::DivingHelmet => ("Diving Helmet", Head, Rare),
+            ToyPart::JellyfishCap => ("Jellyfish Cap", Top, Rare),
+            ToyPart::Periscope => ("Periscope", Top, Rare),
+            ToyPart::Anchor => ("Anchor", Tail, Rare),
         };
-        PartSpec { name, slot, rarity }
+        let deep = matches!(
+            self,
+            ToyPart::DivingHelmet | ToyPart::JellyfishCap | ToyPart::Periscope | ToyPart::Anchor
+        );
+        PartSpec {
+            name,
+            slot,
+            rarity,
+            deep,
+        }
+    }
+
+    pub fn is_deep(self) -> bool {
+        self.spec().deep
     }
 
     pub fn name(self) -> &'static str {
@@ -546,7 +580,7 @@ impl ToyPart {
     pub fn of_rarity(rarity: Rarity) -> Vec<ToyPart> {
         ToyPart::ALL
             .into_iter()
-            .filter(|part| part.rarity() == rarity)
+            .filter(|part| part.rarity() == rarity && !part.is_deep())
             .collect()
     }
 
@@ -582,8 +616,12 @@ impl FittedPart {
 
     pub fn random(rarity: Rarity, rng: &mut impl RngExt) -> FittedPart {
         let parts = ToyPart::of_rarity(rarity);
+        FittedPart::of(parts[rng.random_range(0..parts.len())], rng)
+    }
+
+    pub fn of(part: ToyPart, rng: &mut impl RngExt) -> FittedPart {
         FittedPart {
-            part: parts[rng.random_range(0..parts.len())],
+            part,
             paint: Paint::SOLIDS[rng.random_range(0..Paint::SOLIDS.len())],
         }
     }
@@ -1366,6 +1404,12 @@ impl ToyState {
                     put(body, mouth - 2, BILL, paint, Ink::Body);
                     put(body, mouth - 1, BILL, paint, Ink::Body);
                 }
+                ToyPart::DivingHelmet => {
+                    put(body, mouth - 2, HELMET_BRIM, paint, Ink::Body);
+                    put(body - 1, mouth - 1, HELMET_DOME, paint, Ink::Body);
+                    put(body - 1, mouth, HELMET_DOME, paint, Ink::Body);
+                    put(body - 1, eye, HELMET_DOME, paint, Ink::Body);
+                }
                 _ => {
                     put(body, mouth - 1, DRILL_TIP, paint, Ink::Body);
                     put(body, mouth, DRILL_TURNS[turn(SPIN_HZ, 2)], paint, Ink::Body);
@@ -1405,6 +1449,18 @@ impl ToyState {
                 ToyPart::Crown => {
                     put(over, eye, CROWN, paint, Ink::Body);
                     put(over, open, CROWN, paint, Ink::Body);
+                }
+                ToyPart::JellyfishCap => {
+                    put(over, lo, CAP_EDGE_LEAD, paint, Ink::Body);
+                    for col in lo + 1..hi {
+                        put(over, col, CAP_BELL, paint, Ink::Body);
+                    }
+                    put(over, hi, CAP_EDGE_BACK, paint, Ink::Body);
+                }
+                ToyPart::Periscope => {
+                    put(over, mid, PERISCOPE_TUBE, paint, Ink::Body);
+                    put(over - 1, mid, PERISCOPE_TUBE, paint, Ink::Body);
+                    put(over - 1, mid - 1, PERISCOPE_LENS, paint, Ink::Body);
                 }
                 _ => put(over, lo, SIREN, SIREN_LIGHTS[turn(SIREN_HZ, 2)], Ink::Lit),
             }
@@ -1461,6 +1517,10 @@ impl ToyState {
                         paint,
                         Ink::Body,
                     );
+                }
+                ToyPart::Anchor => {
+                    put(body, tail + 1, SHAFT_PLAIN, paint, Ink::Body);
+                    put(body, tail + 2, ANCHOR, paint, Ink::Body);
                 }
                 _ => {
                     put(body, tail + 1, SHAFT_PLAIN, paint, Ink::Body);

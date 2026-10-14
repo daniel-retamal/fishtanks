@@ -220,6 +220,8 @@ pub struct Expedition {
     pub beamed: Vec<Fish>,
     #[serde(default)]
     pub cows: Vec<Cow>,
+    #[serde(default)]
+    pub guard: Option<String>,
     #[serde(skip)]
     pub tuning: Option<Scale>,
 }
@@ -248,6 +250,7 @@ impl Expedition {
             lingering: Vec::new(),
             beamed: Vec::new(),
             cows: Vec::new(),
+            guard: None,
             tuning: None,
         }
     }
@@ -404,6 +407,19 @@ impl Expedition {
         self.visit = None;
         self.omens.clear();
         self.lucky_spent = false;
+        self.guard = None;
+    }
+
+    pub fn boss(&self) -> &'static bestiary::EnemySpec {
+        let spec = FloorSpec::of(self.floor);
+        self.guard
+            .as_deref()
+            .and_then(|name| spec.bosses().into_iter().find(|boss| boss.name == name))
+            .unwrap_or_else(|| spec.boss(self.dive))
+    }
+
+    pub fn lair(&self) -> Vec<Fighter> {
+        vec![Fighter::of_enemy(self.boss(), self.floor, self.scale())]
     }
 
     pub fn start_fight(
@@ -593,11 +609,9 @@ impl Expedition {
                     Loot::Rare => found.add(haul::treasure(self.floor, Rarity::Rare, &mut rng), 1),
                     Loot::Gold => found.gold += self.share() * spec.rank.shares(),
                     Loot::RareEvery(_) => {}
-                    Loot::Named(_) => {
-                        found.add(haul::treasure(self.floor, Rarity::Legendary, &mut rng), 1)
-                    }
-                    Loot::Hardcore(_) if self.difficulty.kills() => {
-                        found.add(haul::treasure(self.floor, Rarity::Legendary, &mut rng), 1)
+                    Loot::Named(find) => haul::find(&mut found, *find, &mut rng),
+                    Loot::Hardcore(find) if self.difficulty.kills() => {
+                        haul::find(&mut found, *find, &mut rng)
                     }
                     Loot::Hardcore(_) => {}
                     Loot::Fish {

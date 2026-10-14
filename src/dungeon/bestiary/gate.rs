@@ -1,6 +1,8 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{Effect, Reach, Special, StatusKind};
 use crate::dungeon::traits::{BodyParts, Trait};
+use crate::dungeon::treasure::{Find, Treasure};
 use crate::fishes::species::FishSpecies;
 
 pub const ROWS: &[EnemySpec] = &[
@@ -228,7 +230,7 @@ pub const ROWS: &[EnemySpec] = &[
         }],
         passives: &[],
         traits: &[],
-        loot: &[Loot::Named("a Feather of the Choir")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::Feather))],
         variant_of: None,
         note: "",
     },
@@ -290,8 +292,8 @@ pub const ROWS: &[EnemySpec] = &[
         }],
         traits: &[Trait::Parts(BodyParts::Voices), Trait::NeverBites],
         loot: &[
-            Loot::Named("a Feather of the Choir"),
-            Loot::Named("a Halo (charm)"),
+            Loot::Named(Find::Exactly(Treasure::Feather)),
+            Loot::Named(Find::Exactly(Treasure::Charm(Charm::Halo))),
         ],
         variant_of: None,
         note: "",
@@ -323,7 +325,7 @@ pub const ROWS: &[EnemySpec] = &[
         }],
         traits: &[Trait::LastTrump(5)],
         loot: &[
-            Loot::Named("the Herald's Trumpet (charm)"),
+            Loot::Named(Find::Exactly(Treasure::Charm(Charm::HeraldsTrumpet))),
             Loot::Fish {
                 species: FishSpecies::Celacanto,
                 one_in: 1,

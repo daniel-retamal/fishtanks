@@ -2,9 +2,10 @@ use crate::ui::input_action::InputAction;
 use crate::ui::layout::Scroll;
 
 use super::Difficulty;
+use super::event;
 use super::expedition::{Expedition, Ground, Place};
 use super::muster::{Muster, MusterStep};
-use super::room::{Act, Panel};
+use super::room::{Act, Panel, Stage};
 use super::state::{FightState, FightStep};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,6 +58,7 @@ pub enum Step {
     Go(u8),
     Act(Act, usize),
     SetOut(Difficulty),
+    Pray(String),
 }
 
 pub struct DungeonState {
@@ -103,6 +105,39 @@ impl DungeonState {
 
     pub fn is_busy(&self) -> bool {
         self.fight().is_some_and(FightState::is_busy)
+    }
+
+    pub fn wanted_words(&self, expedition: Option<&Expedition>) -> Option<&'static str> {
+        match &self.view {
+            View::Fight(fight) => fight.prayer(),
+            View::Room(_) => {
+                let visit = expedition?.visit.as_ref()?;
+                let event = visit.event()?;
+                event.asks_a_prayer()?;
+                (visit.stage == Stage::Open).then(|| event::prayer_line(visit.seed))
+            }
+            View::Muster(_) | View::Map(_) => None,
+        }
+    }
+
+    pub fn keeps_the_bar(&self, expedition: Option<&Expedition>) -> bool {
+        match &self.view {
+            View::Fight(fight) => fight.praying(),
+            View::Room(_) | View::Muster(_) | View::Map(_) => {
+                self.wanted_words(expedition).is_some()
+            }
+        }
+    }
+
+    pub fn pray(&mut self, words: String) -> Step {
+        match &mut self.view {
+            View::Fight(fight) => match fight.pray(words) {
+                FightStep::Played => Step::Played,
+                FightStep::Stay | FightStep::Close | FightStep::Done => Step::Stay,
+            },
+            View::Room(_) => Step::Pray(words),
+            View::Muster(_) | View::Map(_) => Step::Stay,
+        }
     }
 
     pub fn tick(&mut self, dt: f32) {

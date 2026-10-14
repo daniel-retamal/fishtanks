@@ -172,6 +172,33 @@ pub fn assemble(battle: &mut Battle) {
     envy(battle, &members);
     combine(battle, &members);
     chimera(battle, &members);
+    vessel(battle, &members);
+}
+
+fn vessel(battle: &mut Battle, members: &[usize]) {
+    let dead: Vec<super::fighter::Ghost> = battle
+        .setup
+        .haunts
+        .iter()
+        .filter(|ghost| ghost.haunt != super::traits::Haunt::Unfish)
+        .cloned()
+        .collect();
+    if dead.is_empty() {
+        return;
+    }
+    for &hollow in members {
+        if !has(battle, hollow, Trait::Vessel) || battle.fighters[hollow].belly_up {
+            continue;
+        }
+        let ghost = &dead[battle.rng.random_range(0..dead.len())];
+        let f = &mut battle.fighters[hollow];
+        f.max_hp = ghost.vigor.max(1);
+        f.hp = f.max_hp;
+        f.bite = ghost.bite;
+        f.speed = ghost.speed.max(1);
+        let name = f.name.clone();
+        battle.note(format!("{name} fills with {}.", ghost.name), Tone::Status);
+    }
 }
 
 fn chimera(battle: &mut Battle, members: &[usize]) {

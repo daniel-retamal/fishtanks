@@ -167,6 +167,7 @@ pub trait House: Teller {
     fn land(&mut self, fish: Fish, name: String) -> Option<String>;
     fn shelve(&mut self, toy: &ToyState);
     fn stock_part(&mut self, part: FittedPart);
+    fn play_marked_card(&mut self) -> bool;
 }
 
 #[cfg(test)]

@@ -13,7 +13,7 @@ use super::mutant::{
     Adornments, Circadian, EXTRA_BODY_FOR_DOUBLE, MutantState, MutantTail, MutationRecord,
 };
 use super::mutations::{grow_birthmarks, native_eyes, tail_kind_to_mutant_tail};
-use super::quirk::{BLIND_EYE, FACE_EYES, FACE_OPEN, FACE_SHUT, Quirk};
+use super::quirk::{BLIND_EYE, FACE_EYES, FACE_OPEN, FACE_SHUT, HOLLOW_SPECK, Quirk};
 use super::species::{
     BodyChars, BodyFill, BodySource, BodyTemplate, Cycle, EYE_CIRCLE, EYE_ROUND, EyeAt,
     FishSpecies, Habit, Habitat, Locomotion, PatternKind, Sin, SizeCategory, Skin, TailKind,
@@ -22,8 +22,8 @@ use super::species::{
 use super::toy::{Depth, ToyState};
 use super::unfish::{
     BLINKER_BASE_COLOR, BLINKER_GLISTEN_MID, BLINKER_GLISTEN_PEAK, BLINKER_MID_COLOR,
-    BLINKER_PEAK_COLOR, UNFISH_BODY_COLOR, UnfishKind, UnfishState, WORM_DEFAULT_SEGMENTS,
-    WormShape, build_worm, is_multi_row, worm_display_width, worm_eye_cols,
+    BLINKER_PEAK_COLOR, HOLLOW_SPECK_COLOR, UNFISH_BODY_COLOR, UnfishKind, UnfishState,
+    WORM_DEFAULT_SEGMENTS, WormShape, build_worm, is_multi_row, worm_display_width, worm_eye_cols,
 };
 use crate::colors::{PINK, WHITE};
 use crate::consumable::{COFFEE_SPEED_MULT, COFFEE_SWAY_MULT, COFFEE_ZOOMIE_DT_MULT};
@@ -740,8 +740,20 @@ impl Fish {
         }
     }
 
+    pub fn mark(&mut self) -> bool {
+        if !self.species.config().markable {
+            return false;
+        }
+        self.devil_marked = true;
+        true
+    }
+
     pub fn is_holy(&self) -> bool {
-        self.ability_stacks(FishSpecies::Holyfish) > 0
+        self.ability_stacks(FishSpecies::Holyfish) > 0 || self.wears_a_feather()
+    }
+
+    pub fn wears_a_feather(&self) -> bool {
+        self.deep.as_ref().is_some_and(|life| life.feather)
     }
 
     pub fn is_alienated(&self) -> bool {
@@ -1634,6 +1646,19 @@ impl Fish {
                         eyes.push(UNFISH_EYE_AT + 1);
                     }
                     Quirk::Graeae(graeae) if !graeae.sighted => chars[UNFISH_EYE_AT] = BLIND_EYE,
+                    Quirk::Hollow(hollow) if hollow.worn.is_none() => {
+                        for (offset, cell) in chars
+                            .iter_mut()
+                            .skip(UNFISH_EYE_AT + 1)
+                            .take(self.body_size)
+                            .enumerate()
+                        {
+                            *cell = match hollow.speck(offset) {
+                                true => HOLLOW_SPECK,
+                                false => ' ',
+                            };
+                        }
+                    }
                     _ => {}
                 }
                 let n = chars.len();
@@ -1644,7 +1669,19 @@ impl Fish {
                 (chars, eyes)
             }
         };
-        let colors = us.line_colors(chars.len(), |_| UNFISH_BODY_COLOR);
+        let mut colors = us.line_colors(chars.len(), |_| UNFISH_BODY_COLOR);
+        if let Quirk::Hollow(hollow) = &us.quirk {
+            for (at, glyph) in chars.iter().enumerate() {
+                if eyes.contains(&at) {
+                    continue;
+                }
+                match &hollow.worn {
+                    Some(worn) => colors[at] = worn.color,
+                    None if *glyph == HOLLOW_SPECK => colors[at] = HOLLOW_SPECK_COLOR,
+                    None => {}
+                }
+            }
+        }
         let anchor = if head_left {
             eyes.iter().copied().max()
         } else {

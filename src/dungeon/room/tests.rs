@@ -219,9 +219,17 @@ fn an_event_offers_a_tagged_choice_only_to_a_party_that_can_make_it() {
 fn every_event_fight_is_a_real_enemy() {
     for event in EVENTS {
         for choice in event.choices {
-            for turn in [choice.pass, choice.fail] {
-                if let Outcome::Fight { enemy, .. } = turn.outcome {
+            for outcome in [choice.pass, choice.fail].iter().flat_map(|t| t.outcomes()) {
+                if let Outcome::Fight { enemy, .. } = outcome {
                     assert!(bestiary::find(enemy).is_some(), "{}: {enemy}", event.name);
+                }
+                if let Outcome::Waits(boss) = outcome {
+                    let bosses = FloorSpec::of(event.floor).bosses();
+                    assert!(
+                        bosses.iter().any(|spec| spec.name == boss),
+                        "{}: {boss} guards no elevator on its floor",
+                        event.name
+                    );
                 }
             }
         }
@@ -367,8 +375,8 @@ fn ghost(
 }
 
 #[test]
-fn every_floor_from_the_shallows_to_the_dunes_has_three_events_of_its_own() {
-    for depth in 1..=5 {
+fn every_floor_has_three_events_of_its_own() {
+    for depth in 1..=floor::LAST_FLOOR {
         assert_eq!(event::of_floor(depth).len(), 3, "floor {depth}");
     }
     let names: std::collections::BTreeSet<&str> = EVENTS.iter().map(|e| e.name).collect();
@@ -381,7 +389,12 @@ fn every_event_ends_on_a_way_out_that_needs_nothing() {
         let last = event.choices.last().expect("a choice");
         assert_eq!(last.need, Need::Nothing, "{}", event.name);
         assert_eq!(last.check, None, "{}", event.name);
-        assert_eq!(last.pass.outcome, Outcome::Nothing, "{}", event.name);
+        assert_eq!(
+            last.pass.outcomes(),
+            [Outcome::Nothing; 2],
+            "{}",
+            event.name
+        );
     }
 }
 
@@ -544,4 +557,274 @@ fn a_fish_that_looks_into_its_own_grave_and_fails_comes_out_doomed() {
         return;
     }
     panic!("no seed failed the look");
+}
+
+fn panel_labels(expedition: &Expedition) -> Vec<String> {
+    expedition
+        .panel(0, &Above::default())
+        .expect("a panel")
+        .rows
+        .iter()
+        .map(|row| row.label.clone())
+        .collect()
+}
+
+fn mutations_of(fish: &Fish) -> usize {
+    crate::fishes::mutations::Mutatable::record(fish).map_or(0, |record| record.history.len())
+}
+
+#[test]
+fn dipping_one_fish_in_the_glowing_pool_changes_the_fish_you_chose() {
+    let mut expedition = below(14, Difficulty::Normal);
+    at_event(&mut expedition, 6, "A Glowing Pool", &Ground::default());
+    let panel = expedition.panel(1, &Above::default()).expect("a panel");
+    assert!(panel.which_fish, "the pool asks which fish goes in");
+    let before: Vec<usize> = expedition.party.iter().map(mutations_of).collect();
+    expedition.act(Act::Choice(0), 1, &Ground::default());
+    let after: Vec<usize> = expedition.party.iter().map(mutations_of).collect();
+    assert_eq!(after[1], before[1] + 1, "the chosen fish changed");
+    assert_eq!(after[0], before[0]);
+    assert_eq!(after[2], before[2]);
+}
+
+#[test]
+fn the_line_of_prayer_is_typed_and_a_wrong_word_becomes_a_curse() {
+    let ground = Ground::default();
+    let mut expedition = below(15, Difficulty::Normal);
+    at_event(&mut expedition, 10, "A Line of Prayer", &ground);
+    let panel = expedition.panel(0, &Above::default()).expect("a panel");
+    let pray = &panel.rows[0];
+    assert!(!pray.usable, "ENTER on the row says nothing; the words do");
+    assert_eq!(expedition.act(pray.act, 0, &ground), Next::Stay);
+    let seed = expedition.visit.as_ref().expect("a room").seed;
+    let line = event::prayer_line(seed);
+    let treasures = expedition.haul.count();
+    expedition.pray(&line.to_lowercase(), &ground);
+    assert!(expedition.haul.count() > treasures, "the Void gives");
+
+    let mut expedition = below(15, Difficulty::Normal);
+    at_event(&mut expedition, 10, "A Line of Prayer", &ground);
+    let lead = expedition.lead();
+    expedition.pray("not the words", &ground);
+    let kit = Kit::of(&expedition.party[lead]);
+    let cursed = expedition.party[lead]
+        .deep
+        .as_ref()
+        .is_some_and(|life| life.curses.contains(&Curse::WrongWord));
+    assert!(cursed, "{:?}", kit.traits);
+}
+
+#[test]
+fn an_off_key_voice_brings_the_choir_to_the_elevator() {
+    for seed in 0..SEEDS {
+        let mut expedition = one_fish(FishSpecies::Merluza, seed);
+        at_event(&mut expedition, 9, "Choir Practice", &Ground::default());
+        expedition.act(Act::Choice(0), 0, &Ground::default());
+        if expedition.guard.is_none() {
+            continue;
+        }
+        for dive in 0..2 {
+            expedition.dive = dive;
+            assert_eq!(expedition.boss().name, "The Choir");
+        }
+        expedition.descend(&Ground::default());
+        assert_eq!(expedition.guard, None, "the next floor has its own boss");
+        return;
+    }
+    panic!("no seed sang off key");
+}
+
+#[test]
+fn the_gatekeeper_keeps_the_sinful_outside_the_next_fight() {
+    let mut expedition = one_fish(FishSpecies::Cashfish, 16);
+    let saint = Fish::new(
+        FishSpecies::Merluza,
+        "Saint".to_string(),
+        0.0,
+        0.0,
+        &mut SmallRng::seed_from_u64(16),
+    );
+    expedition.join(saint);
+    let sinful: Vec<bool> = expedition.kits().iter().map(event::sinful).collect();
+    assert_eq!(sinful, [true, false], "a Cashfish is greedy");
+    at_event(&mut expedition, 9, "The Gatekeeper", &Ground::default());
+    expedition.act(Act::Choice(0), 0, &Ground::default());
+    let outside: Vec<&str> = expedition
+        .lingering
+        .iter()
+        .filter(|l| l.kind == crate::dungeon::effect::StatusKind::Away)
+        .map(|l| l.fish.as_str())
+        .collect();
+    assert_eq!(outside, ["Solo"]);
+}
+
+#[test]
+fn swimming_the_burning_river_can_mark_every_swimmer() {
+    for seed in 0..SEEDS {
+        let mut expedition = below(seed, Difficulty::Normal);
+        at_event(&mut expedition, 8, "The Ferry", &Ground::default());
+        expedition.act(Act::Choice(1), 0, &Ground::default());
+        let marked = expedition.party.iter().filter(|f| f.devil_marked).count();
+        if marked == 0 {
+            continue;
+        }
+        let markable = expedition
+            .party
+            .iter()
+            .filter(|f| f.species.config().markable)
+            .count();
+        assert_eq!(marked, markable);
+        assert!(expedition.haul.count() > 0, "they still reach the far bank");
+        return;
+    }
+    panic!("no seed marked the swimmers");
+}
+
+#[test]
+fn phishing_takes_gold_out_of_the_haul_and_never_below_nothing() {
+    for seed in 0..SEEDS {
+        let mut expedition = below(seed, Difficulty::Normal);
+        expedition.haul.gold = 1;
+        at_event(&mut expedition, 7, "An Email", &Ground::default());
+        expedition.act(Act::Choice(0), 0, &Ground::default());
+        if expedition.haul.gold == 0 {
+            return;
+        }
+    }
+    panic!("no seed was phished");
+}
+
+#[test]
+fn the_feather_weighs_a_fish_against_the_weight_it_was_born_with() {
+    let ground = Ground::default();
+    let mut light = one_fish(FishSpecies::Merluza, 17);
+    at_event(&mut light, 9, "The Scales", &ground);
+    light.act(Act::Choice(0), 0, &ground);
+    assert!(
+        light.haul.count() > 0,
+        "an unfed fish weighs no more than the feather"
+    );
+
+    let mut heavy = one_fish(FishSpecies::Merluza, 17);
+    heavy.party[0].weight_g += 1;
+    at_event(&mut heavy, 9, "The Scales", &ground);
+    heavy.act(Act::Choice(0), 0, &ground);
+    let wanting = heavy.party[0]
+        .deep
+        .as_ref()
+        .is_some_and(|life| life.curses.contains(&Curse::Wanting));
+    assert!(wanting);
+}
+
+#[test]
+fn the_captcha_asks_for_eyes_and_the_cheatfish_needs_none() {
+    let mut expedition = one_fish(FishSpecies::Blindfish, 18);
+    at_event(
+        &mut expedition,
+        7,
+        "Select Every Square With a Fish",
+        &Ground::default(),
+    );
+    assert!(!panel_labels(&expedition).contains(&"Let the Cheatfish do it".to_string()));
+    expedition.act(Act::Choice(0), 0, &Ground::default());
+    let visit = expedition.visit.as_ref().expect("still in the room");
+    assert_eq!(visit.stage, Stage::Sprung, "locked out: the long way round");
+}
+
+#[test]
+fn the_blind_deep_keeps_the_eyes_events() {
+    let deep = floor::LAST_FLOOR + 3;
+    let names: Vec<&str> = event::of_floor(deep).iter().map(|e| e.name).collect();
+    let eye: Vec<&str> = event::of_floor(floor::LAST_FLOOR)
+        .iter()
+        .map(|e| e.name)
+        .collect();
+    assert_eq!(names, eye);
+}
+
+fn won_against(expedition: &mut Expedition, enemy: &str) {
+    expedition.fight = Some(crate::dungeon::expedition::FightRecord {
+        seed: 1,
+        stakes: crate::dungeon::battle::Stakes::Boss,
+        purse: 0,
+        foes: vec![Foe {
+            enemy: enemy.to_string(),
+            ghost: None,
+        }],
+        haunts: Vec::new(),
+        inputs: Vec::new(),
+        spent: 0,
+        known: Vec::new(),
+        every_graeae: false,
+        ambushed: false,
+        lingering: Vec::new(),
+    });
+    let aftermath = crate::dungeon::battle::Aftermath {
+        outcome: crate::dungeon::battle::Outcome::Won,
+        party: expedition.party.clone(),
+        cows: Vec::new(),
+        dead: Vec::new(),
+        hp: Vec::new(),
+        haul: 0,
+        junk_found: 0,
+        purse_spent: 0,
+        items: expedition.pack.clone(),
+        beaten: 1,
+        spoils: Vec::new(),
+    };
+    expedition.settle(aftermath);
+}
+
+fn found(expedition: &Expedition, treasure: crate::dungeon::treasure::Treasure) -> u32 {
+    let stock = haul::treasure_stock(treasure);
+    expedition
+        .haul
+        .treasures
+        .iter()
+        .filter(|stack| stack.stock == stock)
+        .map(|stack| stack.count)
+        .sum()
+}
+
+#[test]
+fn a_boss_pays_its_named_treasures() {
+    use crate::dungeon::boon::Charm;
+    use crate::dungeon::treasure::Treasure;
+    let mut expedition = below(19, Difficulty::Normal);
+    expedition.haul = Haul::default();
+    won_against(&mut expedition, "The Kraken");
+    assert_eq!(found(&expedition, Treasure::KrakenInk), 1);
+    assert_eq!(found(&expedition, Treasure::Charm(Charm::KrakensBeak)), 1);
+
+    won_against(&mut expedition, "The Great Eye");
+    assert_eq!(
+        found(&expedition, Treasure::WishShard),
+        crate::dungeon::treasure::SHARDS_PER_WISH,
+        "a wish is three shards"
+    );
+}
+
+#[test]
+fn phoenix_roe_is_paid_only_on_hardcore() {
+    use crate::dungeon::treasure::Treasure;
+    let mut normal = below(20, Difficulty::Normal);
+    won_against(&mut normal, "The Lich King");
+    assert_eq!(found(&normal, Treasure::PhoenixRoe), 0);
+    let mut hardcore = below(20, Difficulty::Hardcore);
+    won_against(&mut hardcore, "The Lich King");
+    assert_eq!(found(&hardcore, Treasure::PhoenixRoe), 1);
+}
+
+#[test]
+fn every_boss_drop_is_a_treasure_the_dice_can_roll() {
+    let mut rng = SmallRng::seed_from_u64(21);
+    for spec in bestiary::all() {
+        for loot in spec.loot {
+            if let bestiary::Loot::Named(find) | bestiary::Loot::Hardcore(find) = loot {
+                let (treasure, count) = find.roll(&mut rng);
+                assert!(count > 0, "{}", spec.name);
+                assert!(!treasure.name().is_empty());
+            }
+        }
+    }
 }

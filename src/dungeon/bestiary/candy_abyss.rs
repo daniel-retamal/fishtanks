@@ -1,6 +1,8 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use crate::dungeon::boon::Charm;
 use crate::dungeon::effect::{Effect, Power, Reach, StatusKind};
 use crate::dungeon::traits::Trait;
+use crate::dungeon::treasure::{Find, Treasure};
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -318,7 +320,9 @@ pub const ROWS: &[EnemySpec] = &[
             about: "Hard Candy (−6 from every hit), then Chocolate (heals 20 a turn as it melts), then a Gummy core that splits in two",
         }],
         traits: &[Trait::Layers],
-        loot: &[Loot::Named("the Sweet Tooth (charm)")],
+        loot: &[Loot::Named(Find::Exactly(Treasure::Charm(
+            Charm::SweetTooth,
+        )))],
         variant_of: None,
         note: "",
     },

@@ -313,12 +313,17 @@ fn the_rooms_gone_wrong_on_film() {
     }
 }
 
-const FLOOR_EVENTS: [(u32, &str); 5] = [
+const FLOOR_EVENTS: [(u32, &str); 10] = [
     (1, "shallows"),
     (2, "reef"),
     (3, "candy"),
     (4, "graveyard"),
     (5, "dunes"),
+    (6, "hot-zone"),
+    (7, "mainframe"),
+    (8, "inferno"),
+    (9, "gate"),
+    (10, "eye"),
 ];
 
 fn the_dead() -> Vec<Ghost> {
@@ -391,6 +396,11 @@ fn events_gone_wrong_on_film() {
             (3, "The Sugar Altar"),
             (4, "The Séance Table"),
             (5, "A Crashed Saucer"),
+            (6, "A Locked Lab Door"),
+            (7, "Select Every Square With a Fish"),
+            (8, "A Cauldron"),
+            (9, "The Scales"),
+            (10, "A Reflection"),
         ] {
             at_event(&mut tui, depth, name, slow_and_weak());
             if let Some(expedition) = tui.app.dungeon.expedition.as_mut() {
@@ -1240,4 +1250,335 @@ fn the_deep_fish_and_a_cow_in_a_fight_on_film() {
         tui.write_reel();
         no_flaws(&tui);
     }
+}
+
+const EYE: u32 = 10;
+
+fn before_the_eye() -> Tui {
+    let mut tui = crowd(strong_party());
+    let expedition = tui.app.dungeon.expedition.as_mut().expect("a dive");
+    expedition.floor = EYE;
+    let foes = floor::lair(EYE, floor::scale_for(EYE), 0);
+    expedition.fight = Some(FightRecord::of(
+        CROWD_SEED,
+        Stakes::Boss,
+        0,
+        &foes,
+        Vec::new(),
+    ));
+    tui
+}
+
+fn prayer_of(tui: &Tui) -> Option<&'static str> {
+    tui.app
+        .dungeon_overlay()
+        .and_then(|state| state.fight())
+        .and_then(|fight| fight.prayer())
+}
+
+#[test]
+fn the_great_eye_hears_the_line_typed_in_the_command_bar() {
+    for (cols, rows) in SIZES {
+        let mut tui = before_the_eye();
+        tui.resize(cols, rows);
+        tui.film(reels(), &format!("deep-prayer-{cols}x{rows}"));
+        tui.run("/dungeon");
+        settle(&mut tui);
+        let line = prayer_of(&tui).expect("the Eye asks for a line");
+        tui.snap("the Eye shows its line");
+        tui.type_text(&line.to_lowercase());
+        tui.snap("the line in the command bar");
+        assert_eq!(tui.app.editor.text, line.to_lowercase());
+        tui.key(KeyCode::Enter);
+        assert!(tui.app.editor.text.is_empty(), "the bar is spent");
+        let said = tui
+            .app
+            .dungeon_overlay()
+            .and_then(|state| state.fight())
+            .map(|fight| fight.battle.prayer.said);
+        assert_eq!(said, Some(1));
+        settle(&mut tui);
+        tui.snap("the Eye blinks");
+        tui.write_reel();
+        no_flaws(&tui);
+    }
+}
+
+#[test]
+fn a_wrong_line_falls_into_the_dark_and_the_menu_still_answers_arrows() {
+    let mut tui = before_the_eye();
+    tui.run("/dungeon");
+    settle(&mut tui);
+    tui.type_text("wrong words");
+    tui.key(KeyCode::Down);
+    let menu = tui
+        .app
+        .dungeon_overlay()
+        .and_then(|state| state.fight())
+        .map(|fight| fight.menu);
+    assert_eq!(menu, Some(fishtank::dungeon::state::Menu::Main(1)));
+    tui.key(KeyCode::Enter);
+    assert!(
+        log_of(&tui)
+            .iter()
+            .any(|line| line == "The words fall into the dark.")
+    );
+    settle(&mut tui);
+    tui.type_text("x");
+    tui.key(KeyCode::Esc);
+    assert!(tui.app.editor.text.is_empty(), "ESC clears the bar first");
+    assert_eq!(view(&tui), "fight");
+}
+
+#[test]
+fn the_line_of_prayer_is_typed_in_the_room_too() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    at_event(&mut tui, EYE, "A Line of Prayer", strong_party());
+    tui.film(reels(), "deep-prayer-event");
+    tui.run("/dungeon");
+    tui.snap("a line of prayer");
+    let seed = tui
+        .app
+        .dungeon
+        .expedition
+        .as_ref()
+        .and_then(|e| e.visit.as_ref())
+        .map(|visit| visit.seed)
+        .expect("a room");
+    let line = fishtank::dungeon::event::prayer_line(seed);
+    tui.screen().expect_find(&format!("\"{line}\""));
+    tui.type_text(line);
+    tui.snap("typed");
+    tui.key(KeyCode::Enter);
+    tui.snap("said");
+    tui.write_reel();
+    tui.screen().expect_find("The Void listens");
+    no_flaws(&tui);
+}
+
+#[test]
+fn the_blind_deep_opens_under_the_eye_and_never_ends() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    at_the_elevator(&mut tui, Haul::default());
+    tui.app.dungeon.expedition.as_mut().expect("a dive").floor = EYE;
+    tui.film(reels(), "deep-blind");
+    tui.run("/dungeon");
+    tui.snap("the last elevator");
+    tui.screen().expect_find("The Blind Deep 1");
+    let eye = floor::scale_for(EYE).hp_percent;
+    for depth in EYE + 1..=EYE + 3 {
+        tui.key(KeyCode::Down).key(KeyCode::Enter);
+        assert_eq!(view(&tui), "map");
+        tui.snap(&format!("floor {depth}"));
+        let expedition = tui.app.dungeon.expedition.as_ref().expect("a dive");
+        assert_eq!(expedition.floor, depth);
+        assert_eq!(expedition.boss().name, "The Great Eye");
+        assert!(expedition.scale().hp_percent > eye);
+        assert_eq!(
+            floor::haul(depth, Difficulty::Normal),
+            floor::haul(1, Difficulty::Normal) * u64::from(depth * depth)
+        );
+        tui.screen()
+            .expect_find(&format!("The Blind Deep {}", depth - EYE));
+        tui.key(KeyCode::Esc);
+        at_the_elevator(&mut tui, Haul::default());
+        tui.app.dungeon.expedition.as_mut().expect("a dive").floor = depth;
+        tui.run("/dungeon");
+    }
+    tui.write_reel();
+    no_flaws(&tui);
+}
+
+const INVENTORY_PAGE: usize = 6;
+
+#[test]
+fn treasures_at_home_on_film() {
+    use fishtank::dungeon::boon::Charm;
+    use fishtank::dungeon::treasure::{Salvage, Treasure};
+    use fishtank::loot::ConsumableKind;
+    let treasures = [
+        Treasure::PincoyasShell,
+        Treasure::KrakenInk,
+        Treasure::Vial(Mutation::EyeIncrease),
+        Treasure::Vial(Mutation::Telophase),
+        Treasure::RadiantCore,
+        Treasure::Chip(Salvage::Feeder),
+        Treasure::MammonsCoin,
+        Treasure::Feather,
+        Treasure::MarkedCard,
+        Treasure::Cowbell(fishtank::entities::cow::CowVariant::Blue),
+        Treasure::WishShard,
+        Treasure::PhoenixRoe,
+        Treasure::Charm(Charm::KrakensBeak),
+    ];
+    for (cols, rows) in SIZES {
+        let mut tui = Tui::as_player(cols, rows);
+        tui.film(reels(), &format!("deep-treasures-{cols}x{rows}"));
+        for treasure in treasures {
+            tui.app
+                .inventory
+                .insert(StockItem::Consumable(ConsumableKind::Treasure(treasure)), 1);
+        }
+        tui.run("/inventory");
+        for (index, treasure) in treasures.iter().enumerate() {
+            if index % INVENTORY_PAGE == 0 || index + 1 == treasures.len() {
+                tui.snap(treasure.name());
+            }
+            tui.key(KeyCode::Down);
+        }
+        tui.key(KeyCode::Esc);
+        let charm = Treasure::Charm(Charm::KrakensBeak);
+        tui.app.try_consume_kind(
+            ConsumableKind::Treasure(charm),
+            fishtank::ui::consume_picker::ConsumePickerSource::FromInventory,
+        );
+        tui.snap("a charm asks which fish wears it");
+        tui.write_reel();
+        no_flaws(&tui);
+    }
+}
+
+#[test]
+fn a_boss_pays_its_named_treasures_on_film() {
+    for (cols, rows) in ROOM_SIZES {
+        let mut tui = Tui::as_player(cols, rows);
+        tui.film(reels(), &format!("deep-treasure-spoils-{cols}x{rows}"));
+        let mut expedition = diving(strong_party(), CROWD_SEED, &Ground::default());
+        expedition.floor = 2;
+        at(&mut tui, expedition, RoomKind::Boss);
+        let mut found = Haul::default();
+        let mut rng = SmallRng::seed_from_u64(CROWD_SEED);
+        for loot in fishtank::dungeon::bestiary::find("The Kraken")
+            .expect("the Kraken")
+            .loot
+        {
+            if let fishtank::dungeon::bestiary::Loot::Named(find) = loot {
+                fishtank::dungeon::haul::find(&mut found, *find, &mut rng);
+            }
+        }
+        let visit = tui
+            .app
+            .dungeon
+            .expedition
+            .as_mut()
+            .and_then(|e| e.visit.as_mut())
+            .expect("the boss room");
+        visit.stage = Stage::Spoils;
+        visit.said = fishtank::dungeon::room::spoils_lines(&found);
+        tui.run("/dungeon");
+        tui.snap("the Kraken's spoils");
+        tui.write_reel();
+        no_flaws(&tui);
+    }
+}
+
+fn hollows(tui: &mut Tui) {
+    let mut rng = SmallRng::seed_from_u64(CROWD_SEED);
+    for (name, worn) in [("Empty", None), ("Full", Some("Abel"))] {
+        let mut hollow = Fish::new_unfish(UnfishKind::Hollow, name.to_string(), 0.0, 0.0, &mut rng);
+        if let (Some(worn), Some(fishtank::fishes::quirk::Quirk::Hollow(state))) =
+            (worn, hollow.quirk_mut())
+        {
+            state.worn = Some(fishtank::fishes::quirk::Worn {
+                name: worn.to_string(),
+                species: FishSpecies::Koi,
+                color: fishtank::colors::ORANGE,
+            });
+        }
+        let named = hollow.name.clone();
+        tui.app.tanks[0].place_fish(hollow, named, &mut rng);
+    }
+}
+
+fn line_up_the_hollows(tui: &mut Tui) {
+    let height = tui.app.tanks[0].height as f32;
+    for (index, name) in ["Empty", "Full"].into_iter().enumerate() {
+        if let Some(fish) = tui.app.tanks[0].fish.iter_mut().find(|f| f.name == name) {
+            fish.position.x = NATIVE_LEFT + NATIVE_GAP * 2.0 * index as f32;
+            fish.position.y = height / 2.0;
+            fish.facing = fishtank::fishes::fish::Direction::Right;
+        }
+    }
+}
+
+#[test]
+fn the_hollow_on_film() {
+    let mut tui = Tui::new();
+    tui.resize(110, 20);
+    tui.clear_tank();
+    tui.film(reels(), "deep-hollow");
+    hollows(&mut tui);
+    tui.run("/names");
+    line_up_the_hollows(&mut tui);
+    tui.tick_n(1);
+    line_up_the_hollows(&mut tui);
+    tui.snap("an empty Hollow, and one wearing a dead Koi");
+    tui.write_reel();
+
+    for (cols, rows) in SIZES {
+        let mut party = deep_party();
+        party.push(Fish::new_unfish(
+            UnfishKind::Hollow,
+            "Hollow".to_string(),
+            0.0,
+            0.0,
+            &mut SmallRng::seed_from_u64(CROWD_SEED),
+        ));
+        let mut tui = crowd(party);
+        if let Some(record) = tui
+            .app
+            .dungeon
+            .expedition
+            .as_mut()
+            .and_then(|e| e.fight.as_mut())
+        {
+            record.haunts = the_dead();
+        }
+        tui.resize(cols, rows);
+        tui.film(reels(), &format!("deep-hollow-fight-{cols}x{rows}"));
+        tui.run("/dungeon");
+        settle(&mut tui);
+        tui.snap("the Hollow fills with one of your dead");
+        tui.write_reel();
+        no_flaws(&tui);
+        assert!(
+            log_of(&tui)
+                .iter()
+                .any(|line| line.starts_with("Hollow fills with"))
+        );
+    }
+}
+
+#[test]
+fn the_deep_toy_parts_on_film() {
+    use fishtank::fishes::toy::{FittedPart, Material, ToyColor, ToyPart, ToyState};
+    let mut tui = Tui::new();
+    tui.resize(110, 20);
+    tui.clear_tank();
+    tui.film(reels(), "deep-toys");
+    let mut rng = SmallRng::seed_from_u64(CROWD_SEED);
+    let wearing = [
+        (ToyPart::DivingHelmet, "Helmet"),
+        (ToyPart::JellyfishCap, "Cap"),
+        (ToyPart::Periscope, "Periscope"),
+        (ToyPart::Anchor, "Anchor"),
+    ];
+    for (index, (part, name)) in wearing.into_iter().enumerate() {
+        let mut state = ToyState::plain(ToyColor::Coral, Material::Plastic);
+        state
+            .fittings
+            .set(part.slot(), Some(FittedPart::of(part, &mut rng)));
+        let mut toy = Fish::new_toy(state, fishtank::fishes::species::SizeCategory::L, &mut rng);
+        toy.name = name.to_string();
+        let named = toy.name.clone();
+        tui.app.tanks[0].place_fish(toy, named, &mut rng);
+        let height = tui.app.tanks[0].height as f32;
+        if let Some(fish) = tui.app.tanks[0].fish.iter_mut().find(|f| f.name == name) {
+            fish.position.x = NATIVE_LEFT + NATIVE_GAP * index as f32;
+            fish.position.y = height / 2.0;
+        }
+    }
+    tui.run("/names");
+    tui.snap("a Diving Helmet, a Jellyfish Cap, a Periscope and an Anchor");
+    tui.write_reel();
 }

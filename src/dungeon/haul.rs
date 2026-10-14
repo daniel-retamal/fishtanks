@@ -5,9 +5,10 @@ use crate::economy::{Rarity, grouped};
 use crate::loot::{ConsumableKind, LootPool, StockItem};
 
 use super::floor::FloorSpec;
+use super::treasure::{Find, Treasure};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Treasure {
+pub struct Stack {
     pub stock: StockItem,
     pub count: u32,
 }
@@ -17,7 +18,7 @@ pub struct Haul {
     #[serde(default)]
     pub gold: u64,
     #[serde(default)]
-    pub treasures: Vec<Treasure>,
+    pub treasures: Vec<Stack>,
 }
 
 impl Haul {
@@ -27,7 +28,7 @@ impl Haul {
         }
         match self.treasures.iter_mut().find(|t| t.stock == stock) {
             Some(treasure) => treasure.count += count,
-            None => self.treasures.push(Treasure { stock, count }),
+            None => self.treasures.push(Stack { stock, count }),
         }
     }
 
@@ -96,21 +97,47 @@ pub fn finds(depth: u32) -> Vec<ConsumableKind> {
 
 pub fn treasure(depth: u32, tier: Rarity, rng: &mut impl RngExt) -> StockItem {
     let found = finds(depth);
+    let deep = FloorSpec::of(depth).finds;
     let mut tier = tier;
     loop {
-        let shelf: Vec<ConsumableKind> = found
+        let shelf: Vec<Shelf> = found
             .iter()
             .copied()
             .filter(|kind| kind.rarity() == tier)
+            .map(Shelf::Stock)
+            .chain(
+                deep.iter()
+                    .copied()
+                    .filter(|find| find.rarity() == tier)
+                    .map(Shelf::Deep),
+            )
             .collect();
         if !shelf.is_empty() {
-            return StockItem::Consumable(shelf[rng.random_range(0..shelf.len())]);
+            return match shelf[rng.random_range(0..shelf.len())] {
+                Shelf::Stock(kind) => StockItem::Consumable(kind),
+                Shelf::Deep(find) => treasure_stock(find.roll(rng).0),
+            };
         }
         if tier == Rarity::Common {
             return StockItem::Junk;
         }
         tier = poorer(tier);
     }
+}
+
+#[derive(Clone, Copy)]
+enum Shelf {
+    Stock(ConsumableKind),
+    Deep(Find),
+}
+
+pub fn treasure_stock(treasure: Treasure) -> StockItem {
+    StockItem::Consumable(ConsumableKind::Treasure(treasure))
+}
+
+pub fn find(haul: &mut Haul, find: Find, rng: &mut impl RngExt) {
+    let (treasure, count) = find.roll(rng);
+    haul.add(treasure_stock(treasure), count);
 }
 
 #[cfg(test)]
@@ -130,7 +157,13 @@ mod tests {
                 let StockItem::Consumable(kind) = found else {
                     continue;
                 };
-                assert!(finds(depth).contains(&kind), "floor {depth}");
+                let deep = kind.treasure().is_some_and(|treasure| {
+                    FloorSpec::of(depth)
+                        .finds
+                        .iter()
+                        .any(|find| find.rarity() == treasure.rarity())
+                });
+                assert!(finds(depth).contains(&kind) || deep, "floor {depth}");
                 assert!(kind.rarity() as u8 <= tier as u8);
             }
         }

@@ -36,7 +36,9 @@ pub const ONE_EYE: usize = 1;
 const HYDRA_EYES_PER_APPLICATION_MIN: usize = 1;
 const HYDRA_EYES_PER_APPLICATION_MAX: usize = 2;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, serde::Serialize, serde::Deserialize,
+)]
 pub enum Mutation {
     SizeIncrease,
     EyeIncrease,

@@ -69,6 +69,7 @@ pub fn wear(kit: &mut Kit, kind: UnfishKind) {
         UnfishKind::Face => kit.add(Trait::Stare),
         UnfishKind::Graeae => kit.add(Trait::Graeae),
         UnfishKind::Still => kit.add(Trait::Unwatched),
+        UnfishKind::Hollow => kit.add(Trait::Vessel),
     }
 }
 

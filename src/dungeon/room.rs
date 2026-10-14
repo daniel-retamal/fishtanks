@@ -520,7 +520,7 @@ impl Visit {
                 visit.ambush = dark && !lit && rng.random_range(0..PERCENT) < DARK_AMBUSH_PERCENT;
             }
             RoomKind::Den => visit.foes = foes_of(&floor::den(depth, scale, &mut rng)),
-            RoomKind::Boss => visit.foes = foes_of(&floor::lair(depth, scale, expedition.dive)),
+            RoomKind::Boss => visit.foes = foes_of(&expedition.lair()),
             RoomKind::Wreck => visit.foes = guards(depth, scale, &mut rng),
             RoomKind::School => visit.offers = school(depth, &mut rng),
             RoomKind::Shrine => visit.offers = blessings(expedition, &mut rng),
@@ -705,7 +705,7 @@ impl Expedition {
             RoomKind::Wreck => self.wreck_panel(visit, &mut panel, above.wrecks),
             RoomKind::Chest => self.chest_panel(visit, &mut panel),
             RoomKind::BellJar => self.jar_panel(visit, &mut panel),
-            RoomKind::Event => self.event_panel(visit, &mut panel),
+            RoomKind::Event => self.event_panel(visit, &mut panel, fish),
             RoomKind::School => self.school_panel(visit, &mut panel),
             RoomKind::Shrine => self.shrine_panel(visit, &mut panel),
             RoomKind::Altar => self.altar_panel(visit, &mut panel, fish),
@@ -852,7 +852,7 @@ impl Expedition {
         ];
     }
 
-    fn event_panel(&self, visit: &Visit, panel: &mut Panel) {
+    fn event_panel(&self, visit: &Visit, panel: &mut Panel, fish: usize) {
         let Some(event) = visit.event() else {
             panel.text = vec![line("The water is still.")];
             panel.rows = vec![Row::new("Move on", Act::MoveOn)];
@@ -863,7 +863,30 @@ impl Expedition {
         }
         let drawn = self.party[self.drawn(visit)].name.clone();
         panel.text = vec![line(event.text.replace(FISH, &drawn))];
+        if event.picks_a_fish() {
+            panel.which_fish = true;
+            panel.text.push(line(String::new()));
+            panel.text.push(LogLine::new(
+                format!("Choosing: {}", self.party[fish].name),
+                Tone::Focus,
+            ));
+        }
+        if event.asks_a_prayer().is_some() {
+            panel.text.push(line(String::new()));
+            panel.text.push(LogLine::new(
+                format!("\"{}\"", event::prayer_line(visit.seed)),
+                Tone::Focus,
+            ));
+        }
         for (index, choice) in event.choices.iter().enumerate() {
+            if choice.check == Some(event::Check::Prayer) {
+                panel.rows.push(
+                    Row::new(choice.label, Act::Choice(index as u8))
+                        .note("type, then ENTER", Tone::Quiet)
+                        .usable(false),
+                );
+                continue;
+            }
             if choice.need == Need::Dead {
                 for (call, offer) in visit.offers.iter().enumerate() {
                     let Offer::Dead(ghost) = offer else {
@@ -1326,7 +1349,7 @@ impl Expedition {
                 Next::Stay
             }
             Act::Break => self.break_jar(visit, &mut rng),
-            Act::Choice(index) => self.choose(visit, index, ground, &mut rng),
+            Act::Choice(index) => self.choose(visit, index, fish, ground, &mut rng),
             Act::Call(call) => self.call(visit, call, ground, &mut rng),
             Act::Hire(index) => {
                 let Some(Offer::Hire(species)) = visit.offers.get(usize::from(index)).cloned()
@@ -1676,11 +1699,7 @@ impl Expedition {
             ];
             return Next::Stay;
         }
-        let pool = LootPool::default_pool()
-            .with_native(FloorSpec::of(self.floor).tank)
-            .with_deep();
-        let species = pool.roll_species(rng).unwrap_or(FishSpecies::Merluza);
-        let fish = Fish::new(species, species.display_name().to_string(), 0.0, 0.0, rng);
+        let fish = self.wild_fish(rng);
         let name = self.join(fish);
         visit.stage = Stage::Spoils;
         visit.said = vec![LogLine::new(
@@ -1694,6 +1713,41 @@ impl Expedition {
         &mut self,
         visit: &mut Visit,
         index: u8,
+        fish: usize,
+        ground: &Ground,
+        rng: &mut SmallRng,
+    ) -> Next {
+        self.decide(visit, index, fish, None, ground, rng)
+    }
+
+    pub fn pray(&mut self, words: &str, ground: &Ground) -> Next {
+        let Some(mut visit) = self.visit.take() else {
+            return Next::Stay;
+        };
+        let Some(index) = visit.event().and_then(EventSpec::asks_a_prayer) else {
+            self.visit = Some(visit);
+            return Next::Stay;
+        };
+        if visit.stage != Stage::Open {
+            self.visit = Some(visit);
+            return Next::Stay;
+        }
+        visit.rolls += 1;
+        let mut rng = visit.rng();
+        let lead = self.lead();
+        let next = self.decide(&mut visit, index as u8, lead, Some(words), ground, &mut rng);
+        if self.visit.is_none() && matches!(next, Next::Stay | Next::Fight | Next::Raise(_)) {
+            self.visit = Some(visit);
+        }
+        next
+    }
+
+    fn decide(
+        &mut self,
+        visit: &mut Visit,
+        index: u8,
+        fish: usize,
+        words: Option<&str>,
         ground: &Ground,
         rng: &mut SmallRng,
     ) -> Next {
@@ -1703,7 +1757,10 @@ impl Expedition {
         let Some(choice) = event.choices.get(usize::from(index)).copied() else {
             return Next::Stay;
         };
-        let subject = self.subject(visit, choice.subject);
+        if choice.check == Some(event::Check::Prayer) && words.is_none() {
+            return Next::Stay;
+        }
+        let subject = self.subject(visit, choice.subject, fish);
         let offered = self.offer_up(choice);
         let kits = self.kits();
         let standing = self.standing();
@@ -1717,6 +1774,8 @@ impl Expedition {
                     size: self.party[subject].size_category,
                     depth: self.floor,
                     offered,
+                    light: self.light(subject),
+                    said: words.is_some_and(|words| event::heard(words, visit.seed)),
                 };
                 event::passes(check, &trial, rng)
             }
@@ -1779,70 +1838,129 @@ impl Expedition {
             name,
             ghost,
         } = befallen;
-        let said = LogLine::new(turn.text.replace(FISH, &name), turn.outcome.tone());
+        let said = LogLine::new(turn.text.replace(FISH, &name), turn.tone());
         let mut found = Haul::default();
         let mut foes = None;
         let mut next = Next::Stay;
-        match turn.outcome {
-            Outcome::Nothing | Outcome::Answer => {}
-            Outcome::Gold(shares) => found.gold += self.price(shares),
-            Outcome::Treasure(tier) => found.add(haul::treasure(self.floor, tier, rng), 1),
-            Outcome::Keep(stock) => found.add(stock, 1),
-            Outcome::Omen(omen) => self.omens.push(omen),
-            Outcome::Meals(meals) => {
-                put_in(&mut self.pack, Item::Food, meals);
-            }
-            Outcome::Rest => {
-                for member in self.standing() {
-                    let vigor = Kit::of(&self.party[member]).vigor;
-                    heal(self, member, vigor * REST_PERCENT / PERCENT);
+        let mut after = Vec::new();
+        for outcome in turn.outcomes() {
+            match outcome {
+                Outcome::Nothing | Outcome::Answer => {}
+                Outcome::Gold(shares) => found.gold += self.price(shares),
+                Outcome::Treasure(tier) => found.add(haul::treasure(self.floor, tier, rng), 1),
+                Outcome::Keep(stock) => found.add(stock, 1),
+                Outcome::Omen(omen) => self.omens.push(omen),
+                Outcome::Meals(meals) => {
+                    put_in(&mut self.pack, Item::Food, meals);
                 }
-            }
-            Outcome::Hurt(percent) => {
-                let kit = Kit::of(&self.party[member]);
-                let hp = self.hp(member, &kit);
-                let left = hp.saturating_sub(kit.vigor * percent / PERCENT).max(1);
-                self.wounds[member] = Wound {
-                    hp: Some(left),
-                    belly_up: false,
-                };
-            }
-            Outcome::Linger { kind, amount } => self.lingering.push(Lingering {
-                fish: name.clone(),
-                kind,
-                turns: event::LINGER_TURNS,
-                amount,
-            }),
-            Outcome::Curse(curse) => {
-                let life = life(&mut self.party[member]);
-                if !life.curses.contains(&curse) {
-                    life.curses.push(curse);
+                Outcome::Rest => {
+                    for member in self.standing() {
+                        let vigor = Kit::of(&self.party[member]).vigor;
+                        heal(self, member, vigor * REST_PERCENT / PERCENT);
+                    }
                 }
-            }
-            Outcome::GiveUp(mutation, tier) => {
-                revert_latest(&mut self.party[member], mutation);
-                found.add(haul::treasure(self.floor, tier, rng), 1);
-            }
-            Outcome::Abducted => next = self.beam_up(member),
-            Outcome::Fight { enemy, count } => {
-                foes = Some(
-                    (0..count)
-                        .map(|_| Foe {
-                            enemy: enemy.to_string(),
-                            ghost: None,
-                        })
-                        .collect(),
-                );
-            }
-            Outcome::Encounter => {
-                let crowd = floor::encounter(self.floor, self.scale(), &ground.haunts, rng);
-                foes = Some(foes_of(&crowd));
-            }
-            Outcome::Haunt => {
-                foes = Some(vec![Foe {
-                    enemy: super::specials::GHOST.to_string(),
-                    ghost,
-                }]);
+                Outcome::Hurt(percent) => {
+                    let kit = Kit::of(&self.party[member]);
+                    let hp = self.hp(member, &kit);
+                    let left = hp.saturating_sub(kit.vigor * percent / PERCENT).max(1);
+                    self.wounds[member] = Wound {
+                        hp: Some(left),
+                        belly_up: false,
+                    };
+                }
+                Outcome::Linger { kind, amount } => self.lingering.push(Lingering {
+                    fish: name.clone(),
+                    kind,
+                    turns: event::LINGER_TURNS,
+                    amount,
+                }),
+                Outcome::Curse(curse) => {
+                    let life = life(&mut self.party[member]);
+                    if !life.curses.contains(&curse) {
+                        life.curses.push(curse);
+                    }
+                }
+                Outcome::GiveUp(mutation, tier) => {
+                    revert_latest(&mut self.party[member], mutation);
+                    found.add(haul::treasure(self.floor, tier, rng), 1);
+                }
+                Outcome::Abducted => next = self.beam_up(member),
+                Outcome::Fight { enemy, count } => {
+                    foes = Some(
+                        (0..count)
+                            .map(|_| Foe {
+                                enemy: enemy.to_string(),
+                                ghost: None,
+                            })
+                            .collect(),
+                    );
+                }
+                Outcome::Encounter => {
+                    let crowd = floor::encounter(self.floor, self.scale(), &ground.haunts, rng);
+                    foes = Some(foes_of(&crowd));
+                }
+                Outcome::Haunt => {
+                    foes = Some(vec![Foe {
+                        enemy: super::specials::GHOST.to_string(),
+                        ghost: ghost.clone(),
+                    }]);
+                }
+                Outcome::Mutate => after.extend(self.dose(member, rng)),
+                Outcome::MutateAll => {
+                    for member in self.standing() {
+                        after.extend(self.dose(member, rng));
+                    }
+                }
+                Outcome::Lose(shares) => {
+                    let lost = self.price(shares).min(self.haul.gold);
+                    self.haul.gold -= lost;
+                    after.push(LogLine::new(
+                        format!("${} leaves the haul.", grouped(u128::from(lost))),
+                        Tone::Hurt,
+                    ));
+                }
+                Outcome::Mark => {
+                    self.party[member].mark();
+                }
+                Outcome::MarkAll => {
+                    for member in self.standing() {
+                        self.party[member].mark();
+                    }
+                }
+                Outcome::Join => {
+                    let fish = self.wild_fish(rng);
+                    let joined = self.join(fish);
+                    after.push(LogLine::new(
+                        format!("{joined} joins the party."),
+                        Tone::Heal,
+                    ));
+                }
+                Outcome::Free => {
+                    let fish = self.freed(member, rng);
+                    let joined = self.join(fish);
+                    let at = self.party.len() - 1;
+                    after.push(LogLine::new(
+                        format!("{joined} joins the party."),
+                        Tone::Heal,
+                    ));
+                    after.extend(self.dose(at, rng));
+                }
+                Outcome::Outside => {
+                    let kits = self.kits();
+                    for member in self.standing() {
+                        if !event::sinful(&kits[member]) {
+                            continue;
+                        }
+                        self.lingering.push(Lingering {
+                            fish: self.party[member].name.clone(),
+                            kind: super::effect::StatusKind::Away,
+                            turns: event::OUTSIDE_TURNS,
+                            amount: 0,
+                        });
+                    }
+                }
+                Outcome::Waits(boss) => self.guard = Some(boss.to_string()),
+                Outcome::Find(find) => haul::find(&mut found, find, rng),
             }
         }
         if let Some(foes) = foes {
@@ -1853,6 +1971,7 @@ impl Expedition {
         }
         visit.stage = Stage::Spoils;
         visit.said = vec![said];
+        visit.said.extend(after);
         if !found.is_empty() {
             visit.said.extend(spoils_lines(&found));
         }
@@ -1860,7 +1979,43 @@ impl Expedition {
         next
     }
 
-    fn subject(&self, visit: &Visit, subject: Subject) -> usize {
+    fn dose(&mut self, member: usize, rng: &mut SmallRng) -> Option<LogLine> {
+        let fish = &mut self.party[member];
+        let choices = wearable_mutations(fish);
+        if choices.is_empty() {
+            return None;
+        }
+        let pick = choices[rng.random_range(0..choices.len())];
+        apply_mutation(fish, pick, rng);
+        Some(LogLine::new(
+            format!("{} takes {}.", fish.name, pick.token()),
+            Tone::Focus,
+        ))
+    }
+
+    fn wild_fish(&self, rng: &mut SmallRng) -> Fish {
+        let pool = LootPool::default_pool()
+            .with_native(FloorSpec::of(self.floor).tank)
+            .with_deep();
+        let species = pool.roll_species(rng).unwrap_or(FishSpecies::Merluza);
+        Fish::new(species, species.display_name().to_string(), 0.0, 0.0, rng)
+    }
+
+    fn freed(&self, member: usize, rng: &mut SmallRng) -> Fish {
+        let kin = &self.party[member];
+        if kin.is_unfish() || kin.toy.is_some() {
+            return self.wild_fish(rng);
+        }
+        Fish::new(
+            kin.species,
+            kin.species.display_name().to_string(),
+            0.0,
+            0.0,
+            rng,
+        )
+    }
+
+    fn subject(&self, visit: &Visit, subject: Subject, chosen: usize) -> usize {
         match subject {
             Subject::Lead | Subject::Dead => self.lead(),
             Subject::Smallest => self.smallest(),
@@ -1869,7 +2024,14 @@ impl Expedition {
             Subject::Drawn => self.drawn(visit),
             Subject::Carrier(wanted) => self.carries_like(wanted).unwrap_or_else(|| self.lead()),
             Subject::Kind(species) => self.of_kind(species).unwrap_or_else(|| self.lead()),
+            Subject::Chosen => chosen,
         }
+    }
+
+    fn light(&self, member: usize) -> bool {
+        let fish = &self.party[member];
+        let born = fish.species.config().weight_base[fish.size_category as usize];
+        fish.weight_g <= born.max(1)
     }
 
     fn best_by(&self, stat: impl Fn(&Kit) -> u32) -> usize {

@@ -10,6 +10,7 @@ use super::expedition::{Input, play};
 use super::fighter::Side;
 use super::info::Info;
 use super::items::Aim;
+use super::traits::Trait;
 
 pub const THINK_SECS: f32 = 0.7;
 pub const BEAT_SECS: f32 = 0.55;
@@ -164,6 +165,31 @@ impl FightState {
 
     pub fn is_busy(&self) -> bool {
         !self.queue.is_empty() || self.wait > 0.0
+    }
+
+    pub fn praying(&self) -> bool {
+        let battle = &self.battle;
+        let shielded = battle
+            .side(Side::Foes)
+            .any(|i| battle.fighters[i].has(Trait::PrayerShield) && !battle.fighters[i].gone);
+        shielded && battle.prayer.line().is_some() && battle.outcome().is_none()
+    }
+
+    pub fn prayer(&self) -> Option<&'static str> {
+        if self.actor().is_none() || self.battle.offer().is_some() || !self.praying() {
+            return None;
+        }
+        match self.battle.prayer.shields() {
+            true => self.battle.prayer.line(),
+            false => None,
+        }
+    }
+
+    pub fn pray(&mut self, words: String) -> FightStep {
+        if self.prayer().is_none() {
+            return FightStep::Stay;
+        }
+        self.play(Input::Pray(words))
     }
 
     pub fn actor(&self) -> Option<usize> {

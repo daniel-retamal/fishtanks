@@ -79,6 +79,8 @@ pub struct DeepLife {
     pub charm: Option<Charm>,
     #[serde(default)]
     pub lives_spent: u32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub feather: bool,
 }
 
 impl DeepLife {

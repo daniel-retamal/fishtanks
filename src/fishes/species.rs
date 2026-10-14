@@ -220,6 +220,14 @@ impl FishSpecies {
             .collect()
     }
 
+    pub fn banners() -> Vec<FishSpecies> {
+        ALL_SPECIES
+            .iter()
+            .copied()
+            .filter(|species| matches!(species.config().habitat, Habitat::Native(_)))
+            .collect()
+    }
+
     pub fn of_the_deep() -> Vec<FishSpecies> {
         ALL_SPECIES
             .iter()

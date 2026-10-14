@@ -3,7 +3,7 @@ use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
 use super::simulation::fish_near;
-use super::{Tank, WorldSignal};
+use super::{Tank, TankEvent, WorldSignal};
 use crate::colors::GRAY;
 use crate::entities::components::Position;
 use crate::entities::food::FOOD_WEIGHT_GAIN_G;
@@ -112,6 +112,26 @@ impl Tank {
             .filter(|(_, fish)| fish.holds_still())
             .map(|(i, fish)| (i, fish.position.clone()))
             .collect()
+    }
+
+    pub(super) fn hollows(&mut self, rng: &mut impl RngExt) -> Vec<TankEvent> {
+        let mut events = Vec::new();
+        for fish in &mut self.fish {
+            let name = fish.name.clone();
+            let Some(Quirk::Hollow(hollow)) = fish.quirk_mut() else {
+                continue;
+            };
+            if hollow.clock > 0.0 {
+                continue;
+            }
+            if hollow.worn.is_some() {
+                hollow.empty(rng);
+                continue;
+            }
+            hollow.empty(rng);
+            events.push(TankEvent::Fill { hollow: name });
+        }
+        events
     }
 
     pub(super) fn tick_oddities(
