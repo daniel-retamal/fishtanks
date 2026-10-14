@@ -2,6 +2,7 @@ use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
 use crate::entities::food::FOOD_WEIGHT_GAIN_G;
+use crate::fishes::fish::Fish;
 use crate::fishes::mutations::{Mutation, apply_mutation};
 use crate::loot::{ConsumableKind, MilkVariant, StockItem};
 use crate::restore::Restorable;
@@ -89,6 +90,19 @@ impl Item {
             .collect()
     }
 
+    pub fn at_rest(self) -> bool {
+        matches!(
+            self,
+            Item::Stock(StockItem::Consumable(ConsumableKind::Milk(
+                MilkVariant::Chocolate
+                    | MilkVariant::Strawberry
+                    | MilkVariant::Alien
+                    | MilkVariant::Vanilla
+                    | MilkVariant::Irradiated
+            )))
+        )
+    }
+
     pub fn usable_in_a_fight(self) -> bool {
         match self {
             Item::Food | Item::Stock(StockItem::Junk) => true,
@@ -157,6 +171,38 @@ impl Pack {
             held: 0,
         }
     }
+}
+
+pub fn rest_with(fish: &mut Fish, item: Item, rng: &mut impl RngExt) -> bool {
+    if !item.at_rest() {
+        return false;
+    }
+    let Item::Stock(StockItem::Consumable(ConsumableKind::Milk(variant))) = item else {
+        return false;
+    };
+    let lasting = match variant {
+        MilkVariant::Chocolate => vec![Mutation::SizeIncrease],
+        MilkVariant::Strawberry => vec![Mutation::Strawberry],
+        MilkVariant::Alien => vec![Mutation::Alienation],
+        MilkVariant::Vanilla => {
+            fish.restore();
+            return true;
+        }
+        MilkVariant::Irradiated => {
+            let count = rng.random_range(IRRADIATED_MIN..=IRRADIATED_MAX);
+            (0..count)
+                .filter_map(|_| {
+                    let choices = super::specials::wearable_mutations(fish);
+                    (!choices.is_empty()).then(|| choices[rng.random_range(0..choices.len())])
+                })
+                .collect()
+        }
+        _ => return false,
+    };
+    for mutation in lasting {
+        apply_mutation(fish, mutation, rng);
+    }
+    true
 }
 
 pub fn apply(battle: &mut Battle, item: Item, target: usize) {
@@ -270,7 +316,7 @@ fn consume(battle: &mut Battle, kind: ConsumableKind, target: usize) {
     }
 }
 
-fn milk(battle: &mut Battle, variant: MilkVariant, target: usize) {
+pub fn milk(battle: &mut Battle, variant: MilkVariant, target: usize) {
     let name = battle.fighters[target].name.clone();
     match variant {
         MilkVariant::Plain => {

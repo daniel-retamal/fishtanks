@@ -33,6 +33,7 @@ pub fn wear_curse(kit: &mut Kit, curse: Curse) {
         Curse::FinePrint => kit.add(Trait::FinePrint),
         Curse::Wanting => kit.vigor = (kit.vigor * (PERCENT - WANTING_PERCENT) / PERCENT).max(1),
         Curse::WrongWord => kit.add(Trait::SoftEyes(WRONG_WORD_CRIT)),
+        Curse::Doomed => kit.add(Trait::Doomed),
     }
 }
 

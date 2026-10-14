@@ -65,7 +65,7 @@ pub const FLOORS: [FloorSpec; LAST_FLOOR as usize] = [
     floor(6, "The Hot Zone", TankKind::Rad, 82, Light::Bright),
     floor(7, "The Mainframe", TankKind::Matrix, 62, Light::Dark),
     floor(8, "The Inferno", TankKind::Hell, 70, Light::Bright),
-    floor(9, "The Gate", TankKind::Heaven, 125, Light::Bright),
+    floor(9, "The Gate", TankKind::Heaven, 115, Light::Bright),
     floor(10, "The Eye", TankKind::Void, 85, Light::Dark),
 ];
 

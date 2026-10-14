@@ -1,10 +1,15 @@
+use std::collections::HashSet;
+
 use crate::fishes::fish::Fish;
+use crate::fishes::graveyard::Fate;
+use crate::fishes::species::FishSpecies;
 use crate::tank::{Afterlife, Tank, WorldSignal};
 
 use super::App;
 
 impl App {
-    pub(super) fn bury(&mut self, fish: Fish) {
+    pub(super) fn bury(&mut self, mut fish: Fish, fate: Fate) {
+        fish.fate = Some(fate);
         let wall = self.afterlife_tank(Afterlife::of(&fish));
         if let Some(tank) = wall {
             self.tanks[tank].receive_soul(fish.clone());
@@ -73,12 +78,33 @@ impl App {
     }
 
     pub(super) fn exhume(&mut self, grave: usize) -> Fish {
-        let fish = self.graveyard.remove(grave);
+        let mut fish = self.graveyard.remove(grave);
+        fish.fate = None;
         for tank in &mut self.tanks {
             tank.release_soul(&fish.name);
             tank.clear_grave_name(&fish.name);
         }
         fish
+    }
+
+    pub(super) fn bring_back_a_lost_kind(&mut self, tank: usize) -> bool {
+        let alive: HashSet<FishSpecies> = self
+            .tanks
+            .iter()
+            .flat_map(|tank| tank.fish.iter())
+            .chain(
+                self.dungeon
+                    .expedition
+                    .iter()
+                    .flat_map(|expedition| expedition.party.iter()),
+            )
+            .map(|fish| fish.species)
+            .collect();
+        let lost = self
+            .graveyard
+            .iter()
+            .rposition(|grave| !grave.is_unfish() && !alive.contains(&grave.species));
+        lost.is_some_and(|grave| self.raise_from_grave(grave, tank))
     }
 
     pub(super) fn kill_fish(&mut self, name: &str) -> bool {
@@ -87,7 +113,7 @@ impl App {
         };
         let fish = self.tanks[tank].take_fish(index);
         self.tanks[tank].signal(WorldSignal::Death);
-        self.bury(fish);
+        self.bury(fish, Fate::Killed);
         true
     }
 

@@ -86,6 +86,7 @@ pub const HINT_ENTER_SIGN: &str = "ENTER sign";
 pub const HINT_ENTER_FIGHT: &str = "ENTER fight";
 pub const HINT_ENTER_RIDE: &str = "ENTER ride";
 pub const HINT_ENTER_PICK: &str = "ENTER pick";
+pub const HINT_ENTER_CAST: &str = "ENTER cast";
 pub const HINT_ENTER_ONWARD: &str = "ENTER to the elevator";
 pub const HINT_TAB_READ: &str = "TAB read both";
 pub const HINT_TAB_PACK: &str = "TAB pack";

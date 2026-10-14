@@ -94,4 +94,7 @@ pub struct Habits {
     pub mimed: bool,
     pub occupied: Vec<(i32, i32)>,
     pub toy_clock: f32,
+    pub gazing: bool,
+    pub patches: Vec<ratatui::style::Color>,
+    pub lazarus_clock: Option<f32>,
 }

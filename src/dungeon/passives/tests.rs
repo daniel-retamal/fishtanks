@@ -6,6 +6,7 @@ use crate::dungeon::Difficulty;
 use crate::dungeon::battle::{BattleSetup, Choice, Stakes};
 use crate::dungeon::bestiary::{EnemySpec, Rank};
 use crate::dungeon::fighter::{Fighter, Scale};
+use crate::dungeon::kit::Kit;
 use crate::fishes::fish::Fish;
 use crate::fishes::species::FishSpecies;
 
@@ -182,4 +183,85 @@ fn hue_families_split_the_wheel() {
     let red = family(colors::RED).expect("a hue");
     let cyan = family(colors::LIGHT_CYAN).expect("a hue");
     assert!(opposite(red, cyan));
+}
+
+#[test]
+fn a_gota_squishes_a_big_hit_in_half() {
+    let mut battle = fight(&[FishSpecies::Gota]);
+    let gota = battle.side(Side::Party).next().expect("Gota");
+    let max = battle.fighters[gota].max_hp;
+    let small = (max / SQUISH_SHARE).max(1);
+    assert_eq!(squish(&mut battle, gota, small), small);
+    let big = max / 2;
+    assert_eq!(squish(&mut battle, gota, big), big.div_ceil(2));
+    battle.fighters[gota].traits.retain(|t| *t != Trait::Squish);
+    assert_eq!(squish(&mut battle, gota, big), big);
+}
+
+#[test]
+fn an_ogro_bites_harder_and_its_crits_bleed() {
+    let ogro = Kit::of(&party(&[FishSpecies::Ogro])[0]);
+    assert!(ogro.traits.contains(&Trait::Fangs));
+    let mut battle = fight(&[FishSpecies::Ogro]);
+    let fish = battle.side(Side::Party).next().expect("Ogro");
+    let dummy = battle.side(Side::Foes).next().expect("the dummy");
+    fangs(&mut battle, fish, dummy);
+    assert_eq!(
+        battle.fighters[dummy].status_amount(StatusKind::Bleed),
+        FANG_BLEED
+    );
+}
+
+#[test]
+fn a_barril_is_never_blinded_and_reads_every_enemy_skill() {
+    let battle = fight(&[FishSpecies::Barril]);
+    let barril = battle.side(Side::Party).next().expect("Barril");
+    let blind = Status::for_turns(StatusKind::Blind, 2);
+    assert!(resists(&battle, barril, blind));
+    let kissfish = fight(&[FishSpecies::Kissfish]);
+    let kiss = kissfish.side(Side::Party).next().expect("Kissfish");
+    assert!(!resists(&kissfish, kiss, blind));
+}
+
+#[test]
+fn a_quimera_borrows_one_skill_from_every_other_species_in_the_party() {
+    let battle = fight(&[
+        FishSpecies::Quimera,
+        FishSpecies::Kissfish,
+        FishSpecies::Lionfish,
+        FishSpecies::Merluza,
+    ]);
+    let quimera = battle.side(Side::Party).next().expect("Quimera");
+    let names: Vec<&str> = battle.fighters[quimera]
+        .skills
+        .iter()
+        .map(|skill| skill.name)
+        .collect();
+    assert!(names.contains(&"Kiss"), "{names:?}");
+    assert!(names.contains(&"Venom"), "{names:?}");
+    let alone = fight(&[FishSpecies::Quimera]);
+    let lone = alone.side(Side::Party).next().expect("Quimera");
+    assert_eq!(alone.fighters[lone].skills.len() + 2, names.len());
+}
+
+#[test]
+fn a_celacanto_brings_back_the_first_fish_to_fall_once_a_stack() {
+    let mut battle = fight(&[FishSpecies::Celacanto, FishSpecies::Merluza]);
+    let merluza = battle.side(Side::Party).nth(1).expect("Merluza");
+    let max = battle.fighters[merluza].max_hp;
+    battle.lose_hp(merluza, max, None);
+    assert!(!battle.fighters[merluza].belly_up);
+    assert_eq!(
+        battle.fighters[merluza].hp,
+        (max * LAZARUS_PERCENT / 100).max(1)
+    );
+    let hp = battle.fighters[merluza].hp;
+    battle.lose_hp(merluza, hp, None);
+    assert!(battle.fighters[merluza].belly_up, "one stack, one return");
+}
+
+#[test]
+fn a_hacha_is_hidden_by_its_counter_light() {
+    let kit = Kit::of(&party(&[FishSpecies::Hacha])[0]);
+    assert!(kit.traits.contains(&Trait::CounterLight));
 }

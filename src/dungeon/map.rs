@@ -29,13 +29,14 @@ pub enum RoomKind {
     Vent,
     Cleaning,
     Vending,
+    Hole,
     Wreck,
     Boss,
     Elevator,
 }
 
 impl RoomKind {
-    pub const ALL: [RoomKind; 15] = [
+    pub const ALL: [RoomKind; 16] = [
         RoomKind::Encounter,
         RoomKind::Den,
         RoomKind::Chest,
@@ -48,6 +49,7 @@ impl RoomKind {
         RoomKind::Vent,
         RoomKind::Cleaning,
         RoomKind::Vending,
+        RoomKind::Hole,
         RoomKind::Wreck,
         RoomKind::Boss,
         RoomKind::Elevator,
@@ -67,6 +69,7 @@ impl RoomKind {
             RoomKind::Vent => '~',
             RoomKind::Cleaning => 'H',
             RoomKind::Vending => '¤',
+            RoomKind::Hole => 'J',
             RoomKind::Wreck => '&',
             RoomKind::Boss => 'ω',
             RoomKind::Elevator => '▼',
@@ -87,6 +90,7 @@ impl RoomKind {
             RoomKind::Vent => "vent",
             RoomKind::Cleaning => "cleaners",
             RoomKind::Vending => "vending",
+            RoomKind::Hole => "fishing hole",
             RoomKind::Wreck => "wreck",
             RoomKind::Boss => "boss",
             RoomKind::Elevator => "elevator",
@@ -107,6 +111,7 @@ impl RoomKind {
             RoomKind::Vent => "Hydrothermal Vent",
             RoomKind::Cleaning => "Cleaning Station",
             RoomKind::Vending => "Vending Machine",
+            RoomKind::Hole => "Fishing Hole",
             RoomKind::Wreck => "Wreck",
             RoomKind::Boss => "Lair",
             RoomKind::Elevator => "Elevator",
@@ -127,6 +132,7 @@ impl RoomKind {
             RoomKind::Vent => 5,
             RoomKind::Cleaning => 3,
             RoomKind::Vending => 3,
+            RoomKind::Hole => 3,
             RoomKind::Wreck | RoomKind::Boss | RoomKind::Elevator => 0,
         }
     }
@@ -141,6 +147,7 @@ impl RoomKind {
                 | RoomKind::Vent
                 | RoomKind::Cleaning
                 | RoomKind::Vending
+                | RoomKind::Hole
         )
     }
 

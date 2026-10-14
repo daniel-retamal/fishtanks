@@ -7,6 +7,7 @@ use unicode_width::UnicodeWidthChar;
 
 use super::botfish::{ANTENNA_LENGTH, ANTENNA_STALK, ANTENNA_TIP, BODY_COLOR, BotfishState};
 use super::fused::FusedComponent;
+use super::graveyard::Fate;
 use super::habits::Habits;
 use super::mutant::{
     Adornments, Circadian, EXTRA_BODY_FOR_DOUBLE, MutantState, MutantTail, MutationRecord,
@@ -199,6 +200,7 @@ pub struct Fish {
     pub habits: Box<Habits>,
     pub leeched: bool,
     pub deep: Option<Box<DeepLife>>,
+    pub fate: Option<Fate>,
     direction_timer: u32,
     zoomie_timer: f32,
     zoomed_secs: f32,
@@ -331,6 +333,7 @@ impl Fish {
             habits: Box::default(),
             leeched: false,
             deep: None,
+            fate: None,
         };
         grow_birthmarks(&mut fish, rng);
         fish.fit_the_toy();
@@ -383,6 +386,7 @@ impl Fish {
             habits: Box::default(),
             leeched: false,
             deep: None,
+            fate: None,
         };
         grow_birthmarks(&mut fish, rng);
         fish.fit_the_toy();
@@ -449,6 +453,7 @@ impl Fish {
             habits: Box::default(),
             leeched: false,
             deep: None,
+            fate: None,
         };
         if !is_multi_row(kind) && kind != UnfishKind::Worm {
             fish.display_width = fish.unfish_line_width();

@@ -14,6 +14,8 @@ pub const SKILLS: &str = "Skills";
 pub const JOINED: &str = "joined on the way";
 pub const BELLY_UP: &str = "belly up";
 pub const NOTHING_PACKED: &str = "Nothing is packed.";
+pub const A_COW: &str = "a cow";
+pub const COMES_HOME: &str = "comes home with the party";
 
 fn browse(title: &str, art: Scene, text: Vec<LogLine>, rows: Vec<Row>) -> Panel {
     Panel {
@@ -44,8 +46,9 @@ impl Expedition {
     }
 
     pub fn party_sheet(&self, at: usize) -> Panel {
-        let at = at.min(self.party.len().saturating_sub(1));
-        let rows = (0..self.party.len())
+        let fish_count = self.party.len();
+        let at = at.min((fish_count + self.cows.len()).saturating_sub(1));
+        let mut rows: Vec<Row> = (0..fish_count)
             .map(|member| {
                 let health = self.health(member);
                 Row::new(self.party[member].name.clone(), Act::Choice(member as u8))
@@ -53,14 +56,33 @@ impl Expedition {
                     .about(fish(&self.party[member]))
             })
             .collect();
-        let art = match self.party.get(at) {
-            Some(member) => {
+        for (herd, cow) in self.cows.iter().enumerate() {
+            rows.push(
+                Row::new(cow.name.clone(), Act::Choice((fish_count + herd) as u8))
+                    .note(A_COW, Tone::Quiet)
+                    .about(kit_lines(&Kit::of_cow(cow))),
+            );
+        }
+        let art = match (
+            self.party.get(at),
+            self.cows.get(at.saturating_sub(fish_count)),
+        ) {
+            (Some(member), _) => {
                 let home = self.homes.get(at).map_or(JOINED, String::as_str);
                 let mut card = fish_card(member, home, false);
                 card.caption.push(self.health(at));
                 Scene::Card(card)
             }
-            None => Scene::Rows(&[]),
+            (None, Some(cow)) => Scene::Card(Card {
+                title: cow.name.clone(),
+                portrait: Portrait::Cow(Box::new(cow.clone())),
+                caption: vec![
+                    LogLine::new(A_COW, Tone::Plain),
+                    LogLine::new(COMES_HOME, Tone::Quiet),
+                ],
+                lit: false,
+            }),
+            (None, None) => Scene::Rows(&[]),
         };
         browse("Party", art, Vec::new(), rows)
     }
@@ -113,7 +135,28 @@ pub fn caption(fish: &Fish, home: &str) -> Vec<LogLine> {
 }
 
 pub fn fish(fish: &Fish) -> Vec<LogLine> {
-    let kit = Kit::of(fish);
+    let mut lines = kit_lines(&Kit::of(fish));
+    if let Some(life) = fish.deep.as_ref() {
+        if !life.boons.is_empty() || !life.curses.is_empty() {
+            lines.push(blank());
+        }
+        for boon in &life.boons {
+            lines.push(LogLine::new(
+                format!("{}: {}", boon.name(), boon.description()),
+                Tone::Heal,
+            ));
+        }
+        for curse in &life.curses {
+            lines.push(LogLine::new(
+                format!("{}: {}", curse.name(), curse.description()),
+                Tone::Hurt,
+            ));
+        }
+    }
+    lines
+}
+
+pub fn kit_lines(kit: &Kit) -> Vec<LogLine> {
     let mut lines = vec![
         LogLine::new(
             format!(
@@ -147,23 +190,6 @@ pub fn fish(fish: &Fish) -> Vec<LogLine> {
         ));
         if !skill.about.is_empty() {
             lines.push(LogLine::new(skill.about.clone(), Tone::Plain));
-        }
-    }
-    if let Some(life) = fish.deep.as_ref() {
-        if !life.boons.is_empty() || !life.curses.is_empty() {
-            lines.push(blank());
-        }
-        for boon in &life.boons {
-            lines.push(LogLine::new(
-                format!("{}: {}", boon.name(), boon.description()),
-                Tone::Heal,
-            ));
-        }
-        for curse in &life.curses {
-            lines.push(LogLine::new(
-                format!("{}: {}", curse.name(), curse.description()),
-                Tone::Hurt,
-            ));
         }
     }
     lines

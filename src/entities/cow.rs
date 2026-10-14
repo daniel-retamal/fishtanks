@@ -30,6 +30,7 @@ const COW_HEAD_CAP: usize = 5;
 const COW_HEAD_TOP_W: usize = 4;
 pub const COW_DEFAULT_SWAY_SPEED: f32 = 0.05;
 pub const COW_TRANSPARENT: char = crate::sprite::TRANSPARENT;
+pub const COW_NAME: &str = "Vaquita";
 pub const COW_ANTENNA_ROWS: u16 = 1;
 const ANTENNA_BALL: char = 'o';
 const ANTENNA_LEFT_STEM: char = '\\';

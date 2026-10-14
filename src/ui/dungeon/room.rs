@@ -14,10 +14,10 @@ use crate::economy::grouped;
 use crate::ui::catch_overlay::{food_sprite_rows, stock_sprite};
 use crate::ui::hint_bar::HintBar;
 use crate::ui::hints::{
-    HINT_CHOOSE, HINT_ENTER_BUY, HINT_ENTER_FIGHT, HINT_ENTER_HIRE, HINT_ENTER_ONWARD,
-    HINT_ENTER_PAY, HINT_ENTER_PICK, HINT_ENTER_PRAY, HINT_ENTER_RIDE, HINT_ENTER_SELECT,
-    HINT_ENTER_SIGN, HINT_ESC_BACK, HINT_ESC_LEAVE, HINT_HOW_MANY, HINT_TAB_PACK, HINT_TAB_READ,
-    HINT_WHICH_FISH,
+    HINT_CHOOSE, HINT_ENTER_BUY, HINT_ENTER_CAST, HINT_ENTER_FIGHT, HINT_ENTER_HIRE,
+    HINT_ENTER_ONWARD, HINT_ENTER_PAY, HINT_ENTER_PICK, HINT_ENTER_PRAY, HINT_ENTER_RIDE,
+    HINT_ENTER_SELECT, HINT_ENTER_SIGN, HINT_ESC_BACK, HINT_ESC_LEAVE, HINT_HOW_MANY,
+    HINT_TAB_PACK, HINT_TAB_READ, HINT_WHICH_FISH,
 };
 use crate::ui::layout::{Screen, Scroll, Scrollbar};
 use crate::ui::modal::clear;
@@ -90,6 +90,7 @@ fn verb_hint(verb: Verb) -> Option<&'static str> {
         Verb::Ride => HINT_ENTER_RIDE,
         Verb::Pick => HINT_ENTER_PICK,
         Verb::Pack => HINT_ENTER_ONWARD,
+        Verb::Cast => HINT_ENTER_CAST,
         Verb::Browse => return None,
     })
 }
@@ -283,6 +284,7 @@ fn seabed(canvas: &mut Canvas, x: usize, y: usize, width: usize) {
 fn cards(card: &Card) -> Vec<Canvas> {
     let (portrait, grounded) = match &card.portrait {
         Portrait::Fish(fish) => (Canvas::fish(fish).trimmed(), true),
+        Portrait::Cow(cow) => (Canvas::cow(cow).trimmed(), true),
         Portrait::Item(item) => (item_canvas(*item), false),
     };
     let pw = portrait.width() as usize;

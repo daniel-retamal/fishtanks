@@ -51,6 +51,10 @@ pub const DEVILS_COIN_PERCENT: u32 = 25;
 pub const SECOND_WIND_PERCENT: u32 = 25;
 pub const FORK_PERCENT: u32 = 50;
 pub const WRATH_STEP_PERCENT: u32 = 10;
+pub const SQUISH_SHARE: u32 = 5;
+pub const FANG_BLEED: u32 = 4;
+pub const FANG_TURNS: u8 = 3;
+pub const LAZARUS_PERCENT: u32 = 50;
 pub const HUNTER_TIMES: u32 = 2;
 pub const BODY_COLOUR_TIMES: u32 = 2;
 pub const PATCH_PERCENT: u32 = 25;
@@ -167,6 +171,70 @@ pub fn assemble(battle: &mut Battle) {
     }
     envy(battle, &members);
     combine(battle, &members);
+    chimera(battle, &members);
+}
+
+fn chimera(battle: &mut Battle, members: &[usize]) {
+    for &chimera in members {
+        if !has(battle, chimera, Trait::Chimera) {
+            continue;
+        }
+        let Some(own) = battle.fighters[chimera].member() else {
+            continue;
+        };
+        let mut borrowed = Vec::new();
+        for &other in members {
+            let Some(member) = battle.fighters[other].member() else {
+                continue;
+            };
+            if member == own {
+                continue;
+            }
+            let fish = &battle.party[member];
+            for species in fish.ability_components() {
+                if battle.party[own].ability_stacks(species) > 0 {
+                    continue;
+                }
+                let mut scratch = super::kit::Kit::of(fish);
+                scratch.skills.clear();
+                let role = super::tables::species::role_of(species);
+                super::tables::species::wear(&mut scratch, fish, role, 1);
+                if let Some(skill) = scratch.skills.into_iter().next() {
+                    borrowed.push(skill);
+                }
+            }
+        }
+        let skills = &mut battle.fighters[chimera].skills;
+        for skill in borrowed {
+            if !skills.iter().any(|known| known.name == skill.name) {
+                skills.push(skill);
+            }
+        }
+    }
+}
+
+pub fn squish(battle: &mut Battle, target: usize, damage: u32) -> u32 {
+    let t = &battle.fighters[target];
+    if !t.has(Trait::Squish) || damage * SQUISH_SHARE <= t.max_hp {
+        return damage;
+    }
+    let name = t.name.clone();
+    battle.note(
+        format!("{name} squishes, and the hit spreads out."),
+        Tone::Status,
+    );
+    damage.div_ceil(super::battle::HALF)
+}
+
+pub fn fangs(battle: &mut Battle, actor: usize, target: usize) {
+    if !has(battle, actor, Trait::Fangs) || battle.fighters[target].gone {
+        return;
+    }
+    battle.inflict(
+        actor,
+        target,
+        Status::new(StatusKind::Bleed, FANG_TURNS, FANG_BLEED),
+    );
 }
 
 fn in_palette<'a>(traits: impl Iterator<Item = &'a Trait>, palette: &[u32]) -> bool {
@@ -507,6 +575,7 @@ pub fn resists(battle: &Battle, target: usize, status: Status) -> bool {
     });
     match status.kind {
         StatusKind::Blind | StatusKind::Dazzled if see_through.is_some() => true,
+        StatusKind::Blind => t.has(Trait::LooksUp),
         StatusKind::Dreaming | StatusKind::Astray => t.has(Trait::Sealed),
         StatusKind::Bleed | StatusKind::Poison | StatusKind::Rot => t.has(Trait::Construct),
         StatusKind::Contract => t.has(Trait::HelpedByGod),
@@ -591,8 +660,36 @@ pub fn saved_from_falling(battle: &mut Battle, target: usize) -> bool {
         split_the_worm(battle, target);
         return true;
     }
-    false
+    lazarus(battle, target)
 }
+
+fn lazarus(battle: &mut Battle, target: usize) -> bool {
+    let spent =
+        |f: &super::fighter::Fighter| f.once.iter().filter(|&&t| t == LAZARUS_SPENT).count() as u32;
+    let raiser = battle.standing(Side::Party).into_iter().find(|&i| {
+        let f = &battle.fighters[i];
+        f.trait_value(|t| match t {
+            Trait::Lazarus(stacks) => Some(*stacks),
+            _ => None,
+        })
+        .is_some_and(|stacks| spent(f) < stacks)
+    });
+    let Some(raiser) = raiser else {
+        return false;
+    };
+    battle.fighters[raiser].once.push(LAZARUS_SPENT);
+    let f = &mut battle.fighters[target];
+    f.hp = (f.max_hp * LAZARUS_PERCENT / PERCENT).max(1);
+    let name = f.name.clone();
+    let by = battle.fighters[raiser].name.clone();
+    battle.note(
+        format!("{by} will not let {name} go. It comes back at half."),
+        Tone::Heal,
+    );
+    true
+}
+
+const LAZARUS_SPENT: Trait = Trait::Lazarus(0);
 
 fn split_the_worm(battle: &mut Battle, target: usize) {
     let Some(member) = battle.fighters[target].member() else {

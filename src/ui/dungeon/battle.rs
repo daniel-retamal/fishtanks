@@ -19,6 +19,7 @@ use crate::dungeon::info::{Info, Ink};
 use crate::dungeon::skill::{EMPTY_BUBBLE, FULL_BUBBLE, cost_label};
 use crate::dungeon::state::{Answer, Command, FightState, Menu, Pending};
 use crate::economy::grouped;
+use crate::entities::cow::{COW_TRANSPARENT, Cow, cow_sprite};
 use crate::fishes::fish::{Direction, Fish};
 use crate::ui::hint_bar::HintBar;
 use crate::ui::hints::{
@@ -89,6 +90,7 @@ pub(super) fn inverse(bg: Color) -> Style {
 #[derive(Clone, Copy)]
 pub(super) enum Art<'a> {
     Fish(&'a Fish),
+    Cow(&'a Cow),
     Rows(&'a [SpriteRow]),
 }
 
@@ -96,6 +98,11 @@ impl Art<'_> {
     fn width(self) -> u16 {
         match self {
             Art::Fish(fish) => fish.display_width as u16,
+            Art::Cow(cow) => cow_sprite(cow)
+                .iter()
+                .map(|row| row.len())
+                .max()
+                .unwrap_or(0) as u16,
             Art::Rows(rows) => rows.iter().map(|row| row.width() as u16).max().unwrap_or(0),
         }
     }
@@ -103,6 +110,7 @@ impl Art<'_> {
     fn height(self) -> u16 {
         match self {
             Art::Fish(fish) => fish_rows(fish),
+            Art::Cow(cow) => cow_sprite(cow).len() as u16,
             Art::Rows(rows) => rows.len() as u16,
         }
     }
@@ -152,6 +160,10 @@ impl<'a> Scene<'a> {
         match &battle.fighters[index].origin {
             Origin::Fish { member } => match battle.party.get(*member) {
                 Some(fish) => Art::Fish(fish),
+                None => Art::Rows(&[]),
+            },
+            Origin::Cow { herd } => match battle.cows.get(*herd) {
+                Some(cow) => Art::Cow(cow),
                 None => Art::Rows(&[]),
             },
             Origin::Enemy { spec } => Art::Rows(spec.sprite),
@@ -272,6 +284,7 @@ pub(super) fn draw_art(buf: &mut Buffer, art: Art, area: Rect, belly_up: bool) {
             pose.abduction_lock = belly_up;
             draw_fish_centred(buf, &pose, area, BACKGROUND);
         }
+        Art::Cow(cow) => draw_cow(buf, cow, area),
     }
     if !belly_up {
         return;
@@ -281,6 +294,29 @@ pub(super) fn draw_art(buf: &mut Buffer, art: Art, area: Rect, belly_up: bool) {
             if buf[(x, y)].symbol() != " " {
                 buf[(x, y)].set_fg(DARK_GRAY);
             }
+        }
+    }
+}
+
+fn draw_cow(buf: &mut Buffer, cow: &Cow, area: Rect) {
+    let rows = cow_sprite(cow);
+    let width = rows.iter().map(Vec::len).max().unwrap_or(0) as u16;
+    let x0 = area.x + area.width.saturating_sub(width) / 2;
+    let y0 = area.y + area.height.saturating_sub(rows.len() as u16) / 2;
+    for (dy, row) in rows.iter().enumerate() {
+        for (dx, &(glyph, colour)) in row.iter().enumerate() {
+            let (x, y) = (x0 + dx as u16, y0 + dy as u16);
+            if glyph == COW_TRANSPARENT || x >= area.right() || y >= area.bottom() {
+                continue;
+            }
+            put(
+                buf,
+                i32::from(x),
+                i32::from(y),
+                &glyph.to_string(),
+                style(colour),
+                area,
+            );
         }
     }
 }

@@ -300,7 +300,7 @@ impl Diver {
             (RoomKind::Event | RoomKind::BellJar, _) => 2,
             (RoomKind::Vent | RoomKind::Shrine | RoomKind::Vending, _) => 2,
             (RoomKind::Cleaning | RoomKind::Chest, _) => 1,
-            (RoomKind::Altar | RoomKind::Boss | RoomKind::Elevator, _) => 0,
+            (RoomKind::Altar | RoomKind::Hole | RoomKind::Boss | RoomKind::Elevator, _) => 0,
         }
     }
 
@@ -311,12 +311,17 @@ impl Diver {
                 Ok(())
             }
             Next::Home => Err("rode up".to_string()),
+            Next::Cast => {
+                self.expedition.cast_spent();
+                Ok(())
+            }
+            Next::Bench(_) => Ok(()),
             Next::Stay | Next::Map | Next::Fight => Ok(()),
         }
     }
 
     fn room(&mut self) -> Result<(), String> {
-        let Some(panel) = self.expedition.panel(0, &self.ground.wrecks) else {
+        let Some(panel) = self.expedition.panel(0, &self.ground.above()) else {
             return Ok(());
         };
         let usable: Vec<Act> = panel

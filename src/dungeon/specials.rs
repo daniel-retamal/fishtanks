@@ -1,8 +1,10 @@
 use rand::RngExt;
 
+use crate::entities::cow::{COW_NAME, Cow, CowVariant};
 use crate::fishes::fish::Fish;
 use crate::fishes::mutations::{Mutatable, Mutation};
 use crate::fishes::species::FishSpecies;
+use crate::loot::Companion;
 
 use super::battle::{Battle, HALF, MAX_FIGHTERS};
 use super::beat::Tone;
@@ -648,8 +650,18 @@ pub fn perform(
             );
         }
         Special::Milk => {
-            if let Some(target) = first {
-                battle.heal(target, MILK_HEAL);
+            let Some(target) = first else {
+                return;
+            };
+            match battle.fighters[actor]
+                .herd()
+                .and_then(|herd| battle.cows.get(herd))
+            {
+                Some(cow) => {
+                    let milk = cow.variant.milk();
+                    super::items::milk(battle, milk, target);
+                }
+                None => battle.heal(target, MILK_HEAL),
             }
         }
     }
@@ -789,10 +801,13 @@ fn call_home(battle: &mut Battle, actor: usize) {
     if battle.fighters.len() >= MAX_FIGHTERS {
         return;
     }
-    let wild = FishSpecies::all_wild();
-    let species = wild[battle.rng.random_range(0..wild.len())];
+    let tank = super::floor::FloorSpec::of(battle.setup.floor).tank;
+    let species = match Companion::roll(tank, &mut battle.rng) {
+        Companion::Fish(species) => species,
+        Companion::Cow(variant) => return call_a_cow(battle, actor, variant),
+    };
     let mut companion = Fish::new(species, String::new(), 0.0, 0.0, &mut battle.rng);
-    companion.name = format!("{} from Above", species.display_name());
+    companion.name = format!("{}{FROM_ABOVE}", species.display_name());
     crate::fishes::mutations::apply_mutation(&mut companion, Mutation::Alienation, &mut battle.rng);
     let index = battle.party.len();
     let kit = Kit::of(&companion);
@@ -807,6 +822,19 @@ fn call_home(battle: &mut Battle, actor: usize) {
     );
 }
 
+fn call_a_cow(battle: &mut Battle, actor: usize, variant: CowVariant) {
+    let name = format!("{COW_NAME}{FROM_ABOVE}");
+    let mut cow = Cow::new(name.clone(), variant, 0.0, 0.0, &mut battle.rng);
+    crate::fishes::mutations::apply_mutation(&mut cow, Mutation::Alienation, &mut battle.rng);
+    let index = battle.join_cow(cow);
+    battle.fighters[index].ready_at = battle.clock + battle.wait_of(actor);
+    battle.note(
+        format!("A UFO drops {name}. It joins the party."),
+        Tone::Gold,
+    );
+}
+
+pub const FROM_ABOVE: &str = " from Above";
 pub const GHOST: &str = "Ghost of your dead";
 pub const HYMN_VERSES: u32 = 3;
 pub const MIRACLE_VERSES: u32 = 5;

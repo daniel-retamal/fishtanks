@@ -1,3 +1,6 @@
+use crate::fishes::graveyard::Fate;
+use crate::fishes::species::Sin;
+
 use super::bestiary::{EnemySpec, Rank};
 use super::effect::{Status, StatusKind};
 use super::kit::Kit;
@@ -14,6 +17,10 @@ pub struct Ghost {
     pub vigor: u32,
     pub bite: u32,
     pub speed: u32,
+    #[serde(default)]
+    pub sin: Option<Sin>,
+    #[serde(default)]
+    pub fate: Option<Fate>,
 }
 
 impl Ghost {
@@ -25,6 +32,8 @@ impl Ghost {
             vigor: kit.vigor,
             bite: kit.bite,
             speed: kit.speed,
+            sin: fish.sin(),
+            fate: fish.fate,
         }
     }
 }
@@ -47,6 +56,7 @@ impl Side {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Origin {
     Fish { member: usize },
+    Cow { herd: usize },
     Enemy { spec: &'static EnemySpec },
 }
 
@@ -222,17 +232,30 @@ impl Fighter {
         fighter
     }
 
+    pub fn of_cow(kit: &Kit, herd: usize) -> Fighter {
+        let mut fighter = Fighter::of_kit(kit, 0);
+        fighter.origin = Origin::Cow { herd };
+        fighter
+    }
+
     pub fn spec(&self) -> Option<&'static EnemySpec> {
         match self.origin {
             Origin::Enemy { spec } => Some(spec),
-            Origin::Fish { .. } => None,
+            Origin::Fish { .. } | Origin::Cow { .. } => None,
         }
     }
 
     pub fn member(&self) -> Option<usize> {
         match self.origin {
             Origin::Fish { member } => Some(member),
-            Origin::Enemy { .. } => None,
+            Origin::Enemy { .. } | Origin::Cow { .. } => None,
+        }
+    }
+
+    pub fn herd(&self) -> Option<usize> {
+        match self.origin {
+            Origin::Cow { herd } => Some(herd),
+            Origin::Fish { .. } | Origin::Enemy { .. } => None,
         }
     }
 

@@ -1764,3 +1764,57 @@ fn the_deep_demo_runs_keystroke_for_keystroke() {
     tui.write_reel();
     assert_no_broken_borders(&tui);
 }
+
+#[test]
+fn the_deep_floors_demo_runs_keystroke_for_keystroke() {
+    let mut tui = Tui::as_player(120, 38);
+    tui.film(Path::new(REEL_DIR), "demo-the-deep-floors");
+    tui.run("/sell fish \"Eva\"");
+    tui.run("!debugmode");
+    tui.run("/spawn quimera \"Retazos\"");
+    tui.run("/spawn barril \"Domo\"");
+    tui.run("/spawn gota \"Gota\"");
+    tui.tick_n(60);
+    let spawned = tui.app.tanks[0]
+        .fish
+        .iter()
+        .filter(|fish| fish.species.config().habitat == fishtank::fishes::species::Habitat::Deep)
+        .count();
+    assert_eq!(spawned, 3, "debug mode spawns the Deep's own fish");
+    tui.snap("0. three fish of the Deep, spawned in debug mode");
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter).key(KeyCode::Tab);
+    tui.key(KeyCode::Enter).key(KeyCode::Enter);
+    tui.screen().expect_find("from your tanks");
+    tui.snap("1. Eva sold, debug mode on, Adam alone on the first floor");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"The Séance Table\"");
+    tui.screen().expect_find("Call Eva");
+    tui.screen().expect_find("sold");
+    tui.snap("2. /room \"The Séance Table\": the Graveyard's séance, Eva carved round the edge");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Eva remembers, and it is angry.");
+    tui.snap("3. ENTER calls Eva: she was sold, and she remembers");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"A Giant Pearl\"");
+    tui.screen().expect_find("Reach in");
+    tui.snap("4. /room \"A Giant Pearl\": a Reef event");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Fishing Hole\"");
+    tui.screen().expect_find("Casts left: 3");
+    tui.snap("5. /room \"Fishing Hole\": three casts, Deep catches only");
+    tui.key(KeyCode::Enter);
+    assert!(tui.app.fishing_state().is_some(), "the real minigame");
+    tui.snap("6. ENTER casts: the real fishing minigame");
+    tui.key(KeyCode::Esc);
+    tui.screen().expect_find("Casts left: 2");
+    tui.snap("7. ESC lets it go: back at the hole, one cast spent");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Hydrothermal Vent\"");
+    tui.screen().expect_find("Program a botfish");
+    tui.screen().expect_find("needs a Fabricator");
+    tui.snap("8. /room \"Hydrothermal Vent\": the workshop rows");
+    tui.key(KeyCode::Esc);
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}

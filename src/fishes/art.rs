@@ -147,3 +147,87 @@ pub static HAMMERFISH: Figure = Figure {
     }],
     zooming: None,
 };
+
+pub static GOTA: Figure = Figure {
+    left: &[Art {
+        lines: &["<(°_°)~"],
+        paint: &["00e0e00"],
+        body_row: 0,
+    }],
+    right: &[Art {
+        lines: &["~(°_°)>"],
+        paint: &["00e0e00"],
+        body_row: 0,
+    }],
+    zooming: None,
+};
+
+pub static HACHA: Figure = Figure {
+    left: &[Art {
+        lines: &["  /|", "<°|><", " '\"'"],
+        paint: &["  00", "0e000", " 111"],
+        body_row: 1,
+    }],
+    right: &[Art {
+        lines: &[" |\\", "><|°>", " '\"'"],
+        paint: &[" 00", "000e0", " 111"],
+        body_row: 1,
+    }],
+    zooming: None,
+};
+
+pub static BARRIL: Figure = Figure {
+    left: &[Art {
+        lines: &["(oo)(((((><"],
+        paint: &["1ee10000000"],
+        body_row: 0,
+    }],
+    right: &[Art {
+        lines: &["><)))))(oo)"],
+        paint: &["00000001ee1"],
+        body_row: 0,
+    }],
+    zooming: None,
+};
+
+pub static OGRO: Figure = Figure {
+    left: &[Art {
+        lines: &["vVv°((<>"],
+        paint: &["111e0000"],
+        body_row: 0,
+    }],
+    right: &[Art {
+        lines: &["><))°vVv"],
+        paint: &["0000e111"],
+        body_row: 0,
+    }],
+    zooming: None,
+};
+
+pub static QUIMERA: Figure = Figure {
+    left: &[Art {
+        lines: &["      |\\", "<°((]{(<>~~~", "     |/"],
+        paint: &["      11", "0e0011000222", "     11"],
+        body_row: 1,
+    }],
+    right: &[Art {
+        lines: &["    /|", "~~~><)}]))°>", "     \\|"],
+        paint: &["    11", "2220001100e0", "     11"],
+        body_row: 1,
+    }],
+    zooming: None,
+};
+
+pub static CELACANTO: Figure = Figure {
+    left: &[Art {
+        lines: &["     ,/\\,", "<°(%%%%(<>{~", "     '\\/'"],
+        paint: &["     2222", "0e0111100022", "     2222"],
+        body_row: 1,
+    }],
+    right: &[Art {
+        lines: &["   ,/\\,", "~}><)%%%%)°>", "   '\\/'"],
+        paint: &["   2222", "2200011110e0", "   2222"],
+        body_row: 1,
+    }],
+    zooming: None,
+};

@@ -18,6 +18,7 @@ enum Reach {
     Next,
     Known,
     Bosses,
+    Skills,
 }
 
 pub fn assemble(battle: &mut Battle) {
@@ -122,6 +123,13 @@ fn reader_of(battle: &Battle, foe: usize, next: bool) -> Option<usize> {
                 Reach::Next => next,
                 Reach::Known => battle.setup.known.contains(&battle.fighters[foe].base),
                 Reach::Bosses => battle.fighters[foe].is_boss(),
+                Reach::Skills => matches!(
+                    battle.fighters[foe].foresight,
+                    Some(Foresight {
+                        plan: Plan::Skill { .. },
+                        ..
+                    })
+                ),
             })
     })
 }
@@ -140,6 +148,9 @@ fn reaches(battle: &Battle, reader: usize, graeae: usize) -> Vec<Reach> {
     }
     if fighter.has(Trait::CoreStack) {
         reaches.push(Reach::Known);
+    }
+    if fighter.has(Trait::LooksUp) {
+        reaches.push(Reach::Skills);
     }
     if fighter.has(Trait::Graeae) && graeae > 0 && battle.setup.every_graeae {
         reaches.push(Reach::Bosses);

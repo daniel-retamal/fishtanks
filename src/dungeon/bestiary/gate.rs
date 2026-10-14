@@ -1,6 +1,7 @@
 use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
 use crate::dungeon::effect::{Effect, Reach, Special, StatusKind};
 use crate::dungeon::traits::{BodyParts, Trait};
+use crate::fishes::species::FishSpecies;
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -323,7 +324,11 @@ pub const ROWS: &[EnemySpec] = &[
         traits: &[Trait::LastTrump(5)],
         loot: &[
             Loot::Named("the Herald's Trumpet (charm)"),
-            Loot::Hardcore("Celacanto"),
+            Loot::Fish {
+                species: FishSpecies::Celacanto,
+                one_in: 1,
+                hardcore: true,
+            },
         ],
         variant_of: None,
         note: "",

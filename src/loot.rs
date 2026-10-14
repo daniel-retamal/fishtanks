@@ -1237,6 +1237,25 @@ impl LootPool {
         self
     }
 
+    pub fn of_the_hole(kind: TankKind) -> Self {
+        let mut pool = Self::default_pool()
+            .with_native(kind)
+            .keeping_species(|_| false)
+            .with_deep();
+        pool.slots
+            .retain(|(_, slot)| !matches!(slot, PoolSlot::Cash | PoolSlot::Food));
+        pool
+    }
+
+    pub fn with_deep(mut self) -> Self {
+        for species in FishSpecies::of_the_deep() {
+            if species.config().rarity != Rarity::Legendary {
+                self.join_school(species);
+            }
+        }
+        self
+    }
+
     fn join_school(&mut self, species: FishSpecies) {
         let rarity = species.config().rarity;
         if let Some((_, members)) = self.schools.iter_mut().find(|(r, _)| *r == rarity) {
@@ -1636,6 +1655,24 @@ mod tests {
             if species.config().buyable
                 || matches!(species.config().habitat, Habitat::Nowhere | Habitat::Claw)
             {
+                continue;
+            }
+            if species.config().habitat == Habitat::Deep {
+                let caught = LootPool::default_pool()
+                    .keeping_species(|_| false)
+                    .with_deep()
+                    .species()
+                    .contains(&species);
+                let dropped = crate::dungeon::bestiary::all().any(|spec| {
+                    spec.loot.iter().any(|loot| {
+                        matches!(loot, crate::dungeon::bestiary::Loot::Fish { species: s, .. } if *s == species)
+                    })
+                });
+                assert!(
+                    caught || dropped,
+                    "{} never comes out of the Deep",
+                    species.display_name()
+                );
                 continue;
             }
             if species.config().habitat == Habitat::Junkpile {

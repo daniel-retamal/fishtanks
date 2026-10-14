@@ -1,6 +1,6 @@
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
-use crate::dungeon::Wreck;
+use crate::dungeon::Above;
 use crate::dungeon::expedition::Expedition;
 use crate::dungeon::screen::{DungeonState, View};
 use crate::ui::layout::Screen;
@@ -13,7 +13,7 @@ mod room;
 pub struct DungeonOverlay<'a> {
     state: &'a DungeonState,
     expedition: Option<&'a Expedition>,
-    wrecks: &'a [Wreck],
+    above: Above<'a>,
     screen: Screen,
 }
 
@@ -21,13 +21,13 @@ impl<'a> DungeonOverlay<'a> {
     pub fn new(
         state: &'a DungeonState,
         expedition: Option<&'a Expedition>,
-        wrecks: &'a [Wreck],
+        above: Above<'a>,
         screen: Screen,
     ) -> Self {
         Self {
             state,
             expedition,
-            wrecks,
+            above,
             screen,
         }
     }
@@ -58,7 +58,7 @@ impl Widget for DungeonOverlay<'_> {
                 self.screen,
             ),
             (View::Room(lobby), Some(expedition)) => {
-                let Some(panel) = expedition.panel(lobby.fish, self.wrecks) else {
+                let Some(panel) = expedition.panel(lobby.fish, &self.above) else {
                     return;
                 };
                 let sheet = room::Sheet {

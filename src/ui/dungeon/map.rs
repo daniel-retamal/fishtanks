@@ -322,6 +322,24 @@ pub fn side_lines(expedition: &Expedition, width: usize) -> Vec<Vec<Span>> {
         spans.extend(vitals(&view));
         lines.push(spans);
     }
+    for cow in &expedition.cows {
+        let kit = Kit::of_cow(cow);
+        let view = View {
+            hp: kit.vigor,
+            max_hp: kit.vigor,
+            mp: kit.start_mp.min(kit.max_mp),
+            max_mp: kit.max_mp,
+            rolling: 0,
+            belly_up: false,
+            gone: false,
+            shield: 0,
+            statuses: Vec::new(),
+        };
+        let name = ellipsize(&cow.name, NAME_W - 1);
+        let mut spans = vec![(format!("{name:<NAME_W$}"), style(WHITE))];
+        spans.extend(vitals(&view));
+        lines.push(spans);
+    }
     lines.push(Vec::new());
     lines.push(vec![
         ("Haul   ".to_string(), style(DARK_GRAY)),

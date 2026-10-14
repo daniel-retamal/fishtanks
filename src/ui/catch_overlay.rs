@@ -46,6 +46,10 @@ const NAME_LABEL: &str = "Name it";
 const CONGRATULATIONS: &str = "Congratulations!";
 const CASH_ASIDE: &str = "Chasing cash, making money.";
 const ADDED_TO_INVENTORY: &str = "Added to inventory";
+const ADDED_TO_THE_HAUL: &str = "Added to the haul";
+const HOME: &str = "Fishtank";
+const PARTY: &str = "Party";
+const HAUL: &str = "Haul";
 const MILK_OVERLAY_HEIGHT: u16 = 9;
 
 const DEMON_CORE_OVERLAY_HEIGHT: u16 = 9;
@@ -70,6 +74,7 @@ const BURGER: Color = BROWN_DARK;
 
 pub struct CatchState {
     pub loot: LootKind,
+    pub below: bool,
     pub fish: Option<Fish>,
     pub name_input: TextInput,
     pub cursor_visible: bool,
@@ -111,6 +116,7 @@ impl CatchState {
             .collect();
         Self {
             loot,
+            below: false,
             fish,
             name_input: TextInput::new(),
             cursor_visible: true,
@@ -195,7 +201,7 @@ impl Widget for CatchOverlay<'_> {
         let lines = card_lines(state);
         let hints = card_hints(state);
         let border = loot_border_color(state);
-        let title = overlay_title(&state.loot);
+        let title = overlay_title(&state.loot, state.below);
         let rows_for = |width: u16| CardLine::rows(&lines, width);
         let spec = PanelSpec {
             title: &title,
@@ -458,7 +464,14 @@ fn card_lines(state: &CatchState) -> Vec<CardLine> {
         ],
         LootKind::Item(item) => vec![
             CardLine::Text(format!("{}!", item.display_name()), WHITE),
-            CardLine::Text(ADDED_TO_INVENTORY.to_string(), WHITE),
+            CardLine::Text(
+                match state.below {
+                    true => ADDED_TO_THE_HAUL,
+                    false => ADDED_TO_INVENTORY,
+                }
+                .to_string(),
+                WHITE,
+            ),
         ],
     }
 }
@@ -518,7 +531,12 @@ fn left_panel_inner_w(loot: &LootKind, fish: Option<&Fish>) -> u16 {
     }
 }
 
-fn overlay_title(loot: &LootKind) -> String {
+fn overlay_title(loot: &LootKind, below: bool) -> String {
+    let keeper = match (below, loot) {
+        (false, _) => HOME,
+        (true, LootKind::Fish(_)) => PARTY,
+        (true, _) => HAUL,
+    };
     let catch = match loot {
         LootKind::Fish(_) => "Fish",
         LootKind::Cash(_) => "Cash",
@@ -526,7 +544,7 @@ fn overlay_title(loot: &LootKind) -> String {
         LootKind::Item(ItemKind::Consumable(ConsumableKind::Milk(_))) => "Milk",
         LootKind::Item(item) => item.display_name(),
     };
-    format!(" {catch} to the Fishtank! ")
+    format!(" {catch} to the {keeper}! ")
 }
 
 fn glistens(loot: &LootKind) -> bool {

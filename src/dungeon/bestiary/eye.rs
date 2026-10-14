@@ -1,6 +1,7 @@
-use super::{BLANK, EnemySkill, EnemySpec, Loot, Passive, Rank, row};
+use super::{BLANK, EnemySkill, EnemySpec, Loot, NOW_AND_THEN, Passive, Rank, row};
 use crate::dungeon::effect::{Effect, Power, Reach, StatusKind};
 use crate::dungeon::traits::{Haunt, Trait};
+use crate::fishes::species::FishSpecies;
 
 pub const ROWS: &[EnemySpec] = &[
     EnemySpec {
@@ -344,7 +345,14 @@ pub const ROWS: &[EnemySpec] = &[
             },
         ],
         traits: &[Trait::PrayerShield, Trait::Cycle, Trait::NeverBites],
-        loot: &[Loot::Named("a wish"), Loot::Named("now and then a Quimera")],
+        loot: &[
+            Loot::Named("a wish"),
+            Loot::Fish {
+                species: FishSpecies::Quimera,
+                one_in: NOW_AND_THEN,
+                hardcore: false,
+            },
+        ],
         variant_of: None,
         note: "Whatever is dreaming, looking back.",
     },

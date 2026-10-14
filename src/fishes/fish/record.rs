@@ -11,6 +11,7 @@ use super::{
 use crate::dungeon::life::DeepLife;
 use crate::entities::components::{Position, SwayState};
 use crate::fishes::botfish::BotfishState;
+use crate::fishes::graveyard::Fate;
 use crate::fishes::mutant::{MutantState, MutationRecord};
 use crate::fishes::species::{FishSpecies, SizeCategory};
 use crate::fishes::toy::ToyState;
@@ -62,6 +63,8 @@ pub struct FishRecord {
     leeched: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     deep: Option<Box<DeepLife>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fate: Option<Fate>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -110,6 +113,7 @@ impl From<Fish> for FishRecord {
             habits: _,
             leeched,
             deep,
+            fate,
             direction_timer: _,
             zoomie_timer: _,
             zoomed_secs: _,
@@ -139,6 +143,7 @@ impl From<Fish> for FishRecord {
             placement,
             leeched,
             deep,
+            fate,
         }
     }
 }
@@ -197,6 +202,7 @@ impl From<FishRecord> for Fish {
             habits: Box::default(),
             leeched: record.leeched,
             deep: record.deep,
+            fate: record.fate,
             direction_timer: rng.random_range(DIRECTION_TIMER_MIN..DIRECTION_TIMER_MAX),
             zoomie_timer: rng.random_range(ZOOMIE_INITIAL_TIMER_MIN..ZOOMIE_INITIAL_TIMER_MAX),
             zoomed_secs: 0.0,

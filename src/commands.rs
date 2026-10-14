@@ -229,6 +229,7 @@ static COMMAND_NAMES: &[(&str, Clearance)] = &[
     ("reset", Clearance::Debug),
     ("restore", Clearance::God),
     ("revive", Clearance::God),
+    ("room", Clearance::Debug),
     ("say", Clearance::Player),
     ("sell", Clearance::Player),
     ("shop", Clearance::Player),
@@ -1458,6 +1459,7 @@ pub enum Action {
     Cowsay(String),
     Say(String),
     VoidSpawn(Option<UnfishKind>),
+    Room(String),
     StartVoidWish {
         skip: bool,
     },
@@ -1812,6 +1814,7 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
         "ledger" => Action::Ledger,
         "toybox" => Action::Toybox,
         "dungeon" => Action::Dungeon,
+        "room" => name_command(rest, Action::Room),
         "casino" => match rest.trim() {
             "" => Action::Casino(None),
             word => Game::parse(word).map_or(Action::Unknown, |game| Action::Casino(Some(game))),
@@ -1838,6 +1841,7 @@ impl Action {
             ModResource { .. }
             | Give(_)
             | VoidSpawn(_)
+            | Room(_)
             | StartVoidWish { .. }
             | StartFishAbduction
             | StartCowAbduction

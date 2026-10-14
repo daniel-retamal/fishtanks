@@ -532,7 +532,7 @@ impl App {
     }
 
     fn hook_the_catch(&mut self) {
-        let catch = self.roll_catch(self.current_tank, &mut rand::rng());
+        let catch = self.roll_this_catch(&mut rand::rng());
         if let Some(s) = self.fishing_state_mut() {
             s.hook(catch);
         }
@@ -559,7 +559,13 @@ impl App {
             match action {
                 InputAction::Confirm | InputAction::Cancel | InputAction::Char('q') => {
                     if let Some(state) = self.take_catch_state() {
-                        self.apply_non_fish_loot(state.loot);
+                        match self.below {
+                            Some(_) => {
+                                self.keep_below(state.loot, None, String::new());
+                                self.close_overlay();
+                            }
+                            None => self.apply_non_fish_loot(state.loot),
+                        }
                     }
                 }
                 _ => {}
@@ -573,6 +579,11 @@ impl App {
                     && let Some(state) = self.take_catch_state()
                 {
                     let name = names::title_case(state.name_input.as_str());
+                    if self.below.is_some() {
+                        self.keep_below(state.loot, state.fish, name);
+                        self.close_overlay();
+                        return;
+                    }
                     self.keep_catch(self.current_tank, state.fish.unwrap(), name);
                 }
             }
@@ -966,6 +977,20 @@ impl App {
     }
 
     fn workshop(&self) -> Workshop<'_> {
+        if let Some(expedition) = self
+            .dungeon
+            .expedition
+            .as_ref()
+            .filter(|_| self.below.is_some())
+        {
+            return Workshop {
+                stock: &self.inventory,
+                cash: Money::from(expedition.haul.gold),
+                room: usize::MAX,
+                hosts: 0,
+                connected: self.is_connected(),
+            };
+        }
         Workshop {
             stock: &self.inventory,
             cash: self.purse.spendable(),
@@ -1005,12 +1030,24 @@ impl App {
         })
     }
 
-    fn spend_on(&mut self, quote: &FabricationQuote) {
+    pub(super) fn spend_on(&mut self, quote: &FabricationQuote) {
         self.take_stock(StockItem::Consumable(ConsumableKind::Fabricator), 1);
         for material in &quote.materials {
             self.take_stock(StockItem::Consumable(material.kind), material.from_stock());
         }
-        self.pay(quote.cost, Flow::Fabrication);
+        match self
+            .dungeon
+            .expedition
+            .as_mut()
+            .filter(|_| self.below.is_some())
+        {
+            Some(expedition) => {
+                expedition.haul.spend(u64::from(quote.cost));
+            }
+            None => {
+                self.pay(quote.cost, Flow::Fabrication);
+            }
+        }
     }
 
     pub fn print_blueprint(&mut self, name: &str) -> bool {
@@ -1020,6 +1057,9 @@ impl App {
         let Ok(quote) = self.print_quote(&self.blueprints[index]) else {
             return false;
         };
+        if self.below.is_some() {
+            return self.print_below(index, &quote);
+        }
         let current = self.current_tank;
         if !self.tanks[current].print(&self.blueprints[index], &mut rand::rng()) {
             return false;
@@ -1098,6 +1138,10 @@ impl App {
         };
         if save && let Some(bot) = self.botfish_mut(state.tank_idx, &state.fish_name) {
             state.apply_to(bot);
+        }
+        if self.below.is_some() {
+            self.close_overlay();
+            return;
         }
         let Some(backed_circuit) = backed_circuit else {
             return;
@@ -1914,7 +1958,7 @@ impl App {
         self.raise_from_grave(pos, self.current_tank)
     }
 
-    fn raise_from_grave(&mut self, grave: usize, from: usize) -> bool {
+    pub(super) fn raise_from_grave(&mut self, grave: usize, from: usize) -> bool {
         if self.landing_tank(from, &self.graveyard[grave]).is_none() {
             return false;
         }
@@ -2565,6 +2609,16 @@ impl App {
     }
 
     fn botfish_mut(&mut self, tank_idx: usize, fish_name: &str) -> Option<&mut BotfishState> {
+        if self.below == Some(super::Below::Workshop) {
+            return self
+                .dungeon
+                .expedition
+                .as_mut()?
+                .party
+                .iter_mut()
+                .find(|f| f.name == fish_name)
+                .and_then(|f| f.script_mut());
+        }
         self.tanks
             .get_mut(tank_idx)?
             .fish
@@ -2825,6 +2879,7 @@ impl App {
             commands::Action::Ledger => self.open_ledger(),
             commands::Action::Toybox => self.open_toybox(),
             commands::Action::Dungeon => self.open_dungeon(),
+            commands::Action::Room(name) => self.open_room_below(&name),
             commands::Action::Fishtanks => {
                 self.set_overlay(Overlay::Fishtanks(FishtanksState::new(
                     &self.tanks,
@@ -3072,7 +3127,7 @@ impl App {
         for keepsake in fish.keepsakes() {
             self.stock_up(keepsake, 1);
         }
-        self.bury(fish);
+        self.bury(fish, crate::fishes::graveyard::Fate::Sold);
     }
 
     fn sell_tank_by_name(&mut self, name: &str) -> bool {

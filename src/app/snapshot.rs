@@ -184,10 +184,11 @@ impl App {
             lessons,
             casino,
             dungeon,
+            below,
         } = self;
         let food_in_the_water: u32 = tanks.iter().map(TankRecord::food_in_the_water).sum();
         let catch = match active_overlay {
-            Some(Overlay::Catch(card)) => Some(PendingCatch {
+            Some(Overlay::Catch(card)) if below.is_none() => Some(PendingCatch {
                 loot: card.loot.clone(),
                 fish: card.fish.clone(),
             }),
@@ -257,6 +258,7 @@ impl App {
             running: true,
             history: save.history,
             active_overlay: None,
+            below: None,
             held_keys: HeldKeys::default(),
             terminal_height: height,
             terminal_width: width,

@@ -1,6 +1,7 @@
 use ratatui::style::Color;
 
 use crate::colors;
+use crate::fishes::species::FishSpecies;
 
 use super::effect::{Effect, Reach};
 use super::skill::Skill;
@@ -125,7 +126,14 @@ pub enum Loot {
     RareEvery(u32),
     Named(&'static str),
     Hardcore(&'static str),
+    Fish {
+        species: FishSpecies,
+        one_in: u32,
+        hardcore: bool,
+    },
 }
+
+pub const NOW_AND_THEN: u32 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EnemySpec {

@@ -2,13 +2,13 @@ use rand::SeedableRng;
 use rand::rngs::SmallRng;
 
 use super::*;
-use crate::dungeon::Difficulty;
 use crate::dungeon::bestiary;
 use crate::dungeon::event::EVENTS;
 use crate::dungeon::expedition::{Expedition, Ground, Next, Wound};
 use crate::dungeon::items::{Item, Pack};
 use crate::dungeon::map::{Room, RoomKind};
 use crate::dungeon::sim::Tier;
+use crate::dungeon::{Above, Difficulty};
 
 const SEEDS: u64 = 60;
 const RICH: u64 = 1_000_000;
@@ -71,7 +71,7 @@ fn a_service_room_never_turns_bad() {
             enter(&mut expedition, kind, seed);
             let ground = Ground::default();
             for step in 0..ACTS {
-                let Some(panel) = expedition.panel(step, &ground.wrecks) else {
+                let Some(panel) = expedition.panel(step, &ground.above()) else {
                     break;
                 };
                 let Some(row) = panel
@@ -180,7 +180,7 @@ fn a_fish_that_died_on_hardcore_is_raised_through_the_app() {
     let mut expedition = below(3, Difficulty::Hardcore);
     expedition.fallen.push("Abel".to_string());
     enter(&mut expedition, RoomKind::Cleaning, 3);
-    let panel = expedition.panel(0, &[]).expect("a panel");
+    let panel = expedition.panel(0, &Above::default()).expect("a panel");
     let bring = panel
         .rows
         .iter()
@@ -196,7 +196,7 @@ fn an_event_offers_a_tagged_choice_only_to_a_party_that_can_make_it() {
     enter(&mut expedition, RoomKind::Event, 4);
     expedition.visit.as_mut().expect("an event").event = Some("La Pincoya Dances".to_string());
     let labels = |e: &Expedition| -> Vec<String> {
-        e.panel(0, &[])
+        e.panel(0, &Above::default())
             .expect("a panel")
             .rows
             .iter()
@@ -253,7 +253,7 @@ fn a_room_costs_the_haul_and_never_the_purse() {
         hp: Some(1),
         belly_up: false,
     };
-    let panel = expedition.panel(0, &[]).expect("a panel");
+    let panel = expedition.panel(0, &Above::default()).expect("a panel");
     let clean = panel
         .rows
         .iter()
@@ -310,4 +310,238 @@ fn rooms_and_the_map_draw_only_glyphs_the_game_already_draws() {
         strangers.is_empty(),
         "glyphs no tank or fish draws: {strangers:?}"
     );
+}
+
+fn one_fish(species: FishSpecies, seed: u64) -> Expedition {
+    let fish = Fish::new(
+        species,
+        "Solo".to_string(),
+        0.0,
+        0.0,
+        &mut SmallRng::seed_from_u64(seed),
+    );
+    let pack = vec![
+        Pack::of(Item::Food, 1),
+        Pack::of(Item::Stock(StockItem::Junk), 1),
+    ];
+    Expedition::set_out(
+        vec![fish],
+        vec!["Fishtank".to_string()],
+        Difficulty::Normal,
+        pack,
+        seed,
+        &Ground::default(),
+    )
+}
+
+fn at_event(expedition: &mut Expedition, depth: u32, name: &str, ground: &Ground) {
+    expedition.floor = depth;
+    let room = Room {
+        kind: RoomKind::Event,
+        lane: 2,
+        seed: expedition.route.seed ^ u64::from(depth),
+    };
+    let mut visit = Visit::enter(expedition, 1, 0, room, ground);
+    visit.event = Some(name.to_string());
+    visit.offers.clear();
+    if event::find(name).is_some_and(|e| e.calls_the_dead()) {
+        visit.offers = ground.haunts.iter().cloned().map(Offer::Dead).collect();
+    }
+    expedition.visit = Some(visit);
+}
+
+fn ghost(
+    name: &str,
+    sin: Option<crate::fishes::species::Sin>,
+    fate: crate::fishes::graveyard::Fate,
+) -> Ghost {
+    Ghost {
+        name: name.to_string(),
+        haunt: Haunt::Dead,
+        vigor: 40,
+        bite: 6,
+        speed: 6,
+        sin,
+        fate: Some(fate),
+    }
+}
+
+#[test]
+fn every_floor_from_the_shallows_to_the_dunes_has_three_events_of_its_own() {
+    for depth in 1..=5 {
+        assert_eq!(event::of_floor(depth).len(), 3, "floor {depth}");
+    }
+    let names: std::collections::BTreeSet<&str> = EVENTS.iter().map(|e| e.name).collect();
+    assert_eq!(names.len(), EVENTS.len(), "two events share a name");
+}
+
+#[test]
+fn every_event_ends_on_a_way_out_that_needs_nothing() {
+    for event in EVENTS {
+        let last = event.choices.last().expect("a choice");
+        assert_eq!(last.need, Need::Nothing, "{}", event.name);
+        assert_eq!(last.check, None, "{}", event.name);
+        assert_eq!(last.pass.outcome, Outcome::Nothing, "{}", event.name);
+    }
+}
+
+#[test]
+fn the_seance_calls_your_dead_and_the_sold_remember() {
+    let ground = Ground {
+        haunts: vec![
+            ghost("Abel", None, crate::fishes::graveyard::Fate::Sold),
+            ghost(
+                "Nemo",
+                Some(crate::fishes::species::Sin::Greed),
+                crate::fishes::graveyard::Fate::Dive,
+            ),
+        ],
+        ..Ground::default()
+    };
+    let mut expedition = below(7, Difficulty::Normal);
+    at_event(&mut expedition, 4, "The Séance Table", &ground);
+    let panel = expedition.panel(0, &ground.above()).expect("a panel");
+    let labels: Vec<&str> = panel.rows.iter().map(|row| row.label.as_str()).collect();
+    assert_eq!(labels, ["Call Abel", "Call Nemo", "Blow out the candles"]);
+    assert_eq!(panel.rows[0].note, "sold");
+    expedition.act(Act::Call(0), 0, &ground);
+    let visit = expedition.visit.as_ref().expect("still in the room");
+    assert_eq!(visit.stage, Stage::Sprung);
+    assert_eq!(visit.foes[0].enemy, crate::dungeon::specials::GHOST);
+    assert_eq!(
+        visit.foes[0].ghost.as_ref().map(|g| g.name.as_str()),
+        Some("Abel")
+    );
+
+    let mut expedition = below(7, Difficulty::Normal);
+    at_event(&mut expedition, 4, "The Séance Table", &ground);
+    let gold = expedition.haul.gold;
+    expedition.act(Act::Call(1), 0, &ground);
+    let visit = expedition.visit.as_ref().expect("still in the room");
+    assert_eq!(visit.stage, Stage::Spoils);
+    assert!(
+        expedition.haul.gold > gold,
+        "a greedy ghost tells where its gold is"
+    );
+}
+
+#[test]
+fn the_seance_with_nobody_dead_offers_only_the_candles() {
+    let mut expedition = below(8, Difficulty::Normal);
+    at_event(&mut expedition, 4, "The Séance Table", &Ground::default());
+    let panel = expedition.panel(0, &Above::default()).expect("a panel");
+    let labels: Vec<&str> = panel.rows.iter().map(|row| row.label.as_str()).collect();
+    assert_eq!(labels, ["Blow out the candles"]);
+}
+
+#[test]
+fn a_snapped_clam_holds_its_fish_at_the_start_of_the_next_fight() {
+    let mut expedition = one_fish(FishSpecies::Anchoveta, 9);
+    expedition.haul.gold = RICH;
+    at_event(&mut expedition, 2, "A Giant Pearl", &Ground::default());
+    expedition.act(Act::Choice(0), 0, &Ground::default());
+    let held = expedition
+        .lingering
+        .iter()
+        .any(|l| l.fish == "Solo" && l.kind == crate::dungeon::effect::StatusKind::Held);
+    assert!(held, "a weak bite cannot pry the pearl loose");
+    expedition.visit = None;
+    let foes = floor::encounter(2, floor::scale_for(2), &[], &mut SmallRng::seed_from_u64(9));
+    expedition.start_fight(
+        foes.iter().filter_map(Foe::of).collect(),
+        crate::dungeon::battle::Stakes::Encounter,
+        false,
+        &Ground::default(),
+    );
+    assert!(
+        expedition.lingering.is_empty(),
+        "the hold is spent on one fight"
+    );
+    let (battle, _) = expedition.battle().expect("a fight");
+    let fish = battle
+        .fighters
+        .iter()
+        .find(|f| f.member() == Some(0))
+        .expect("the fish");
+    let still_held = fish.has_status(crate::dungeon::effect::StatusKind::Held);
+    let was_held = battle
+        .log
+        .iter()
+        .any(|line| line.text == "Solo is held and cannot act.");
+    assert!(still_held || was_held, "it starts the fight held");
+}
+
+#[test]
+fn a_crop_circle_beams_up_a_fish_that_never_saw_the_sky() {
+    let mut expedition = one_fish(FishSpecies::Merluza, 10);
+    at_event(&mut expedition, 5, "A Crop Circle", &Ground::default());
+    let next = expedition.act(Act::Choice(0), 0, &Ground::default());
+    assert_eq!(next, Next::Home, "the only fish is gone, so the dive ends");
+    assert!(expedition.party.is_empty());
+    assert_eq!(expedition.beamed.len(), 1);
+    assert!(!expedition.wiped, "an abduction is not a wipe");
+}
+
+#[test]
+fn an_offering_too_small_brings_the_jelly_and_spends_what_was_offered() {
+    let mut expedition = one_fish(FishSpecies::Merluza, 11);
+    at_event(&mut expedition, 3, "The Sugar Altar", &Ground::default());
+    expedition.act(Act::Choice(0), 0, &Ground::default());
+    let visit = expedition.visit.as_ref().expect("still in the room");
+    assert_eq!(visit.stage, Stage::Sprung);
+    assert_eq!(visit.foes[0].enemy, "Cotton Candy Jelly");
+    let meals = expedition
+        .pack
+        .iter()
+        .find(|p| p.item == Item::Food)
+        .map_or(0, |p| p.count);
+    assert_eq!(meals, 0, "the one meal went on the altar");
+}
+
+#[test]
+fn nailing_a_coffin_shut_spends_the_junk() {
+    let mut expedition = one_fish(FishSpecies::Merluza, 12);
+    at_event(&mut expedition, 4, "A Coffin", &Ground::default());
+    let panel = expedition.panel(0, &Above::default()).expect("a panel");
+    let nail = panel
+        .rows
+        .iter()
+        .find(|row| row.label == "Nail it shut")
+        .expect("Junk is packed");
+    assert_eq!(nail.tag.as_deref(), Some("Junk"));
+    expedition.act(nail.act, 0, &Ground::default());
+    let junk = expedition
+        .pack
+        .iter()
+        .find(|p| p.item == Item::Stock(StockItem::Junk))
+        .map_or(0, |p| p.count);
+    assert_eq!(junk, 0);
+}
+
+#[test]
+fn the_grave_bears_the_name_of_a_fish_in_the_party() {
+    let mut expedition = below(13, Difficulty::Normal);
+    at_event(&mut expedition, 4, "A Fresh Grave", &Ground::default());
+    let panel = expedition.panel(0, &Above::default()).expect("a panel");
+    let drawn = expedition.drawn(expedition.visit.as_ref().expect("a room"));
+    let name = &expedition.party[drawn].name;
+    assert!(panel.text[0].text.ends_with(&format!("{name}.")));
+}
+
+#[test]
+fn a_fish_that_looks_into_its_own_grave_and_fails_comes_out_doomed() {
+    for seed in 0..SEEDS {
+        let mut expedition = below(seed, Difficulty::Normal);
+        at_event(&mut expedition, 4, "A Fresh Grave", &Ground::default());
+        let drawn = expedition.drawn(expedition.visit.as_ref().expect("a room"));
+        let gold = expedition.haul.gold;
+        expedition.act(Act::Choice(0), 0, &Ground::default());
+        if expedition.haul.gold > gold {
+            continue;
+        }
+        let kit = Kit::of(&expedition.party[drawn]);
+        assert!(kit.traits.contains(&Trait::Doomed));
+        return;
+    }
+    panic!("no seed failed the look");
 }

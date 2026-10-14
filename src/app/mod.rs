@@ -151,6 +151,13 @@ pub struct App {
     lessons: Lessons,
     pub casino: crate::casino::Casino,
     pub dungeon: crate::dungeon::Dungeon,
+    below: Option<Below>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Below {
+    Hole,
+    Workshop,
 }
 
 impl Default for App {
@@ -214,7 +221,7 @@ impl App {
         }
     }
 
-    fn fishing_state_mut(&mut self) -> Option<&mut FishingState> {
+    pub fn fishing_state_mut(&mut self) -> Option<&mut FishingState> {
         match &mut self.active_overlay {
             Some(Overlay::Fishing(s)) => Some(s),
             _ => None,
@@ -365,6 +372,9 @@ impl App {
         self.leave_console();
         self.held_keys.let_go();
         self.active_overlay = None;
+        if let Some(below) = self.below.take() {
+            self.surface(below);
+        }
     }
 
     fn tank(&self) -> &Tank {
@@ -681,10 +691,32 @@ impl App {
         }
         let mut rng = rand::rng();
         let hooked = self.fishing_state_mut().and_then(FishingState::take_catch);
-        let loot = hooked.unwrap_or_else(|| self.roll_catch(self.current_tank, &mut rng));
+        let loot = hooked.unwrap_or_else(|| self.roll_this_catch(&mut rng));
         self.spend_a_cast(Caster::Angler);
-        let card = self.counted(CatchState::new(loot, &mut rng));
+        let mut card = self.counted(CatchState::new(loot, &mut rng));
+        if self.below.is_some() {
+            card.below = true;
+            card.item_qty = self.counted_below(&card.loot);
+        }
         self.set_overlay(Overlay::Catch(card));
+    }
+
+    fn counted_below(&self, loot: &LootKind) -> u32 {
+        let LootKind::Item(item) = loot else {
+            return 0;
+        };
+        let held = StockItem::from_item(item).map_or(0, |stock| {
+            self.dungeon.expedition.as_ref().map_or(0, |expedition| {
+                expedition
+                    .haul
+                    .treasures
+                    .iter()
+                    .filter(|treasure| treasure.stock == stock)
+                    .map(|treasure| treasure.count)
+                    .sum()
+            })
+        });
+        held + 1
     }
 
     fn counted(&self, mut card: CatchState) -> CatchState {
@@ -714,6 +746,22 @@ impl App {
     pub(super) fn roll_catch(&self, tank_idx: usize, rng: &mut impl RngExt) -> LootKind {
         self.catch_pool(tank_idx)
             .with_cows(&Self::cow_counts_in(&self.tanks[tank_idx]))
+            .roll(rng)
+    }
+
+    fn roll_this_catch(&self, rng: &mut impl RngExt) -> LootKind {
+        match self.below {
+            Some(Below::Hole) => self.roll_below(rng),
+            Some(Below::Workshop) | None => self.roll_catch(self.current_tank, rng),
+        }
+    }
+
+    fn roll_below(&self, rng: &mut impl RngExt) -> LootKind {
+        let depth = self.dungeon.expedition.as_ref().map_or(1, |e| e.floor);
+        LootPool::of_the_hole(crate::dungeon::floor::FloorSpec::of(depth).tank)
+            .with_bait(self.bait_stacks())
+            .without(&self.withheld_loot())
+            .with_grace(self.grace_stacks())
             .roll(rng)
     }
 
@@ -826,7 +874,7 @@ impl App {
                     .or_insert(0) += 1;
             }
             for lost in std::mem::take(&mut self.tanks[i].pending_graveyard) {
-                self.bury(lost);
+                self.bury(lost, crate::fishes::graveyard::Fate::Absorbed);
             }
             for event in events {
                 match event {
@@ -864,6 +912,9 @@ impl App {
                     }
                     TankEvent::UfoFinished => {}
                     TankEvent::CallHome => self.answer_call_home(i),
+                    TankEvent::Lazarus => {
+                        self.bring_back_a_lost_kind(i);
+                    }
                 }
             }
         }
@@ -1157,7 +1208,7 @@ impl App {
                 crate::ui::dungeon::DungeonOverlay::new(
                     state,
                     self.dungeon.expedition.as_ref(),
-                    &self.dungeon.wrecks,
+                    self.above(),
                     screen,
                 ),
                 full_area,
@@ -1295,7 +1346,7 @@ impl App {
         const UFO_BAY_LEFT_EYE_COL: i32 = 7;
         const COW_HEAD_EYE_OFFSET: i32 = 1;
         let tank = &mut self.tanks[tank_idx];
-        let name = tank.unique_cow_name("Vaquita");
+        let name = tank.unique_cow_name(crate::entities::cow::COW_NAME);
         let cow_floor = (tank.height as f32) - (Cow::sprite_height() as f32);
         let probe = Cow::new(name.clone(), variant, 0.0, cow_floor.max(0.0), rng);
         let cow_w = probe.display_width as i32;

@@ -3,7 +3,10 @@ use std::sync::LazyLock;
 
 use ratatui::style::Color;
 
-use super::art::{BOXFISH, CRABFISH, HAMMERFISH, OCTOPUSFISH, SEAHORSEFISH, SHOALFISH, SNAILFISH};
+use super::art::{
+    BARRIL, BOXFISH, CELACANTO, CRABFISH, GOTA, HACHA, HAMMERFISH, OCTOPUSFISH, OGRO, QUIMERA,
+    SEAHORSEFISH, SHOALFISH, SNAILFISH,
+};
 use super::figure::Figure;
 use super::mutations::Mutation;
 use crate::dungeon::tables::species::DeepRole;
@@ -188,6 +191,12 @@ pub enum FishSpecies {
     Tartanfish,
     Bitfish,
     Toyfish,
+    Gota,
+    Hacha,
+    Barril,
+    Ogro,
+    Quimera,
+    Celacanto,
 }
 
 impl FishSpecies {
@@ -208,6 +217,14 @@ impl FishSpecies {
             .iter()
             .copied()
             .filter(|species| species.config().habitat == Habitat::Native(kind))
+            .collect()
+    }
+
+    pub fn of_the_deep() -> Vec<FishSpecies> {
+        ALL_SPECIES
+            .iter()
+            .copied()
+            .filter(|species| species.config().habitat == Habitat::Deep)
             .collect()
     }
 
@@ -247,6 +264,7 @@ pub enum Habitat {
     Native(TankKind),
     Junkpile,
     Claw,
+    Deep,
     Nowhere,
 }
 
@@ -368,6 +386,9 @@ pub enum Habit {
     Escape,
     Gape,
     Twinkle,
+    Gaze,
+    Stitch,
+    Lazarus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -382,6 +403,7 @@ pub enum Skin {
     Camouflage,
     Cycle(Cycle),
     SeeThrough,
+    Patchwork,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -390,7 +412,7 @@ pub enum Fortune {
     Golden,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Sin {
     Lust,
     Gluttony,
@@ -684,6 +706,12 @@ pub const ALL_SPECIES: &[FishSpecies] = &[
     FishSpecies::Cheatfish,
     FishSpecies::Junkfish,
     FishSpecies::Toyfish,
+    FishSpecies::Gota,
+    FishSpecies::Hacha,
+    FishSpecies::Barril,
+    FishSpecies::Ogro,
+    FishSpecies::Quimera,
+    FishSpecies::Celacanto,
 ];
 
 static BUYABLE_SPECIES: LazyLock<Vec<FishSpecies>> = LazyLock::new(|| {
@@ -865,6 +893,12 @@ static OCTOPUSFISH_PALETTE: [Color; 4] = [TERRACOTTA, VIOLET, OLIVE_LIGHT, PINK]
 static GLASSFISH_PALETTE: [Color; 3] = [LIGHT_CYAN, SILVER, WHITE];
 static SHOALFISH_PALETTE: [Color; 2] = [CYAN, LIGHT_RED];
 static HAMMERFISH_PALETTE: [Color; 3] = [STEEL, SILVER, GRAY];
+static GOTA_PALETTE: [Color; 1] = [PINK];
+static HACHA_PALETTE: [Color; 2] = [SILVER, LIGHT_CYAN];
+static BARRIL_PALETTE: [Color; 2] = [STEEL, LIGHT_CYAN];
+static OGRO_PALETTE: [Color; 2] = [DARK_GRAY, WHITE];
+static QUIMERA_PALETTE: [Color; 3] = [VIOLET, SILVER, GRAY];
+static CELACANTO_PALETTE: [Color; 3] = [NAVY, WHITE, STEEL];
 
 static STARFISH_LR: [&str; 1] = ["✶"];
 const NO_EYES: usize = 0;
@@ -1082,6 +1116,19 @@ fn figure_config(
 }
 
 const FIGURE_SWAY_SPEED: f32 = 0.08;
+
+fn deep_config(
+    name: &'static str,
+    figure: &'static Figure,
+    palette: &'static [Color],
+    speed_range: (f32, f32),
+    rarity: Rarity,
+) -> SpeciesConfig {
+    let mut config = figure_config(name, figure, palette, speed_range, rarity);
+    config.buyable = false;
+    config.habitat = Habitat::Deep;
+    config
+}
 
 const fn chars(
     mouth: (char, char),
@@ -1428,6 +1475,54 @@ impl FishSpecies {
                 config.weight_cap = [0; 4];
                 config.sell_cap = [0; 4];
                 config.deep = DeepRole::Toy;
+                config
+            }
+            Gota => {
+                let mut config = deep_config("Gota", &GOTA, &GOTA_PALETTE, (0.1, 0.3), Rare);
+                config.eye_color = Some(DARK_GRAY);
+                config.locomotion = Locomotion::Floor;
+                config.zoomie = Zoomie::None;
+                config.deep = DeepRole::Squish;
+                config
+            }
+            Hacha => {
+                let mut config = deep_config("Hacha", &HACHA, &HACHA_PALETTE, (2.0, 3.5), Rare);
+                config.trail = Some(Tint::Fixed(LIGHT_CYAN));
+                config.deep = DeepRole::CounterLight;
+                config
+            }
+            Barril => {
+                let mut config = deep_config("Barril", &BARRIL, &BARRIL_PALETTE, (1.0, 2.0), Rare);
+                config.eye_color = Some(GREEN);
+                config.habit = Some(Habit::Gaze);
+                config.deep = DeepRole::LooksUp;
+                config
+            }
+            Ogro => {
+                let mut config = deep_config("Ogro", &OGRO, &OGRO_PALETTE, (2.5, 4.0), Rare);
+                config.eye_color = Some(WHITE);
+                config.zoomie = Zoomie::Lunge;
+                config.deep = DeepRole::Fangs;
+                config
+            }
+            Quimera => {
+                let mut config =
+                    deep_config("Quimera", &QUIMERA, &QUIMERA_PALETTE, (1.5, 3.0), Legendary);
+                config.skin = Skin::Patchwork;
+                config.habit = Some(Habit::Stitch);
+                config.deep = DeepRole::Chimera;
+                config
+            }
+            Celacanto => {
+                let mut config = deep_config(
+                    "Celacanto",
+                    &CELACANTO,
+                    &CELACANTO_PALETTE,
+                    (1.0, 2.0),
+                    Legendary,
+                );
+                config.habit = Some(Habit::Lazarus);
+                config.deep = DeepRole::Lazarus;
                 config
             }
             Junkfish => {

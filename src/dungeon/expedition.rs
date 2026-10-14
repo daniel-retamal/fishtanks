@@ -5,12 +5,14 @@ use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 use crate::economy::Rarity;
+use crate::entities::cow::Cow;
 use crate::fishes::fish::Fish;
 use crate::names::unique_name_in;
 
 use super::battle::{Aftermath, Battle, BattleSetup, Choice, Outcome, Stakes};
 use super::beat::Beat;
 use super::bestiary::{self, Loot};
+use super::effect::{Status, StatusKind};
 use super::event::{self, Omen};
 use super::fighter::{Fighter, Ghost, Scale};
 use super::floor::{self, FloorSpec};
@@ -21,7 +23,7 @@ use super::life::DeepLife;
 use super::map::{LAYERS, Map, RoomKind, Shape};
 use super::room::{Stage, Visit};
 use super::traits::{Haunt, Trait};
-use super::{Difficulty, Wreck};
+use super::{Above, Difficulty, Wreck};
 
 pub const MAX_PARTY: usize = 4;
 pub const SEED_STRIDE: u64 = 0x9E37_79B9_7F4A_7C15;
@@ -72,6 +74,16 @@ pub struct FightRecord {
     pub every_graeae: bool,
     #[serde(default)]
     pub ambushed: bool,
+    #[serde(default)]
+    pub lingering: Vec<Lingering>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Lingering {
+    pub fish: String,
+    pub kind: StatusKind,
+    pub turns: u8,
+    pub amount: u32,
 }
 
 impl FightRecord {
@@ -93,6 +105,7 @@ impl FightRecord {
             known: Vec::new(),
             every_graeae: false,
             ambushed: false,
+            lingering: Vec::new(),
         }
     }
 }
@@ -106,9 +119,21 @@ pub struct Ground {
     pub dives: u32,
     pub today: String,
     pub wrecks: Vec<Wreck>,
+    #[serde(default)]
+    pub fabricators: u32,
+    #[serde(default)]
+    pub blueprints: usize,
 }
 
 impl Ground {
+    pub fn above(&self) -> Above<'_> {
+        Above {
+            wrecks: &self.wrecks,
+            fabricators: self.fabricators,
+            blueprints: self.blueprints,
+        }
+    }
+
     pub fn wreck(&self, depth: u32) -> Option<&Wreck> {
         self.wrecks.iter().find(|wreck| wreck.floor == depth)
     }
@@ -142,6 +167,15 @@ pub enum Next {
     Fight,
     Raise(String),
     Home,
+    Cast,
+    Bench(Bench),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bench {
+    Program(usize),
+    Dress(usize),
+    Print,
 }
 
 pub struct Settled {
@@ -180,6 +214,12 @@ pub struct Expedition {
     pub wreck_found: Option<Haul>,
     #[serde(default)]
     pub dive: u32,
+    #[serde(default)]
+    pub lingering: Vec<Lingering>,
+    #[serde(default)]
+    pub beamed: Vec<Fish>,
+    #[serde(default)]
+    pub cows: Vec<Cow>,
     #[serde(skip)]
     pub tuning: Option<Scale>,
 }
@@ -205,6 +245,9 @@ impl Expedition {
             wiped: false,
             wreck_found: None,
             dive: 0,
+            lingering: Vec::new(),
+            beamed: Vec::new(),
+            cows: Vec::new(),
             tuning: None,
         }
     }
@@ -387,6 +430,7 @@ impl Expedition {
             known: ground.known.clone(),
             every_graeae: ground.every_graeae,
             ambushed: ambushed && !silent,
+            lingering: std::mem::take(&mut self.lingering),
         });
         Next::Fight
     }
@@ -415,11 +459,23 @@ impl Expedition {
             .filter_map(|foe| foe.fighter(self.floor, self.scale()))
             .collect();
         let mut battle = Battle::new(self.party.clone(), foes, self.setup(record));
+        battle.herd(self.cows.clone());
         for member in 0..self.party.len() {
             let wound = self.wound(member);
             if wound.hp.is_some() || wound.belly_up {
                 battle.carry(member, wound.hp.unwrap_or(0), wound.belly_up);
             }
+        }
+        for lingering in &record.lingering {
+            let Some(member) = self
+                .party
+                .iter()
+                .position(|fish| fish.name == lingering.fish)
+            else {
+                continue;
+            };
+            let status = Status::new(lingering.kind, lingering.turns, lingering.amount);
+            battle.linger(member, status);
         }
         let opening = battle.begin();
         for input in &record.inputs {
@@ -462,6 +518,7 @@ impl Expedition {
             };
         };
         let outcome = aftermath.outcome;
+        self.cows = aftermath.cows;
         let mut found = Haul {
             gold: aftermath.haul,
             treasures: Vec::new(),
@@ -543,6 +600,23 @@ impl Expedition {
                         found.add(haul::treasure(self.floor, Rarity::Legendary, &mut rng), 1)
                     }
                     Loot::Hardcore(_) => {}
+                    Loot::Fish {
+                        species,
+                        one_in,
+                        hardcore,
+                    } => {
+                        let earned = !hardcore || self.difficulty.kills();
+                        if earned && rng.random_range(0..(*one_in).max(1)) == 0 {
+                            let fish = Fish::new(
+                                *species,
+                                species.display_name().to_string(),
+                                0.0,
+                                0.0,
+                                &mut rng,
+                            );
+                            self.join(fish);
+                        }
+                    }
                 }
             }
         }

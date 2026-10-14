@@ -83,6 +83,7 @@ pub enum TankEvent {
     UfoReleaseCow(Box<Cow>),
     UfoFinished,
     CallHome,
+    Lazarus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -948,7 +949,7 @@ impl Tank {
     }
 
     pub fn spawn_cow(&mut self, variant: CowVariant, rng: &mut impl RngExt) -> String {
-        let name = self.unique_cow_name("Vaquita");
+        let name = self.unique_cow_name(crate::entities::cow::COW_NAME);
         let cow = Cow::new(name.clone(), variant, 0.0, 0.0, rng);
         let cow_floor = (self.height as f32) - (Cow::sprite_height() as f32);
         let x = self.cow_spot(&cow, rng);

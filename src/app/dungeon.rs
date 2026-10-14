@@ -1,9 +1,9 @@
 use crossterm::event::Event;
 use rand::RngExt;
 
-use crate::dungeon::Difficulty;
 use crate::dungeon::battle::{Battle, Outcome};
-use crate::dungeon::expedition::{self, Expedition, Ground, Next};
+use crate::dungeon::beat::{LogLine, Tone};
+use crate::dungeon::expedition::{self, Bench, Expedition, Ground, Next};
 use crate::dungeon::fighter::Side;
 use crate::dungeon::items::{Item, MEAL_PELLETS, Pack};
 use crate::dungeon::life::DeepLife;
@@ -13,13 +13,21 @@ use crate::dungeon::room::Act;
 use crate::dungeon::screen::{Chart, DungeonState, Lobby, Step, View};
 use crate::dungeon::state::FightState;
 use crate::dungeon::traits::Trait;
+use crate::dungeon::{Above, Difficulty};
+use crate::fishes::fish::Fish;
+use crate::fishes::graveyard::Fate;
 use crate::fishes::unfish::UnfishKind;
 use crate::ledger::Flow;
+use crate::loot::{ConsumableKind, LootKind, StockItem};
 use crate::tank::WorldSignal;
+use crate::tank::{FabricationQuote, Tank, TankKind};
+use crate::ui::fishing_overlay::FishingState;
 use crate::ui::input_action::{InputAction, classify};
+use crate::ui::toybox::ToyboxState;
+use crate::ui::wiring_panel::WiringPanelState;
 use crate::util::today;
 
-use super::{App, Overlay};
+use super::{App, Below, Overlay};
 
 impl App {
     pub(super) fn open_dungeon(&mut self) -> bool {
@@ -78,6 +86,8 @@ impl App {
             dives: self.dungeon.dives,
             today: today(),
             wrecks: self.dungeon.wrecks.clone(),
+            fabricators: self.stock_of(StockItem::Consumable(ConsumableKind::Fabricator)),
+            blueprints: self.blueprints.len(),
         }
     }
 
@@ -144,7 +154,172 @@ impl App {
         let next = expedition.act(act, fish, ground);
         let after = Pulse::of(expedition);
         self.uplink(before, after);
+        self.beam_home();
         self.follow(next);
+    }
+
+    pub(super) fn open_room_below(&mut self, name: &str) -> bool {
+        let ground = self.deep_ground();
+        let staged = self
+            .dungeon
+            .expedition
+            .as_mut()
+            .is_some_and(|expedition| expedition.stage_room(name, &ground));
+        staged && self.open_dungeon()
+    }
+
+    fn open_bench(&mut self, bench: Bench) {
+        let opened = match bench {
+            Bench::Program(member) => self.program_below(member),
+            Bench::Dress(member) => self.dress_below(member),
+            Bench::Print => self.open_foundry(),
+        };
+        if opened {
+            self.below = Some(Below::Workshop);
+        }
+    }
+
+    fn program_below(&mut self, member: usize) -> bool {
+        let Some(fish) = self
+            .dungeon
+            .expedition
+            .as_ref()
+            .and_then(|expedition| expedition.party.get(member))
+        else {
+            return false;
+        };
+        let Some(script) = fish.script() else {
+            return false;
+        };
+        let state = WiringPanelState::new(self.current_tank, fish.name.clone(), script);
+        self.set_overlay(Overlay::Wiring {
+            state,
+            backed_circuit: None,
+        });
+        true
+    }
+
+    fn dress_below(&mut self, member: usize) -> bool {
+        let Some(name) = self
+            .dungeon
+            .expedition
+            .as_ref()
+            .and_then(|expedition| expedition.party.get(member))
+            .map(|fish| fish.name.clone())
+        else {
+            return false;
+        };
+        let party = self.dungeon.expedition.iter().flat_map(|e| e.party.iter());
+        let mut state = ToyboxState::new(super::toybox::toys_in(party));
+        let Some(at) = state.toys.iter().position(|entry| entry.name == name) else {
+            return false;
+        };
+        state.selected = at;
+        state.begin_edit();
+        self.set_overlay(Overlay::Toybox(Box::new(state)));
+        true
+    }
+
+    pub(super) fn print_below(&mut self, index: usize, quote: &FabricationQuote) -> bool {
+        let mut bench = Tank::new(String::new(), TankKind::Base, &[]);
+        bench.resize(self.terminal_width, self.terminal_height, &[]);
+        bench.boundless = true;
+        if !bench.print(&self.blueprints[index], &mut rand::rng()) {
+            return false;
+        }
+        let printed: Vec<Fish> = (0..bench.fish.len()).map(|_| bench.take_fish(0)).collect();
+        let Some(expedition) = self.dungeon.expedition.as_mut() else {
+            return false;
+        };
+        let names: Vec<String> = printed
+            .into_iter()
+            .map(|fish| expedition.join(fish))
+            .collect();
+        expedition.landed(LogLine::new(
+            format!("{} joins the party.", names.join(", ")),
+            Tone::Heal,
+        ));
+        self.spend_on(quote);
+        true
+    }
+
+    pub(super) fn above(&self) -> Above<'_> {
+        Above {
+            wrecks: &self.dungeon.wrecks,
+            fabricators: self.stock_of(StockItem::Consumable(ConsumableKind::Fabricator)),
+            blueprints: self.blueprints.len(),
+        }
+    }
+
+    fn cast_below(&mut self) {
+        let milk = self.milk_buffs();
+        let mut state = FishingState::new(milk, &mut rand::rng());
+        state.no_escape = self.cheats.no_escape;
+        state.lesson = self.lessons.learning();
+        self.set_overlay(Overlay::Fishing(state));
+        self.below = Some(Below::Hole);
+    }
+
+    pub(super) fn keep_below(&mut self, loot: LootKind, fish: Option<Fish>, name: String) {
+        let Some(expedition) = self.dungeon.expedition.as_mut() else {
+            return;
+        };
+        let said = match (loot, fish) {
+            (_, Some(mut fish)) => {
+                if !name.is_empty() {
+                    fish.name = name;
+                }
+                if fish.name.is_empty() {
+                    fish.name = fish.species.display_name().to_string();
+                }
+                let name = expedition.join(fish);
+                LogLine::new(
+                    format!("{name} comes up on the line and joins the party."),
+                    Tone::Heal,
+                )
+            }
+            (LootKind::Item(item), None) => match StockItem::from_item(&item) {
+                Some(stock) => {
+                    expedition.haul.add(stock, 1);
+                    LogLine::new(format!("Caught: {}.", stock.display_name()), Tone::Gold)
+                }
+                None => LogLine::new("It got away.", Tone::Quiet),
+            },
+            (LootKind::Cash(cash), None) => {
+                let gold = u64::from(cash.amount());
+                expedition.haul.gold += gold;
+                LogLine::new(format!("Caught: ${gold}."), Tone::Gold)
+            }
+            (LootKind::Food(_) | LootKind::Fish(_), None) => {
+                LogLine::new("It got away.", Tone::Quiet)
+            }
+        };
+        expedition.landed(said);
+        self.uplink_signal(WorldSignal::Catch);
+    }
+
+    pub(super) fn surface(&mut self, below: Below) {
+        let Some(expedition) = self.dungeon.expedition.as_mut() else {
+            return;
+        };
+        if below == Below::Hole {
+            expedition.cast_spent();
+        }
+        self.open_dungeon();
+    }
+
+    fn beam_home(&mut self) {
+        let Some(expedition) = self.dungeon.expedition.as_mut() else {
+            return;
+        };
+        let beamed = std::mem::take(&mut expedition.beamed);
+        let mut rng = rand::rng();
+        for mut fish in beamed {
+            let base = self.abduction_base(self.current_tank, &mut rng);
+            super::alienate(&mut fish, &mut rng);
+            let name = fish.name.clone();
+            self.land_or_wait(base, fish, name);
+        }
     }
 
     fn follow(&mut self, next: Next) {
@@ -154,6 +329,8 @@ impl App {
                 self.redraw_the_deep(Next::Stay);
             }
             Next::Home => self.come_home(),
+            Next::Cast => self.cast_below(),
+            Next::Bench(bench) => self.open_bench(bench),
             next => self.redraw_the_deep(next),
         }
     }
@@ -307,7 +484,7 @@ impl App {
         }
         let died = !settled.dead.is_empty();
         for fish in settled.dead {
-            self.bury(fish);
+            self.bury(fish, Fate::Dive);
         }
         self.uplink(before, after);
         if died {
@@ -350,6 +527,10 @@ impl App {
                     self.stock_up(stock, pack.count);
                 }
             }
+        }
+        let pasture = self.home_tank(expedition.homes.first().map(String::as_str));
+        for cow in std::mem::take(&mut expedition.cows) {
+            self.land_cow(pasture, cow);
         }
         let homes = expedition.homes.clone();
         for (member, mut fish) in expedition.party.into_iter().enumerate() {

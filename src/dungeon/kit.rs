@@ -1,4 +1,5 @@
 use crate::economy::Rarity;
+use crate::entities::cow::Cow;
 use crate::fishes::fish::{Fed, Fish};
 use crate::fishes::mutations::Mutation;
 use crate::fishes::species::SizeCategory;
@@ -22,6 +23,11 @@ pub const START_BUBBLES: u32 = 1;
 pub const HUNGRY_BELOW_PERCENT: f64 = 25.0;
 pub const HUNGRY_BITE: u32 = 1;
 pub const MIN_SPEED: u32 = 1;
+pub const COW_VIGOR: u32 = 60;
+pub const COW_VIGOR_PER_SEGMENT: u32 = 10;
+pub const COW_BITE: u32 = 4;
+pub const COW_SPEED: u32 = 4;
+pub const COW_DODGE: u32 = 0;
 const PERCENT: u32 = 100;
 const SPEED_SCALE: f32 = 2.0;
 const SIZE_DODGE: [u32; 4] = [20, 12, 6, 0];
@@ -75,6 +81,26 @@ pub fn carried_mutations(fish: &Fish) -> Vec<Mutation> {
 }
 
 impl Kit {
+    pub fn of_cow(cow: &Cow) -> Kit {
+        let segments = u32::try_from(cow.body_length).unwrap_or(u32::MAX);
+        Kit {
+            name: cow.name.clone(),
+            vigor: COW_VIGOR + COW_VIGOR_PER_SEGMENT * segments,
+            bite: COW_BITE,
+            speed: COW_SPEED,
+            dodge: COW_DODGE,
+            crit: CRIT_PER_EYE,
+            max_mp: BASE_MP,
+            start_mp: START_BUBBLES,
+            armour: 0,
+            grade: Grade::Fry,
+            hungry: false,
+            full: false,
+            traits: vec![Trait::Cow],
+            skills: vec![super::moves::moo(), super::moves::milk()],
+        }
+    }
+
     pub fn of(fish: &Fish) -> Kit {
         let life = fish.deep.as_deref().cloned().unwrap_or_default();
         let mut kit = Kit::base(fish, &life);

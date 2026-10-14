@@ -7,6 +7,7 @@ pub mod bestiary;
 pub mod boon;
 pub mod effect;
 pub mod event;
+pub mod event_art;
 pub mod expedition;
 pub mod fighter;
 pub mod floor;
@@ -59,6 +60,13 @@ pub struct Wreck {
     pub floor: u32,
     pub day: String,
     pub haul: haul::Haul,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Above<'a> {
+    pub wrecks: &'a [Wreck],
+    pub fabricators: u32,
+    pub blueprints: usize,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]

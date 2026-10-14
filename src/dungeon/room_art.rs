@@ -1,4 +1,4 @@
-use super::bestiary::{SpriteRow, row};
+use super::bestiary::{BLANK, SpriteRow, row};
 use super::map::RoomKind;
 use super::room::{Scene, Stage};
 
@@ -18,6 +18,7 @@ pub fn of(kind: RoomKind, stage: &Stage) -> Scene {
         (RoomKind::Vent, _) => VENT,
         (RoomKind::Cleaning, _) => CLEANING,
         (RoomKind::Wreck, _) => WRECK,
+        (RoomKind::Hole, _) => HOLE,
         (RoomKind::Elevator, _) => ELEVATOR,
         (RoomKind::Encounter | RoomKind::Boss | RoomKind::Event | RoomKind::Vending, _) => &[],
     };
@@ -42,6 +43,7 @@ pub const ALL: &[&[SpriteRow]] = &[
     LURKER_JAR,
     BELL_JAR,
     BROKEN_JAR,
+    HOLE,
 ];
 
 pub const LIFTS: &[&[SpriteRow]] = &[ELEVATOR, ELEVATOR_LOW, ELEVATOR_SMALL];
@@ -329,4 +331,20 @@ pub const BROKEN_JAR: &[SpriteRow] = &[
     row("[===========]", "s"),
     row("", "c"),
     row(" .  ,   ,  .", "k"),
+];
+
+pub const HOLE: &[SpriteRow] = &[
+    row("             |", "s"),
+    row("             |", "s"),
+    row("             |", "s"),
+    row("             |", "s"),
+    row("             |", "s"),
+    row("             |", "s"),
+    row("             |", "s"),
+    row("             J", "w"),
+    BLANK,
+    row(".-~~~~~~~~~~~~~~~~~~~~~~~-.", "k"),
+    row("( ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░ )", "kkbbbbbbbbbbbbbbbbbbbbbbbk"),
+    row("(  ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░  )", "kkkbbbbbbbbbbbbbbbbbbbbbk"),
+    row("'-.......................-'", "k"),
 ];

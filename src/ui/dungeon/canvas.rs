@@ -1,3 +1,4 @@
+use crate::entities::cow::{COW_TRANSPARENT, Cow, cow_sprite};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -117,6 +118,19 @@ impl Canvas {
                         glyph,
                         Style::default().fg(cell.fg).bg(BACKGROUND),
                     ),
+                }
+            }
+        }
+        canvas
+    }
+
+    pub fn cow(cow: &Cow) -> Canvas {
+        let mut canvas = Canvas::default();
+        for (y, row) in cow_sprite(cow).iter().enumerate() {
+            for (x, &(glyph, colour)) in row.iter().enumerate() {
+                match glyph {
+                    COW_TRANSPARENT => canvas.reach(x, y),
+                    _ => canvas.set(x, y, glyph, Style::default().fg(colour).bg(BACKGROUND)),
                 }
             }
         }

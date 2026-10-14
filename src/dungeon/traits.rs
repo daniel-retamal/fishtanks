@@ -239,7 +239,6 @@ pub enum Reader {
     Kit,
     Map,
     DeepFish,
-    Cows,
 }
 
 impl Trait {
@@ -427,7 +426,13 @@ impl Trait {
             | Trait::Overhears
             | Trait::Assay
             | Trait::Cochlea
-            | Trait::CoreStack => Reader::Fight,
+            | Trait::CoreStack
+            | Trait::Squish
+            | Trait::LooksUp
+            | Trait::Fangs
+            | Trait::Chimera
+            | Trait::Lazarus(_)
+            | Trait::Cow => Reader::Fight,
             Trait::Wrath
             | Trait::Sloth
             | Trait::Light
@@ -442,13 +447,7 @@ impl Trait {
             | Trait::Cartographer
             | Trait::Angler
             | Trait::Uplink => Reader::Map,
-            Trait::Squish
-            | Trait::LooksUp
-            | Trait::Fangs
-            | Trait::Chimera
-            | Trait::Lazarus(_)
-            | Trait::Vessel => Reader::DeepFish,
-            Trait::Cow => Reader::Cows,
+            Trait::Vessel => Reader::DeepFish,
         }
     }
 }

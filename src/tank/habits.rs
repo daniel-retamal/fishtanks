@@ -56,6 +56,8 @@ pub const ECHO_FADE: f32 = 0.6;
 const AMBUSH_REACH: i32 = 3;
 const ALERT_SECS: f32 = 2.0;
 const ESCAPE_MEAN_SECS: f32 = 20.0 * 60.0;
+pub const LAZARUS_MEAN_SECS: f32 = 2.0 * 60.0 * 60.0;
+const PATCHES: usize = 4;
 const LURE_PULL_RADIUS: f32 = 12.0;
 pub const BLIND_SMELL_RADIUS: f32 = 6.0;
 
@@ -181,8 +183,78 @@ impl Tank {
         self.graze();
         self.ambush();
         self.lunge_through_bubbles(dt);
+        self.gaze();
+        self.stitch();
         let mut events = self.echo_due(dt);
         events.extend(self.escapes(dt, &mut rng));
+        events.extend(self.lazarus(dt, &mut rng));
+        events
+    }
+
+    fn gaze(&mut self) {
+        let spans: Vec<(f32, f32, f32)> = self
+            .fish
+            .iter()
+            .map(|fish| {
+                let left = fish.position.x;
+                (left, left + fish.display_width as f32, fish.position.y)
+            })
+            .collect();
+        for (index, fish) in self.fish.iter_mut().enumerate() {
+            if fish.habit() != Some(Habit::Gaze) {
+                continue;
+            }
+            let (left, right, y) = spans[index];
+            fish.habits.gazing = spans
+                .iter()
+                .enumerate()
+                .any(|(other, &(l, r, oy))| other != index && oy < y && l < right && r > left);
+        }
+    }
+
+    fn stitch(&mut self) {
+        let around: Vec<(f32, ratatui::style::Color)> = self
+            .fish
+            .iter()
+            .map(|fish| (fish.position.x, fish.color))
+            .collect();
+        for (index, fish) in self.fish.iter_mut().enumerate() {
+            if fish.habit() != Some(Habit::Stitch) {
+                continue;
+            }
+            let x = around[index].0;
+            let mut nearest: Vec<&(f32, ratatui::style::Color)> = around
+                .iter()
+                .enumerate()
+                .filter(|&(other, _)| other != index)
+                .map(|(_, entry)| entry)
+                .collect();
+            nearest.sort_by(|a, b| (a.0 - x).abs().total_cmp(&(b.0 - x).abs()));
+            fish.habits.patches = nearest
+                .into_iter()
+                .take(PATCHES)
+                .map(|&(_, color)| color)
+                .collect();
+        }
+    }
+
+    fn lazarus(&mut self, dt: f32, rng: &mut impl RngExt) -> Vec<TankEvent> {
+        let mut events = Vec::new();
+        for fish in &mut self.fish {
+            if fish.habit() != Some(Habit::Lazarus) {
+                continue;
+            }
+            let clock = fish
+                .habits
+                .lazarus_clock
+                .get_or_insert_with(|| sample_exponential(rng, LAZARUS_MEAN_SECS));
+            *clock -= dt;
+            if *clock > 0.0 {
+                continue;
+            }
+            fish.habits.lazarus_clock = None;
+            events.push(TankEvent::Lazarus);
+        }
         events
     }
 

@@ -15,6 +15,7 @@ pub const CONTACT_SPARK: u32 = 4;
 pub const SEE_THROUGH_PERCENT: u32 = 60;
 pub const ELECTROSENSE_CRIT: u32 = 10;
 pub const PRIDE_CRIT: u32 = 15;
+pub const FANGS_BITE: u32 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DeepRole {
@@ -65,6 +66,12 @@ pub enum DeepRole {
     Pride,
     Toy,
     Unfish,
+    Squish,
+    CounterLight,
+    LooksUp,
+    Fangs,
+    Chimera,
+    Lazarus,
 }
 
 impl DeepRole {
@@ -188,6 +195,15 @@ pub fn wear(kit: &mut Kit, fish: &Fish, role: DeepRole, stacks: u32) {
             kit.add(Trait::Pride);
             kit.add(Trait::Telepathy);
         }
+        DeepRole::Squish => kit.add(Trait::Squish),
+        DeepRole::CounterLight => kit.add(Trait::CounterLight),
+        DeepRole::LooksUp => kit.add(Trait::LooksUp),
+        DeepRole::Fangs => {
+            kit.bite += FANGS_BITE;
+            kit.add(Trait::Fangs);
+        }
+        DeepRole::Chimera => kit.add(Trait::Chimera),
+        DeepRole::Lazarus => kit.add(Trait::Lazarus(stacks)),
         DeepRole::Toy => super::toys::fit(kit, fish),
         DeepRole::Unfish => super::unfish::fit(kit, fish),
     }

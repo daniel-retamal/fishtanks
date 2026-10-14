@@ -43,16 +43,18 @@ pub enum Curse {
     FinePrint,
     Wanting,
     WrongWord,
+    Doomed,
 }
 
 impl Curse {
-    pub const ALL: [Curse; 6] = [
+    pub const ALL: [Curse; 7] = [
         Curse::HungryGhost,
         Curse::Brittle,
         Curse::HeavyFins,
         Curse::FinePrint,
         Curse::Wanting,
         Curse::WrongWord,
+        Curse::Doomed,
     ];
 
     pub fn name(self) -> &'static str {
@@ -63,6 +65,7 @@ impl Curse {
             Curse::FinePrint => "Fine Print",
             Curse::Wanting => "Found Wanting",
             Curse::WrongWord => "The Wrong Word",
+            Curse::Doomed => "Doomed",
         }
     }
 
@@ -74,6 +77,7 @@ impl Curse {
             Curse::FinePrint => "A tenth less gold from everything it finds.",
             Curse::Wanting => "A tenth less HP.",
             Curse::WrongWord => "Enemies crit it 10% more often.",
+            Curse::Doomed => "Crits on it do triple, and a death blow always kills it.",
         }
     }
 }

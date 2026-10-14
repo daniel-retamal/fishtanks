@@ -5,14 +5,17 @@ use fishtank::dungeon::Difficulty;
 use fishtank::dungeon::Wreck;
 use fishtank::dungeon::battle::Stakes;
 use fishtank::dungeon::expedition::{Expedition, FightRecord, Ground, Route, Wound};
+use fishtank::dungeon::fighter::Ghost;
 use fishtank::dungeon::floor;
 use fishtank::dungeon::haul::Haul;
 use fishtank::dungeon::items::{Item, Pack};
 use fishtank::dungeon::map::{Map, RoomKind, Shape};
-use fishtank::dungeon::room::{Stage, Visit};
+use fishtank::dungeon::room::{Offer, Stage, Visit};
 use fishtank::dungeon::screen::View;
 use fishtank::dungeon::sim::Tier;
+use fishtank::dungeon::traits::Haunt;
 use fishtank::fishes::fish::Fish;
+use fishtank::fishes::graveyard::Fate;
 use fishtank::fishes::mutations::{Mutation, apply_mutation_to_fish};
 use fishtank::fishes::species::FishSpecies;
 use fishtank::fishes::unfish::UnfishKind;
@@ -208,7 +211,7 @@ fn at(tui: &mut Tui, mut expedition: Expedition, kind: RoomKind) {
     tui.app.dungeon.expedition = Some(expedition);
 }
 
-const ROOMS: [RoomKind; 13] = [
+const ROOMS: [RoomKind; 14] = [
     RoomKind::Encounter,
     RoomKind::Den,
     RoomKind::Chest,
@@ -221,6 +224,7 @@ const ROOMS: [RoomKind; 13] = [
     RoomKind::Vent,
     RoomKind::Cleaning,
     RoomKind::Vending,
+    RoomKind::Hole,
     RoomKind::Elevator,
 ];
 
@@ -309,31 +313,160 @@ fn the_rooms_gone_wrong_on_film() {
     }
 }
 
+const FLOOR_EVENTS: [(u32, &str); 5] = [
+    (1, "shallows"),
+    (2, "reef"),
+    (3, "candy"),
+    (4, "graveyard"),
+    (5, "dunes"),
+];
+
+fn the_dead() -> Vec<Ghost> {
+    let mut rng = SmallRng::seed_from_u64(CROWD_SEED);
+    let mut dead = Vec::new();
+    for (species, name, fate) in [
+        (FishSpecies::Merluza, "Abel", Fate::Sold),
+        (FishSpecies::Cashfish, "Nemo", Fate::Dive),
+        (FishSpecies::Salmon, "Pip", Fate::Killed),
+    ] {
+        let mut fish = Fish::new(species, name.to_string(), 0.0, 0.0, &mut rng);
+        fish.fate = Some(fate);
+        dead.push(Ghost::of(&fish, Haunt::Dead));
+    }
+    dead
+}
+
+fn at_event(tui: &mut Tui, depth: u32, name: &str, party: Vec<Fish>) {
+    let mut expedition = diving(party, CROWD_SEED, &Ground::default());
+    expedition.floor = depth;
+    expedition
+        .pack
+        .push(Pack::of(Item::Stock(StockItem::Junk), 1));
+    at(tui, expedition, RoomKind::Event);
+    let visit = tui
+        .app
+        .dungeon
+        .expedition
+        .as_mut()
+        .and_then(|e| e.visit.as_mut())
+        .expect("a room");
+    visit.event = Some(name.to_string());
+    visit.offers = the_dead().into_iter().map(Offer::Dead).collect();
+}
+
 #[test]
-fn the_shallows_events_on_film() {
+fn the_floor_events_on_film() {
+    for (depth, slug) in FLOOR_EVENTS {
+        for (cols, rows) in ROOM_SIZES {
+            let mut tui = Tui::as_player(cols, rows);
+            tui.film(reels(), &format!("deep-events-{slug}-{cols}x{rows}"));
+            for event in fishtank::dungeon::event::of_floor(depth) {
+                at_event(&mut tui, depth, event.name, strong_party());
+                tui.run("/dungeon");
+                tui.snap(event.name);
+                tui.key(KeyCode::Enter);
+                tui.snap(&format!("{}: what happened", event.name));
+                tui.key(KeyCode::Esc);
+            }
+            tui.write_reel();
+            no_flaws(&tui);
+        }
+    }
+}
+
+fn slow_and_weak() -> Vec<Fish> {
+    let mut party = Tier::Starter.party(&mut SmallRng::seed_from_u64(CROWD_SEED));
+    party.truncate(1);
+    party
+}
+
+#[test]
+fn events_gone_wrong_on_film() {
     for (cols, rows) in ROOM_SIZES {
         let mut tui = Tui::as_player(cols, rows);
-        tui.film(reels(), &format!("deep-events-{cols}x{rows}"));
-        for event in fishtank::dungeon::event::of_floor(1) {
-            let expedition = diving(strong_party(), CROWD_SEED, &Ground::default());
-            at(&mut tui, expedition, RoomKind::Event);
-            let visit = tui
-                .app
-                .dungeon
-                .expedition
-                .as_mut()
-                .and_then(|e| e.visit.as_mut())
-                .expect("a room");
-            visit.event = Some(event.name.to_string());
+        tui.film(reels(), &format!("deep-events-wrong-{cols}x{rows}"));
+        for (depth, name) in [
+            (2, "The Coral Maze"),
+            (2, "A Giant Pearl"),
+            (3, "The Sugar Altar"),
+            (4, "The Séance Table"),
+            (5, "A Crashed Saucer"),
+        ] {
+            at_event(&mut tui, depth, name, slow_and_weak());
+            if let Some(expedition) = tui.app.dungeon.expedition.as_mut() {
+                expedition.pack.retain(|pack| pack.item != Item::Food);
+                expedition.pack.push(Pack::of(Item::Food, 1));
+            }
             tui.run("/dungeon");
-            tui.snap(event.name);
             tui.key(KeyCode::Enter);
-            tui.snap(&format!("{}: what happened", event.name));
+            tui.snap(&format!("{name}: gone wrong"));
             tui.key(KeyCode::Esc);
         }
         tui.write_reel();
         no_flaws(&tui);
     }
+}
+
+#[test]
+fn a_crop_circle_takes_a_fish_home_to_an_alien_base() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    let fry = Fish::new(
+        FishSpecies::Merluza,
+        "Pip".to_string(),
+        0.0,
+        0.0,
+        &mut SmallRng::seed_from_u64(CROWD_SEED),
+    );
+    at_event(&mut tui, 5, "A Crop Circle", vec![fry]);
+    tui.film(reels(), "deep-crop-circle");
+    tui.run("/dungeon");
+    tui.snap("a crop circle");
+    tui.key(KeyCode::Enter);
+    tui.write_reel();
+    assert_eq!(
+        view(&tui),
+        "closed",
+        "the only fish is gone, so the dive ends"
+    );
+    assert!(tui.app.dungeon.expedition.is_none());
+    let base = tui
+        .app
+        .tanks
+        .iter()
+        .find(|tank| tank.fish.iter().any(|fish| fish.name == "Pip"))
+        .expect("Pip is home");
+    assert!(base.kind.is_ufo_base(), "{:?}", base.kind);
+    let pip = base
+        .fish
+        .iter()
+        .find(|fish| fish.name == "Pip")
+        .expect("Pip");
+    assert!(pip.is_alienated());
+}
+
+#[test]
+fn the_seance_calls_a_sold_fish_back_as_a_ghost_to_fight() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    at_event(&mut tui, 4, "The Séance Table", strong_party());
+    tui.run("/dungeon");
+    tui.screen().expect_find("Call Abel");
+    tui.screen().expect_find("sold");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Abel remembers, and it is angry.");
+    tui.key(KeyCode::Enter);
+    assert_eq!(view(&tui), "fight");
+    let fighting_abel = tui
+        .app
+        .dungeon_overlay()
+        .and_then(|state| state.fight())
+        .is_some_and(|fight| {
+            fight
+                .battle
+                .fighters
+                .iter()
+                .any(|f| f.ghost.as_ref().is_some_and(|g| g.name == "Abel"))
+        });
+    assert!(fighting_abel);
 }
 
 fn seed_with(kind: RoomKind) -> (u64, u8) {
@@ -761,4 +894,350 @@ fn a_fight_to_the_end_comes_back_to_the_dive() {
     }
     tui.write_reel();
     assert_ne!(view(&tui), "fight", "the fight ended");
+}
+
+#[test]
+fn a_cast_in_the_fishing_hole_lands_below_and_comes_back_to_the_hole() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    at(
+        &mut tui,
+        diving(strong_party(), CROWD_SEED, &Ground::default()),
+        RoomKind::Hole,
+    );
+    let home = fish_at_home(&tui);
+    tui.film(reels(), "deep-hole");
+    tui.run("/dungeon");
+    tui.snap("the fishing hole");
+    tui.screen().expect_find("Casts left: 3");
+    tui.key(KeyCode::Enter);
+    assert!(tui.app.fishing_state().is_some(), "the real minigame");
+    tui.snap("a cast");
+    if let Some(state) = tui.app.fishing_state_mut() {
+        state.captured = true;
+    }
+    tui.tick_n(1);
+    tui.snap("what bit");
+    let a_fish = tui.screen().contains("ENTER capture");
+    if a_fish {
+        tui.type_text("Hondo");
+    }
+    tui.key(KeyCode::Enter);
+    assert_eq!(view(&tui), "room");
+    tui.screen().expect_find("Casts left: 2");
+    tui.snap("back at the hole");
+    let expedition = tui.app.dungeon.expedition.as_ref().expect("still below");
+    match a_fish {
+        true => {
+            let hondo = expedition
+                .party
+                .iter()
+                .find(|fish| fish.name == "Hondo")
+                .expect("Hondo joins the party");
+            assert!(FishSpecies::of_the_deep().contains(&hondo.species));
+        }
+        false => assert!(!expedition.haul.treasures.is_empty()),
+    }
+    assert_eq!(
+        fish_at_home(&tui),
+        home,
+        "nothing caught below lands at home"
+    );
+    tui.key(KeyCode::Enter);
+    assert!(tui.app.fishing_state().is_some());
+    tui.key(KeyCode::Esc);
+    assert_eq!(
+        view(&tui),
+        "room",
+        "a fish that gets away still leaves the hole"
+    );
+    tui.screen().expect_find("Casts left: 1");
+    tui.write_reel();
+}
+
+#[test]
+fn a_cast_left_unfinished_is_not_spent_when_the_game_is_saved() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    at(
+        &mut tui,
+        diving(strong_party(), CROWD_SEED, &Ground::default()),
+        RoomKind::Hole,
+    );
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter);
+    let text = tui.app.snapshot().to_ron().expect("a save");
+    let save = fishtank::app::SaveFile::from_ron(&text).expect("it reads back");
+    let mut back = Tui::resumed(save, SIZE.0, SIZE.1);
+    back.run("/dungeon");
+    back.screen().expect_find("Casts left: 3");
+}
+
+fn workshop_party() -> Vec<Fish> {
+    let mut rng = SmallRng::seed_from_u64(CROWD_SEED);
+    let mut bot = Fish::new(FishSpecies::Botfish, "Neo".to_string(), 0.0, 0.0, &mut rng);
+    if let Some(script) = bot.script_mut() {
+        script.listen("dawn");
+        script.drive("go");
+    }
+    let toy = Fish::new(FishSpecies::Toyfish, "Robo".to_string(), 0.0, 0.0, &mut rng);
+    let merluza = Fish::new(
+        FishSpecies::Merluza,
+        "Merlín".to_string(),
+        0.0,
+        0.0,
+        &mut rng,
+    );
+    vec![bot, toy, merluza]
+}
+
+const CHOCOLATE: StockItem = StockItem::Consumable(fishtank::loot::ConsumableKind::Milk(
+    fishtank::loot::MilkVariant::Chocolate,
+));
+
+fn at_the_vent(tui: &mut Tui) {
+    let mut expedition = diving(workshop_party(), CROWD_SEED, &Ground::default());
+    expedition.pack.push(Pack::of(Item::Stock(CHOCOLATE), 2));
+    expedition.haul.gold = 50_000;
+    at(tui, expedition, RoomKind::Vent);
+}
+
+fn party_fish<'a>(tui: &'a Tui, name: &str) -> &'a Fish {
+    tui.app
+        .dungeon
+        .expedition
+        .as_ref()
+        .and_then(|e| e.party.iter().find(|f| f.name == name))
+        .expect("in the party")
+}
+
+#[test]
+fn the_vent_workshop_on_film() {
+    for (cols, rows) in ROOM_SIZES {
+        let mut tui = Tui::as_player(cols, rows);
+        tui.film(reels(), &format!("deep-vent-{cols}x{rows}"));
+        at_the_vent(&mut tui);
+        tui.run("/dungeon");
+        tui.snap("the vent, working on a botfish");
+        tui.key(KeyCode::Right);
+        tui.snap("working on a toy");
+        tui.key(KeyCode::Right);
+        tui.select("Items");
+        tui.key(KeyCode::Enter);
+        tui.snap("items out of a fight");
+        tui.select("Chocolate Milk");
+        tui.key(KeyCode::Enter);
+        tui.snap("chocolate milk taken");
+        tui.key(KeyCode::Esc);
+        tui.write_reel();
+        no_flaws(&tui);
+    }
+}
+
+#[test]
+fn a_lasting_item_at_the_vent_changes_the_fish_for_good() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    at_the_vent(&mut tui);
+    tui.run("/dungeon");
+    tui.key(KeyCode::Right).key(KeyCode::Right);
+    let before = party_fish(&tui, "Merlín").mutation_count();
+    tui.select("Items");
+    tui.key(KeyCode::Enter);
+    tui.select("Chocolate Milk");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Merlín takes the Chocolate Milk.");
+    assert_eq!(party_fish(&tui, "Merlín").mutation_count(), before + 1);
+}
+
+#[test]
+fn programming_a_botfish_below_saves_onto_the_fish_in_the_party() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    at_the_vent(&mut tui);
+    tui.film(reels(), "deep-vent-program");
+    tui.run("/dungeon");
+    tui.select("Program a botfish");
+    tui.key(KeyCode::Enter);
+    assert_eq!(view(&tui), "closed", "the wiring panel is open");
+    tui.snap("the wiring panel, below");
+    tui.type_text(", moon");
+    tui.key(KeyCode::Enter);
+    assert_eq!(view(&tui), "room", "back at the vent");
+    tui.snap("back at the vent");
+    tui.write_reel();
+    let listens: Vec<String> = party_fish(&tui, "Neo")
+        .script()
+        .expect("a botfish")
+        .listens()
+        .map(str::to_string)
+        .collect();
+    assert!(listens.contains(&"moon".to_string()), "{listens:?}");
+}
+
+#[test]
+fn dressing_a_toy_below_opens_the_toybox_on_it_and_comes_back() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    at_the_vent(&mut tui);
+    tui.film(reels(), "deep-vent-dress");
+    tui.run("/dungeon");
+    tui.key(KeyCode::Right);
+    tui.select("Dress a toy");
+    tui.key(KeyCode::Enter);
+    assert_eq!(view(&tui), "closed", "the toybox is open");
+    tui.snap("the toybox, below");
+    tui.screen().expect_find("Toybox#edit");
+    tui.key(KeyCode::Esc).key(KeyCode::Esc);
+    assert_eq!(view(&tui), "room");
+    tui.write_reel();
+}
+
+#[test]
+fn printing_at_the_vent_adds_printed_botfish_to_the_party() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    let bot = workshop_party().remove(0);
+    let blueprint =
+        fishtank::tank::Blueprint::capture("Relay".to_string(), &[bot]).expect("a design");
+    tui.app.blueprints.push(blueprint);
+    tui.app.inventory.insert(
+        StockItem::Consumable(fishtank::loot::ConsumableKind::Fabricator),
+        1,
+    );
+    tui.app.inventory.insert(
+        StockItem::Consumable(fishtank::loot::ConsumableKind::BlankWafer),
+        4,
+    );
+    at_the_vent(&mut tui);
+    let party = tui
+        .app
+        .dungeon
+        .expedition
+        .as_ref()
+        .expect("below")
+        .party
+        .len();
+    tui.film(reels(), "deep-vent-print");
+    tui.run("/dungeon");
+    tui.snap("print is open");
+    tui.select("Print");
+    tui.key(KeyCode::Enter);
+    tui.snap("the foundry, below");
+    tui.key(KeyCode::Char('p'));
+    assert_eq!(view(&tui), "room", "back at the vent");
+    tui.snap("printed");
+    tui.write_reel();
+    let expedition = tui.app.dungeon.expedition.as_ref().expect("below");
+    assert_eq!(expedition.party.len(), party + 1);
+    assert_eq!(fish_at_home(&tui), 3, "nothing printed lands at home");
+}
+
+const NATIVES: [(&str, &str); 6] = [
+    ("gota", "Gota"),
+    ("hacha", "Hacha"),
+    ("barril", "Barril"),
+    ("ogro", "Ogro"),
+    ("quimera", "Quimera"),
+    ("celacanto", "Celacanto"),
+];
+const NATIVE_GAP: f32 = 16.0;
+const NATIVE_LEFT: f32 = 4.0;
+
+fn line_up(tui: &mut Tui) {
+    let height = tui.app.tanks[0].height as f32;
+    for (index, (_, name)) in NATIVES.iter().enumerate() {
+        if let Some(fish) = tui.app.tanks[0].fish.iter_mut().find(|f| f.name == *name) {
+            fish.position.x = NATIVE_LEFT + NATIVE_GAP * index as f32;
+            fish.position.y = height / 2.0;
+            fish.facing = fishtank::fishes::fish::Direction::Right;
+        }
+    }
+    if let Some(above) = tui.app.tanks[0]
+        .fish
+        .iter_mut()
+        .find(|f| f.name == "Sombra")
+    {
+        above.position.x = NATIVE_LEFT + NATIVE_GAP * 2.0;
+        above.position.y = height / 4.0;
+    }
+}
+
+#[test]
+fn the_fish_of_the_deep_on_film() {
+    let mut tui = Tui::new();
+    tui.resize(110, 20);
+    tui.clear_tank();
+    tui.film(reels(), "deep-natives");
+    for (species, name) in NATIVES {
+        tui.run(&format!("/spawn {species} \"{name}\""));
+    }
+    tui.run("/names");
+    line_up(&mut tui);
+    tui.tick_n(1);
+    line_up(&mut tui);
+    tui.snap("the six fish of the Deep, alone with each other");
+    tui.run("/spawn betta \"Sombra\"");
+    line_up(&mut tui);
+    tui.tick_n(1);
+    line_up(&mut tui);
+    tui.snap("a fish swims above Barril: its eyes look up; Quimera takes the new colours");
+    tui.write_reel();
+}
+
+const QUIMERA_WAIT: usize = 8;
+
+fn acting(tui: &Tui) -> Option<String> {
+    let fight = tui.app.dungeon_overlay()?.fight()?;
+    let actor = fight.battle.actor()?;
+    Some(fight.battle.fighters[actor].name.clone())
+}
+
+fn deep_party() -> Vec<Fish> {
+    let mut rng = SmallRng::seed_from_u64(CROWD_SEED);
+    [
+        FishSpecies::Quimera,
+        FishSpecies::Kissfish,
+        FishSpecies::Lionfish,
+    ]
+    .into_iter()
+    .map(|species| {
+        Fish::new(
+            species,
+            species.display_name().to_string(),
+            0.0,
+            0.0,
+            &mut rng,
+        )
+    })
+    .collect()
+}
+
+#[test]
+fn the_deep_fish_and_a_cow_in_a_fight_on_film() {
+    for (cols, rows) in SIZES {
+        let mut tui = crowd(deep_party());
+        if let Some(expedition) = tui.app.dungeon.expedition.as_mut() {
+            expedition.cows.push(fishtank::entities::cow::Cow::new(
+                "Vaquita from Above".to_string(),
+                fishtank::entities::cow::CowVariant::Blue,
+                0.0,
+                0.0,
+                &mut SmallRng::seed_from_u64(CROWD_SEED),
+            ));
+        }
+        tui.resize(cols, rows);
+        tui.film(reels(), &format!("deep-natives-fight-{cols}x{rows}"));
+        tui.run("/dungeon");
+        settle(&mut tui);
+        tui.snap("Quimera, a Kissfish, a Lionfish and a cow from above");
+        for _ in 0..QUIMERA_WAIT {
+            if acting(&tui) == Some("Quimera".to_string()) {
+                break;
+            }
+            tui.select("Guard");
+            tui.key(KeyCode::Enter);
+            settle(&mut tui);
+        }
+        assert_eq!(acting(&tui), Some("Quimera".to_string()));
+        tui.key(KeyCode::Down);
+        tui.key(KeyCode::Enter);
+        tui.snap("Quimera's Skills: Kiss and Venom, borrowed");
+        tui.write_reel();
+        no_flaws(&tui);
+    }
 }

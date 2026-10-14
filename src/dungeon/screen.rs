@@ -139,7 +139,7 @@ impl DungeonState {
                 let Some(expedition) = expedition else {
                     return Step::Close;
                 };
-                let Some(panel) = expedition.panel(lobby.fish, &ground.wrecks) else {
+                let Some(panel) = expedition.panel(lobby.fish, &ground.above()) else {
                     return Step::Stay;
                 };
                 room_key(lobby, action, &panel, expedition.party.len())

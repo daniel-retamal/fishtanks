@@ -2,6 +2,7 @@ use rand::rngs::SmallRng;
 use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 
+use crate::entities::cow::Cow;
 use crate::fishes::fish::Fish;
 use crate::fishes::toy::Line;
 
@@ -98,6 +99,7 @@ pub struct BattleSetup {
 pub struct Battle {
     pub fighters: Vec<Fighter>,
     pub party: Vec<Fish>,
+    pub cows: Vec<Cow>,
     pub dead: Vec<usize>,
     pub clock: u64,
     pub round: u32,
@@ -150,6 +152,7 @@ impl Battle {
         Battle {
             fighters,
             party,
+            cows: Vec::new(),
             dead: Vec::new(),
             clock: 0,
             round: 1,
@@ -279,6 +282,30 @@ impl Battle {
         fighter.hp = hp.min(fighter.max_hp);
         fighter.belly_up = belly_up || fighter.hp == 0;
         fighter.last_hp = fighter.hp;
+    }
+
+    pub fn herd(&mut self, cows: Vec<Cow>) {
+        for cow in cows {
+            self.join_cow(cow);
+        }
+    }
+
+    pub fn join_cow(&mut self, cow: Cow) -> usize {
+        let herd = self.cows.len();
+        let fighter = Fighter::of_cow(&Kit::of_cow(&cow), herd);
+        self.cows.push(cow);
+        self.fighters.push(fighter);
+        self.fighters.len() - 1
+    }
+
+    pub fn linger(&mut self, member: usize, status: Status) {
+        if let Some(fighter) = self
+            .fighters
+            .iter_mut()
+            .find(|f| f.member() == Some(member))
+        {
+            fighter.inflict(status);
+        }
     }
 
     pub fn views(&self) -> Vec<View> {
@@ -1018,6 +1045,9 @@ impl Battle {
         let mut damage = raw * percent / PERCENT;
         let at = self.mark();
         damage = self.harm(actor, target, damage.max(1), kind);
+        if crit {
+            passives::fangs(self, actor, target);
+        }
         Strike {
             landed: true,
             damage,
@@ -1259,6 +1289,7 @@ impl Battle {
         if braced && kind.guarded() {
             damage = damage.div_ceil(HALF);
         }
+        damage = passives::squish(self, target, damage);
         if let Some(fluff) = self.fighters[target].trait_value(|t| match t {
             Trait::Fluff(n) => Some(*n),
             _ => None,
@@ -1399,6 +1430,9 @@ impl Battle {
     }
 
     fn death_blow(&mut self, target: usize) {
+        if self.fighters[target].has(Trait::Cow) {
+            return;
+        }
         let name = self.fighters[target].name.clone();
         if passives::escapes(self, target) {
             return;
@@ -2162,6 +2196,7 @@ impl Battle {
         Aftermath {
             outcome: self.outcome().unwrap_or(Outcome::Wiped),
             party: self.party,
+            cows: self.cows,
             dead: self.dead,
             hp: self
                 .fighters
@@ -2190,6 +2225,7 @@ impl Battle {
 pub struct Aftermath {
     pub outcome: Outcome,
     pub party: Vec<Fish>,
+    pub cows: Vec<Cow>,
     pub dead: Vec<usize>,
     pub hp: Vec<(usize, u32, bool)>,
     pub haul: u64,

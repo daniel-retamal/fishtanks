@@ -418,3 +418,60 @@ fn a_hit_is_told_before_what_it_causes() {
         }
     }
 }
+
+fn cow(variant: crate::entities::cow::CowVariant) -> crate::entities::cow::Cow {
+    crate::entities::cow::Cow::new(
+        "Vaquita".to_string(),
+        variant,
+        0.0,
+        0.0,
+        &mut SmallRng::seed_from_u64(7),
+    )
+}
+
+#[test]
+fn a_cow_milks_its_own_variant_into_an_ally() {
+    let mut battle = battle(
+        &[FishSpecies::Merluza],
+        &[&SLUG],
+        setup(Difficulty::Normal, Stakes::Encounter, 7),
+    );
+    let herd = battle.join_cow(cow(crate::entities::cow::CowVariant::Blue));
+    battle.begin();
+    let fish = battle.side(Side::Party).next().expect("a fish");
+    let crit = battle.fighters[fish].crit;
+    let milk = crate::dungeon::moves::milk();
+    crate::dungeon::specials::perform(
+        &mut battle,
+        herd,
+        crate::dungeon::effect::Special::Milk,
+        &[fish],
+        &milk,
+    );
+    assert_eq!(
+        battle.fighters[fish].crit,
+        crit + crate::dungeon::items::SHARP_PERCENT,
+        "a blue cow's milk is blueberry milk"
+    );
+}
+
+#[test]
+fn a_cow_is_never_killed_even_on_hardcore() {
+    let mut battle = battle(
+        &[FishSpecies::Merluza],
+        &[&SLUG],
+        setup(Difficulty::Hardcore, Stakes::Encounter, 8),
+    );
+    let herd = battle.join_cow(cow(crate::entities::cow::CowVariant::Brown));
+    battle.begin();
+    let slug = battle.side(Side::Foes).next().expect("the slug");
+    let max = battle.fighters[herd].max_hp;
+    battle.lose_hp(herd, max, Some(slug));
+    assert!(battle.fighters[herd].belly_up);
+    battle.lose_hp(herd, 1, Some(slug));
+    assert!(
+        !battle.fighters[herd].gone,
+        "a cow stays belly up, it never dies"
+    );
+    assert_eq!(battle.finish().cows.len(), 1, "it comes home");
+}
