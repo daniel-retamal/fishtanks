@@ -494,10 +494,11 @@ fn main_rows(scene: &Scene) -> Vec<MenuRow> {
         } => Some(Command::Items),
         _ => None,
     };
-    Command::ALL
-        .iter()
+    state
+        .commands()
+        .into_iter()
         .enumerate()
-        .map(|(i, &command)| {
+        .map(|(i, command)| {
             let usable = state.usable(actor, command);
             MenuRow {
                 label: command.name().to_string(),

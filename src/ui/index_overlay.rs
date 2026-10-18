@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 use crate::colors::{BLACK, STEEL, WHITE};
+use crate::dungeon::life::{DeepLife, Grade};
 use crate::fishes::fish::{Direction, Fish, LineSprite};
 use crate::fishes::unfish::UnfishKind;
 use crate::tanks::soul_wall::SoulWall;
@@ -56,6 +57,7 @@ pub struct FishSnapshot {
     fed: String,
     fed_level: Option<f64>,
     tank_name: String,
+    grade: Option<Grade>,
     display_height: u16,
     is_unfish: bool,
     dead: Option<Color>,
@@ -130,6 +132,7 @@ fn snapshot(tank_name: &str, fish: &Fish, dead: Option<Color>) -> FishSnapshot {
         },
         fed_level: fish.fed().percent().filter(|_| alive),
         tank_name: tank_name.to_string(),
+        grade: fish.deep.as_deref().map(DeepLife::grade),
         display_height: row_height(fish, &art),
         is_unfish: fish.unfish_state.is_some(),
         dead,
@@ -177,7 +180,7 @@ impl IndexState {
                 fish: fish.clone(),
                 fields: fantasy
                     .iter()
-                    .map(|&kind| fields::field_value(kind, fish, &names, &mut rng))
+                    .map(|&kind| fields::field_value(kind, fish, &names))
                     .collect(),
             })
             .collect();
@@ -232,9 +235,15 @@ impl IndexState {
                 .view
                 .iter()
                 .any(|&row| self.rows[row].snapshot.dead.is_some());
+        let tells_the_grade = self.query.mentions(Column::Grade)
+            || self
+                .view
+                .iter()
+                .any(|&row| self.rows[row].snapshot.grade.is_some());
         self.columns = self
             .candidates()
             .filter(|&column| column != Column::Status || tells_the_dead)
+            .filter(|&column| column != Column::Grade || tells_the_grade)
             .collect();
         self.focus = self
             .columns
@@ -283,6 +292,12 @@ impl IndexState {
             Column::Worth => index_query::Cell::text(&snap.worth),
             Column::Fed => index_query::Cell::counted(&snap.fed, snap.fed_level),
             Column::Fishtank => index_query::Cell::counted(&snap.tank_name, None),
+            Column::Grade => match snap.grade {
+                Some(grade) => {
+                    index_query::Cell::counted(grade.name(), Some(f64::from(grade.step())))
+                }
+                None => index_query::Cell::counted(table::NOTHING, None),
+            },
             Column::Field(kind) => {
                 index_query::Cell::text(self.field(row, kind).map_or("", |v| v.text.as_str()))
             }

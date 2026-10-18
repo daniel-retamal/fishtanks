@@ -334,7 +334,7 @@ pub const ROWS: &[EnemySpec] = &[
         passives: &[
             Passive {
                 name: "Shield",
-                about: "nothing gets through until the line of prayer on screen is typed into the command bar",
+                about: "nothing gets through until a fish prays and says the line it waits for",
             },
             Passive {
                 name: "The Cycle",

@@ -4,11 +4,13 @@ use crossterm::event::KeyCode;
 use fishtank::dungeon::Difficulty;
 use fishtank::dungeon::Wreck;
 use fishtank::dungeon::battle::Stakes;
-use fishtank::dungeon::expedition::{Expedition, FightRecord, Ground, Route, Wound};
+use fishtank::dungeon::boon::{Boon, Charm, Curse};
+use fishtank::dungeon::expedition::{Expedition, FightRecord, Ground, HAUNT_SAMPLE, Route, Wound};
 use fishtank::dungeon::fighter::Ghost;
 use fishtank::dungeon::floor;
 use fishtank::dungeon::haul::Haul;
 use fishtank::dungeon::items::{Item, Pack};
+use fishtank::dungeon::life::DeepLife;
 use fishtank::dungeon::map::{Map, RoomKind, Shape};
 use fishtank::dungeon::room::{Offer, Stage, Visit};
 use fishtank::dungeon::screen::View;
@@ -1276,8 +1278,21 @@ fn prayer_of(tui: &Tui) -> Option<&'static str> {
         .and_then(|fight| fight.prayer())
 }
 
+fn words_open(tui: &Tui) -> bool {
+    tui.app
+        .dungeon_overlay()
+        .is_some_and(|state| state.words.is_some())
+}
+
+fn menu_of(tui: &Tui) -> Option<fishtank::dungeon::state::Menu> {
+    tui.app
+        .dungeon_overlay()
+        .and_then(|state| state.fight())
+        .map(|fight| fight.menu)
+}
+
 #[test]
-fn the_great_eye_hears_the_line_typed_in_the_command_bar() {
+fn the_great_eye_hears_the_line_said_in_its_words_field() {
     for (cols, rows) in SIZES {
         let mut tui = before_the_eye();
         tui.resize(cols, rows);
@@ -1285,12 +1300,22 @@ fn the_great_eye_hears_the_line_typed_in_the_command_bar() {
         tui.run("/dungeon");
         settle(&mut tui);
         let line = prayer_of(&tui).expect("the Eye asks for a line");
-        tui.snap("the Eye shows its line");
-        tui.type_text(&line.to_lowercase());
-        tui.snap("the line in the command bar");
-        assert_eq!(tui.app.editor.text, line.to_lowercase());
+        tui.screen().expect_find("> Pray");
+        tui.snap("the Eye shields itself: Pray heads the menu");
         tui.key(KeyCode::Enter);
-        assert!(tui.app.editor.text.is_empty(), "the bar is spent");
+        assert!(words_open(&tui), "Pray opens the words field");
+        tui.snap("the words field, the line in quotes and as grey ghost text");
+        tui.type_text(&line.to_lowercase());
+        tui.snap("the line typed in the field");
+        assert!(
+            tui.app.editor.text.is_empty(),
+            "the command bar is never used"
+        );
+        tui.key(KeyCode::Enter);
+        assert!(
+            !words_open(&tui),
+            "ENTER says the words and closes the field"
+        );
         let said = tui
             .app
             .dungeon_overlay()
@@ -1298,25 +1323,20 @@ fn the_great_eye_hears_the_line_typed_in_the_command_bar() {
             .map(|fight| fight.battle.prayer.said);
         assert_eq!(said, Some(1));
         settle(&mut tui);
-        tui.snap("the Eye blinks");
+        tui.screen().expect_absent("> Pray");
+        tui.snap("the Eye blinks, and Pray leaves the menu while it listens");
         tui.write_reel();
         no_flaws(&tui);
     }
 }
 
 #[test]
-fn a_wrong_line_falls_into_the_dark_and_the_menu_still_answers_arrows() {
+fn a_wrong_line_falls_into_the_dark_and_esc_closes_the_field() {
     let mut tui = before_the_eye();
     tui.run("/dungeon");
     settle(&mut tui);
+    tui.key(KeyCode::Enter);
     tui.type_text("wrong words");
-    tui.key(KeyCode::Down);
-    let menu = tui
-        .app
-        .dungeon_overlay()
-        .and_then(|state| state.fight())
-        .map(|fight| fight.menu);
-    assert_eq!(menu, Some(fishtank::dungeon::state::Menu::Main(1)));
     tui.key(KeyCode::Enter);
     assert!(
         log_of(&tui)
@@ -1324,14 +1344,21 @@ fn a_wrong_line_falls_into_the_dark_and_the_menu_still_answers_arrows() {
             .any(|line| line == "The words fall into the dark.")
     );
     settle(&mut tui);
+    assert!(
+        prayer_of(&tui).is_some(),
+        "the Eye still waits for its line"
+    );
+    tui.key(KeyCode::Enter);
     tui.type_text("x");
     tui.key(KeyCode::Esc);
-    assert!(tui.app.editor.text.is_empty(), "ESC clears the bar first");
+    assert!(!words_open(&tui), "ESC closes the field");
     assert_eq!(view(&tui), "fight");
+    tui.key(KeyCode::Down);
+    assert_eq!(menu_of(&tui), Some(fishtank::dungeon::state::Menu::Main(1)));
 }
 
 #[test]
-fn the_line_of_prayer_is_typed_in_the_room_too() {
+fn the_line_of_prayer_is_said_in_the_room_too() {
     let mut tui = Tui::as_player(SIZE.0, SIZE.1);
     at_event(&mut tui, EYE, "A Line of Prayer", strong_party());
     tui.film(reels(), "deep-prayer-event");
@@ -1347,6 +1374,9 @@ fn the_line_of_prayer_is_typed_in_the_room_too() {
         .expect("a room");
     let line = fishtank::dungeon::event::prayer_line(seed);
     tui.screen().expect_find(&format!("\"{line}\""));
+    tui.key(KeyCode::Enter);
+    assert!(words_open(&tui), "Say it opens the words field");
+    tui.screen().expect_find("Words to the Void");
     tui.type_text(line);
     tui.snap("typed");
     tui.key(KeyCode::Enter);
@@ -1581,4 +1611,140 @@ fn the_deep_toy_parts_on_film() {
     tui.run("/names");
     tui.snap("a Diving Helmet, a Jellyfish Cap, a Periscope and an Anchor");
     tui.write_reel();
+}
+
+const MANY_DEAD: usize = 2_000;
+const DIVE_SAVE_MOST_BYTES: usize = 64 * 1024;
+
+fn saved_bytes(tui: &Tui) -> usize {
+    tui.app.snapshot().to_ron().expect("a save").len()
+}
+
+#[test]
+fn a_fight_keeps_a_handful_of_ghosts_however_many_fish_have_died() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    let mut rng = SmallRng::seed_from_u64(CROWD_SEED);
+    for n in 0..MANY_DEAD {
+        let sold = Fish::new(
+            FishSpecies::Merluza,
+            format!("Sold {n}"),
+            0.0,
+            0.0,
+            &mut rng,
+        );
+        tui.app.graveyard.push(sold);
+    }
+    let haunts = tui.app.deep_ground().haunts.len();
+    assert!(
+        haunts <= HAUNT_SAMPLE,
+        "{haunts} ghosts drawn from one kind of dead"
+    );
+    at(
+        &mut tui,
+        diving(strong_party(), CROWD_SEED, &Ground::default()),
+        RoomKind::Encounter,
+    );
+    tui.run("/dungeon");
+    tui.select("Fight");
+    tui.key(KeyCode::Enter);
+    assert_eq!(view(&tui), "fight");
+    let record = tui
+        .app
+        .dungeon
+        .expedition
+        .as_ref()
+        .and_then(|e| e.fight.as_ref())
+        .expect("a fight");
+    assert!(record.haunts.len() <= HAUNT_SAMPLE);
+    let diving_save = saved_bytes(&tui);
+    let expedition = tui.app.dungeon.expedition.take();
+    let home_save = saved_bytes(&tui);
+    tui.app.dungeon.expedition = expedition;
+    let dive = diving_save - home_save;
+    assert!(
+        dive < DIVE_SAVE_MOST_BYTES,
+        "a dive mid-fight wrote {dive} bytes into the save"
+    );
+}
+
+#[test]
+fn a_game_that_never_dived_writes_nothing_about_the_deep() {
+    let tui = Tui::as_player(SIZE.0, SIZE.1);
+    let save = tui.app.snapshot().to_ron().expect("a save");
+    assert!(
+        !save.contains("dungeon:"),
+        "an untouched Deep is not written"
+    );
+    assert!(
+        !save.contains("deep:"),
+        "a fish that never dived carries nothing"
+    );
+}
+
+const FIELD_SIZES: [(u16, u16); 4] = [(100, 30), (60, 18), (40, 14), (28, 10)];
+
+fn veteran(tui: &mut Tui) {
+    let adam = tui
+        .app
+        .tanks
+        .iter_mut()
+        .flat_map(|tank| tank.fish.iter_mut())
+        .find(|fish| fish.name == "Adam")
+        .expect("Adam");
+    adam.deep = Some(Box::new(DeepLife {
+        floors_survived: 11,
+        dives: 7,
+        deepest: 6,
+        beaten: 212,
+        boons: vec![Boon::SecondWind],
+        curses: vec![Curse::HungryGhost],
+        charm: Some(Charm::CaleuchesLantern),
+        ..DeepLife::default()
+    }));
+}
+
+#[test]
+fn the_deep_fields_on_show_and_index_on_film() {
+    for (cols, rows) in FIELD_SIZES {
+        let mut tui = Tui::as_player(cols, rows);
+        tui.film(reels(), &format!("deep-fields-{cols}x{rows}"));
+        veteran(&mut tui);
+        tui.run("/show \"Adam\" all");
+        tui.snap("Adam's card: the Deep's fields come last");
+        for (field, label) in [
+            ("Elder (11", "scrolled to the Grade"),
+            ("Floor 6", "the Dives"),
+            ("Lantern", "the Charm"),
+            ("Ghost", "the Boons and the Curses, last"),
+        ] {
+            let mut found = false;
+            for _ in 0..FIGHT_TURNS {
+                if tui.screen().contains(field) {
+                    found = true;
+                    break;
+                }
+                tui.key(KeyCode::Down);
+            }
+            assert!(found, "the card scrolls to {field} at {cols}x{rows}");
+            tui.snap(label);
+        }
+        tui.key(KeyCode::Esc);
+        tui.run("/index");
+        tui.snap("the index grows a Grade column once a fish has dived");
+        tui.key(KeyCode::Esc);
+        tui.run("/index sort:-grade");
+        tui.snap("sorted by grade, the deepest first, the column in view");
+        tui.write_reel();
+        no_flaws(&tui);
+    }
+}
+
+#[test]
+fn a_tank_that_never_dived_shows_no_grade() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    tui.run("/index");
+    tui.screen().expect_absent("Grade");
+    tui.key(KeyCode::Esc);
+    tui.run("/index grade:elder");
+    tui.screen().expect_find("Grade");
 }

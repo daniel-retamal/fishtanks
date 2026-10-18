@@ -81,7 +81,7 @@ impl App {
 
     pub fn deep_ground(&self) -> Ground {
         Ground {
-            haunts: expedition::haunts(self.graveyard.iter()),
+            haunts: expedition::haunts(self.graveyard.iter(), &mut rand::rng()),
             purse: self.purse.spendable(),
             known: self.dungeon.remembered.clone(),
             every_graeae: !self.graeae_at_home(),
@@ -126,17 +126,7 @@ impl App {
         let Some(Overlay::Dungeon(mut state)) = self.active_overlay.take() else {
             return;
         };
-        let asked = state
-            .wanted_words(self.dungeon.expedition.as_ref())
-            .is_some();
-        let step = match asked {
-            true => match self.type_the_line(&action) {
-                Typed::Kept => Step::Stay,
-                Typed::Said(words) => state.pray(words),
-                Typed::Passed => state.key(&action, self.dungeon.expedition.as_ref(), &ground),
-            },
-            false => state.key(&action, self.dungeon.expedition.as_ref(), &ground),
-        };
+        let step = state.key(&action, self.dungeon.expedition.as_ref(), &ground);
         self.active_overlay = Some(Overlay::Dungeon(state));
         match step {
             Step::Stay => {}
@@ -159,27 +149,6 @@ impl App {
         }
     }
 
-    fn type_the_line(&mut self, action: &InputAction) -> Typed {
-        let typing = !self.editor.text.is_empty();
-        match action {
-            InputAction::Char(c) => self.editor.insert(*c),
-            InputAction::Backspace if typing => self.editor.backspace(),
-            InputAction::Delete if typing => self.editor.delete(),
-            InputAction::Left if typing => self.editor.left(),
-            InputAction::Right if typing => self.editor.right(),
-            InputAction::Home if typing => self.editor.home(),
-            InputAction::End if typing => self.editor.end(),
-            InputAction::Cancel if typing => self.editor.clear(),
-            InputAction::Confirm if !self.editor.text.trim().is_empty() => {
-                let words = self.editor.text.trim().to_string();
-                self.editor.clear();
-                return Typed::Said(words);
-            }
-            _ => return Typed::Passed,
-        }
-        Typed::Kept
-    }
-
     fn pray_below(&mut self, words: &str, ground: &Ground) {
         let Some(expedition) = self.dungeon.expedition.as_mut() else {
             return;
@@ -189,23 +158,6 @@ impl App {
         let after = Pulse::of(expedition);
         self.uplink(before, after);
         self.follow(next);
-    }
-
-    pub(super) fn deep_line(&self) -> Option<String> {
-        let line = self
-            .dungeon_overlay()?
-            .wanted_words(self.dungeon.expedition.as_ref())?;
-        let typed = self.editor.text.to_uppercase();
-        let upper = line.to_uppercase();
-        Some(match upper.starts_with(&typed) {
-            true => line.chars().skip(typed.chars().count()).collect(),
-            false => String::new(),
-        })
-    }
-
-    pub(super) fn deep_keeps_the_bar(&self) -> bool {
-        self.dungeon_overlay()
-            .is_some_and(|state| state.keeps_the_bar(self.dungeon.expedition.as_ref()))
     }
 
     fn act_below(&mut self, act: Act, fish: usize, ground: &Ground) {
@@ -694,12 +646,6 @@ impl App {
             self.tanks[home].signal(signal);
         }
     }
-}
-
-enum Typed {
-    Kept,
-    Said(String),
-    Passed,
 }
 
 #[derive(Clone, Copy)]

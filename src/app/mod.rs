@@ -989,9 +989,6 @@ impl App {
     }
 
     fn ghost(&self) -> String {
-        if let Some(line) = self.deep_line() {
-            return line;
-        }
         if self.void_ritual.is_blocking() || !self.editor.text.starts_with('/') {
             return String::new();
         }
@@ -1125,10 +1122,6 @@ impl App {
         );
 
         let screen = Screen::new(full_area, tank_area);
-        let deep_screen = match self.deep_keeps_the_bar() {
-            true => Screen::only(tank_area),
-            false => screen,
-        };
         match &self.active_overlay {
             Some(Overlay::Index(state)) => {
                 frame.render_widget(IndexOverlay::new(state, screen), full_area)
@@ -1233,7 +1226,8 @@ impl App {
                     state,
                     self.dungeon.expedition.as_ref(),
                     self.above(),
-                    deep_screen,
+                    screen,
+                    self.editor.visible,
                 ),
                 full_area,
             ),

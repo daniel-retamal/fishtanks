@@ -1851,9 +1851,11 @@ fn the_deep_treasures_demo_runs_keystroke_for_keystroke() {
     let line = fishtank::dungeon::event::prayer_line(seed);
     let first = line.split(' ').next().unwrap_or(line);
     tui.screen().expect_find(&format!("\"{first}"));
-    tui.snap("2. /room \"A Line of Prayer\": the line in quotes, and again as grey ghost text in the command bar");
+    tui.snap("2. /room \"A Line of Prayer\": the line in quotes, Say it under the cursor");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Words to the Void");
     tui.type_text(&line.to_lowercase());
-    tui.snap("3. typed into the command bar");
+    tui.snap("3. ENTER opens the words field: the line typed over its grey ghost");
     tui.key(KeyCode::Enter);
     tui.screen().expect_find("The Void listens");
     tui.screen().expect_find("Found: Wish Shard.");

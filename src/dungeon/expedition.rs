@@ -26,6 +26,8 @@ use super::traits::{Haunt, Trait};
 use super::{Above, Difficulty, Wreck};
 
 pub const MAX_PARTY: usize = 4;
+pub const HAUNT_SAMPLE: usize = 16;
+const HAUNTS: [Haunt; 3] = [Haunt::Dead, Haunt::Damned, Haunt::Unfish];
 pub const SEED_STRIDE: u64 = 0x9E37_79B9_7F4A_7C15;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -762,14 +764,29 @@ pub fn play(battle: &mut Battle, input: &Input) -> Vec<Beat> {
     }
 }
 
-pub fn haunts<'a>(dead: impl Iterator<Item = &'a Fish>) -> Vec<Ghost> {
-    dead.map(|fish| {
-        let haunt = match (fish.devil_marked, fish.is_unfish()) {
-            (true, _) => Haunt::Damned,
-            (false, true) => Haunt::Unfish,
-            (false, false) => Haunt::Dead,
-        };
-        Ghost::of(fish, haunt)
-    })
-    .collect()
+fn haunt_of(fish: &Fish) -> Haunt {
+    match (fish.devil_marked, fish.is_unfish()) {
+        (true, _) => Haunt::Damned,
+        (false, true) => Haunt::Unfish,
+        (false, false) => Haunt::Dead,
+    }
+}
+
+pub fn haunts<'a>(dead: impl Iterator<Item = &'a Fish>, rng: &mut impl RngExt) -> Vec<Ghost> {
+    let dead: Vec<(Haunt, &Fish)> = dead.map(|fish| (haunt_of(fish), fish)).collect();
+    let mut drawn: Vec<usize> = Vec::new();
+    for haunt in HAUNTS {
+        let kind: Vec<usize> = (0..dead.len()).filter(|&i| dead[i].0 == haunt).collect();
+        let amount = kind.len().min(HAUNT_SAMPLE);
+        drawn.extend(
+            rand::seq::index::sample(rng, kind.len(), amount)
+                .into_iter()
+                .map(|at| kind[at]),
+        );
+    }
+    drawn.sort_unstable();
+    drawn
+        .into_iter()
+        .map(|i| Ghost::of(dead[i].1, dead[i].0))
+        .collect()
 }

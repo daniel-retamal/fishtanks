@@ -63,13 +63,13 @@ impl Grade {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeepLife {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub floors_survived: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub dives: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub deepest: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub beaten: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boons: Vec<Boon>,
@@ -77,10 +77,14 @@ pub struct DeepLife {
     pub curses: Vec<Curse>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub charm: Option<Charm>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub lives_spent: u32,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub feather: bool,
+}
+
+fn is_zero(count: &u32) -> bool {
+    *count == 0
 }
 
 impl DeepLife {

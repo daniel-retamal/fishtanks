@@ -23,6 +23,7 @@ pub enum Command {
     Guard,
     Items,
     Flee,
+    Pray,
 }
 
 impl Command {
@@ -41,18 +42,12 @@ impl Command {
             Command::Guard => "Guard",
             Command::Items => "Items",
             Command::Flee => "Flee",
+            Command::Pray => "Pray",
         }
     }
 
     pub fn opens_a_list(self) -> bool {
         matches!(self, Command::Skills | Command::Items)
-    }
-
-    fn index(self) -> usize {
-        Command::ALL
-            .iter()
-            .position(|&command| command == self)
-            .unwrap_or(0)
     }
 }
 
@@ -95,6 +90,7 @@ pub enum FightStep {
     Close,
     Played,
     Done,
+    Words(&'static str),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -183,6 +179,18 @@ impl FightState {
             true => self.battle.prayer.line(),
             false => None,
         }
+    }
+
+    pub fn commands(&self) -> Vec<Command> {
+        let prayer = self.prayer().map(|_| Command::Pray);
+        prayer.into_iter().chain(Command::ALL).collect()
+    }
+
+    fn at(&self, command: Command) -> usize {
+        self.commands()
+            .iter()
+            .position(|&listed| listed == command)
+            .unwrap_or(0)
     }
 
     pub fn pray(&mut self, words: String) -> FightStep {
@@ -310,12 +318,14 @@ impl FightState {
     }
 
     fn main_key(&mut self, action: &InputAction, actor: usize, selected: usize) -> FightStep {
+        let commands = self.commands();
+        let selected = selected.min(commands.len() - 1);
         match action {
             InputAction::Up | InputAction::Down => {
-                self.menu = Menu::Main(cycle(selected, Command::ALL.len(), action));
+                self.menu = Menu::Main(cycle(selected, commands.len(), action));
                 FightStep::Stay
             }
-            InputAction::Confirm => self.command(actor, Command::ALL[selected]),
+            InputAction::Confirm => self.command(actor, commands[selected]),
             _ => FightStep::Stay,
         }
     }
@@ -344,6 +354,10 @@ impl FightState {
             }
             Command::Guard => self.play(Input::Choose(Choice::Guard)),
             Command::Flee => self.play(Input::Choose(Choice::Flee)),
+            Command::Pray => match self.prayer() {
+                Some(line) => FightStep::Words(line),
+                None => FightStep::Stay,
+            },
         }
     }
 
@@ -355,7 +369,7 @@ impl FightState {
                 FightStep::Stay
             }
             InputAction::Cancel => {
-                self.menu = Menu::Main(Command::Skills.index());
+                self.menu = Menu::Main(self.at(Command::Skills));
                 FightStep::Stay
             }
             InputAction::Confirm => self.pick(actor, Pending::Skill(selected)),
@@ -371,7 +385,7 @@ impl FightState {
                 FightStep::Stay
             }
             InputAction::Cancel => {
-                self.menu = Menu::Main(Command::Items.index());
+                self.menu = Menu::Main(self.at(Command::Items));
                 FightStep::Stay
             }
             InputAction::Confirm => match packs.get(selected) {
@@ -424,7 +438,7 @@ impl FightState {
             }
             InputAction::Cancel => {
                 self.menu = match pending {
-                    Pending::Bite => Menu::Main(Command::Bite.index()),
+                    Pending::Bite => Menu::Main(self.at(Command::Bite)),
                     Pending::Skill(skill) => Menu::Skills(skill),
                     Pending::Item(pack) => {
                         Menu::Items(self.packed().iter().position(|&p| p == pack).unwrap_or(0))
@@ -519,6 +533,7 @@ impl FightState {
             Command::Guard => self.battle.can_choose(actor, Choice::Guard),
             Command::Items => !self.packed().is_empty(),
             Command::Flee => self.battle.can_flee(),
+            Command::Pray => self.prayer().is_some(),
         }
     }
 
@@ -540,13 +555,17 @@ impl FightState {
         let actor = self.battle.actor()?;
         let battle = &self.battle;
         Some(match self.menu {
-            Menu::Main(selected) => match Command::ALL[selected] {
-                Command::Bite => Info::bite(battle, actor, None),
-                Command::Skills => Info::skills(battle, actor),
-                Command::Guard => Info::guard(battle, actor),
-                Command::Items => Info::items(battle),
-                Command::Flee => Info::flee(battle),
-            },
+            Menu::Main(selected) => {
+                let commands = self.commands();
+                match commands[selected.min(commands.len() - 1)] {
+                    Command::Bite => Info::bite(battle, actor, None),
+                    Command::Skills => Info::skills(battle, actor),
+                    Command::Guard => Info::guard(battle, actor),
+                    Command::Items => Info::items(battle),
+                    Command::Flee => Info::flee(battle),
+                    Command::Pray => Info::pray(battle),
+                }
+            }
             Menu::Skills(selected) => {
                 let skill = battle.fighters[actor].skills.get(selected)?;
                 Info::skill(battle, actor, skill, None)
@@ -703,7 +722,7 @@ mod tests {
         play_out(&mut state);
         state.menu = Menu::Skills(0);
         assert_eq!(state.key(&InputAction::Cancel), FightStep::Stay);
-        assert_eq!(state.menu, Menu::Main(Command::Skills.index()));
+        assert_eq!(state.menu, Menu::Main(state.at(Command::Skills)));
         assert_eq!(state.key(&InputAction::Cancel), FightStep::Close);
     }
 }

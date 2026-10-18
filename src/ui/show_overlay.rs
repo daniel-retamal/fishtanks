@@ -7,6 +7,8 @@ use ratatui::{
 };
 
 use crate::colors::WHITE;
+use crate::dungeon::life::DeepLife;
+use crate::dungeon::treasure::Treasure;
 use crate::fishes::fish::{Direction, Fish};
 use crate::tank::TankKind;
 use crate::ui::{
@@ -135,7 +137,7 @@ impl ShowState {
                 .collect()
         };
         for kind in kinds {
-            let field = fields::field_value(kind, fish, all_names, rng);
+            let field = fields::field_value(kind, fish, all_names);
             show_fields.push(ShowField {
                 label: kind.header(),
                 value: field.text,
@@ -166,6 +168,10 @@ impl ShowState {
                 value: history,
                 swatch: None,
             });
+        }
+
+        if let Some(life) = fish.deep.as_deref() {
+            show_fields.extend(deep_fields(life));
         }
 
         Self {
@@ -208,6 +214,59 @@ impl ShowState {
             .unwrap_or(0) as u16;
         MIN_BODY_WIDTH.max(widest + TEXT_PAD * 2)
     }
+}
+
+fn told(label: &'static str, value: String) -> ShowField {
+    ShowField {
+        label,
+        value,
+        swatch: None,
+    }
+}
+
+fn counted(count: u32, one: &str, many: &str) -> String {
+    match count {
+        1 => format!("{count} {one}"),
+        _ => format!("{count} {many}"),
+    }
+}
+
+fn listed(names: impl Iterator<Item = &'static str>) -> Option<String> {
+    let names: Vec<&str> = names.collect();
+    (!names.is_empty()).then(|| names.join(", "))
+}
+
+fn deep_fields(life: &DeepLife) -> Vec<ShowField> {
+    let mut deep = vec![
+        told(
+            "Grade",
+            format!(
+                "{} ({} survived)",
+                life.grade().name(),
+                counted(life.floors_survived, "floor", "floors")
+            ),
+        ),
+        told(
+            "Dives",
+            format!(
+                "{} · deepest Floor {} · {} beaten",
+                life.dives, life.deepest, life.beaten
+            ),
+        ),
+    ];
+    if let Some(charm) = life.charm {
+        deep.push(told("Charm", charm.name().to_string()));
+    }
+    if life.feather {
+        deep.push(told("Worn", Treasure::Feather.name().to_string()));
+    }
+    if let Some(boons) = listed(life.boons.iter().map(|boon| boon.name())) {
+        deep.push(told("Boons", boons));
+    }
+    if let Some(curses) = listed(life.curses.iter().map(|curse| curse.name())) {
+        deep.push(told("Curses", curses));
+    }
+    deep
 }
 
 fn side_size(fish: &Fish) -> (u16, u16) {

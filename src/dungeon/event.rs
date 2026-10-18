@@ -1099,7 +1099,7 @@ pub const EVENTS: &[EventSpec] = &[
         text: "A line of prayer is written on the dark. The Void waits for someone to say it.",
         choices: &[
             ChoiceSpec {
-                label: "Type it in the command bar",
+                label: "Say it",
                 need: Need::Nothing,
                 check: Some(Check::Prayer),
                 subject: Subject::Lead,

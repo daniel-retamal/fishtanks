@@ -588,14 +588,20 @@ fn dipping_one_fish_in_the_glowing_pool_changes_the_fish_you_chose() {
 }
 
 #[test]
-fn the_line_of_prayer_is_typed_and_a_wrong_word_becomes_a_curse() {
+fn the_line_of_prayer_is_said_and_a_wrong_word_becomes_a_curse() {
     let ground = Ground::default();
     let mut expedition = below(15, Difficulty::Normal);
     at_event(&mut expedition, 10, "A Line of Prayer", &ground);
     let panel = expedition.panel(0, &Above::default()).expect("a panel");
     let pray = &panel.rows[0];
-    assert!(!pray.usable, "ENTER on the row says nothing; the words do");
+    assert_eq!(pray.act, Act::Pray, "the row opens the words field");
+    let rolls = expedition.visit.as_ref().expect("a room").rolls;
     assert_eq!(expedition.act(pray.act, 0, &ground), Next::Stay);
+    assert_eq!(
+        expedition.visit.as_ref().expect("a room").rolls,
+        rolls,
+        "opening the field spends no roll"
+    );
     let seed = expedition.visit.as_ref().expect("a room").seed;
     let line = event::prayer_line(seed);
     let treasures = expedition.haul.count();

@@ -85,3 +85,22 @@ pub struct Dungeon {
     #[serde(default)]
     pub mammon: u32,
 }
+
+impl Dungeon {
+    pub fn is_untouched(&self) -> bool {
+        let Dungeon {
+            deepest,
+            dives,
+            expedition,
+            remembered,
+            wrecks,
+            mammon,
+        } = self;
+        *deepest == 0
+            && *dives == 0
+            && expedition.is_none()
+            && remembered.is_empty()
+            && wrecks.is_empty()
+            && *mammon == 0
+    }
+}

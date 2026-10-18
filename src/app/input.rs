@@ -25,7 +25,6 @@ use crate::{
     tanks::soul_wall::SoulWall,
     ui::{
         circuit_overlay::{CircuitFish, CircuitState},
-        fields,
         fishing_overlay::FishingState,
         fishtanks_overlay::FishtanksState,
         foundry_overlay::FoundryState,
@@ -457,15 +456,6 @@ impl App {
                         .iter()
                         .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
                         .collect();
-                    let mut rng = rand::rng();
-                    'populate: for tank in &mut self.tanks {
-                        for fish in &mut tank.fish {
-                            if fish.name == fish_name {
-                                fields::populate_field_cache(fish, &all_names, &mut rng);
-                                break 'populate;
-                            }
-                        }
-                    }
                     let fish = self
                         .tanks
                         .iter()
@@ -488,7 +478,7 @@ impl App {
                                 &all_names,
                                 ShowSource::FromIndex,
                                 false,
-                                &mut rng,
+                                &mut rand::rng(),
                             ),
                             backed_index,
                         });
@@ -1661,15 +1651,6 @@ impl App {
     }
 
     fn open_index(&mut self, query: IndexQuery) {
-        let all_names: Vec<String> = self
-            .tanks
-            .iter()
-            .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
-            .collect();
-        let mut rng = rand::rng();
-        for fish in self.tanks.iter_mut().flat_map(|t| t.fish.iter_mut()) {
-            fields::populate_field_cache(fish, &all_names, &mut rng);
-        }
         let living: Vec<(&str, &Fish)> = self
             .tanks
             .iter()
@@ -2908,15 +2889,6 @@ impl App {
                     .iter()
                     .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
                     .collect();
-                let mut rng = rand::rng();
-                'populate: for tank in &mut self.tanks {
-                    for fish in &mut tank.fish {
-                        if fish.name.eq_ignore_ascii_case(&fish_name) {
-                            fields::populate_field_cache(fish, &all_names, &mut rng);
-                            break 'populate;
-                        }
-                    }
-                }
                 let found = self
                     .tanks
                     .iter()
@@ -2943,7 +2915,7 @@ impl App {
                         &all_names,
                         ShowSource::FromCommand,
                         all,
-                        &mut rng,
+                        &mut rand::rng(),
                     ),
                     backed_index: None,
                 });

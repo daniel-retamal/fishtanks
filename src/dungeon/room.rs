@@ -121,6 +121,7 @@ pub enum Act {
     Print,
     Choice(u8),
     Call(u8),
+    Pray,
     Up,
     Down,
 }
@@ -880,11 +881,7 @@ impl Expedition {
         }
         for (index, choice) in event.choices.iter().enumerate() {
             if choice.check == Some(event::Check::Prayer) {
-                panel.rows.push(
-                    Row::new(choice.label, Act::Choice(index as u8))
-                        .note("type, then ENTER", Tone::Quiet)
-                        .usable(false),
-                );
+                panel.rows.push(Row::new(choice.label, Act::Pray));
                 continue;
             }
             if choice.need == Need::Dead {
@@ -1276,6 +1273,9 @@ impl Expedition {
     }
 
     pub fn act(&mut self, act: Act, fish: usize, ground: &Ground) -> Next {
+        if act == Act::Pray {
+            return Next::Stay;
+        }
         let Some(mut visit) = self.visit.take() else {
             return Next::Map;
         };
@@ -1591,6 +1591,7 @@ impl Expedition {
                 self.descend(ground);
                 Next::Map
             }
+            Act::Pray => Next::Stay,
         }
     }
 

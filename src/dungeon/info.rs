@@ -150,6 +150,21 @@ impl Info {
         info
     }
 
+    pub fn pray(battle: &Battle) -> Info {
+        let prayer = &battle.prayer;
+        Info::new(
+            "Pray",
+            "Say the line it waits for. While it listens, it can be hurt.",
+        )
+        .cost(Price::Free)
+        .row("Turn", "kept", Ink::Plain)
+        .row(
+            "Line",
+            format!("{} of {}", prayer.said + 1, prayer.lines.len()),
+            Ink::Plain,
+        )
+    }
+
     pub fn flee(battle: &Battle) -> Info {
         match battle.can_flee() {
             true => Info::new("Flee", "The party tries to swim away from this fight.")

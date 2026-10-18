@@ -1,4 +1,5 @@
 use crate::casino::state::Game;
+use crate::dungeon::life::Grade;
 use crate::entities::cow::CowVariant;
 use crate::fishes::mutations::Mutation;
 use crate::fishes::species::{ALL_SPECIES, FishSpecies};
@@ -1022,6 +1023,10 @@ fn index_words_for(word: &str, tank_names: &[&str]) -> Vec<String> {
             Some(Column::Species) => ALL_SPECIES
                 .iter()
                 .map(|species| format!("{key}:{}", species.display_name().to_lowercase()))
+                .collect(),
+            Some(Column::Grade) => Grade::ALL
+                .iter()
+                .map(|grade| format!("{key}:{}", grade.name().to_lowercase()))
                 .collect(),
             _ => Vec::new(),
         };

@@ -9,12 +9,14 @@ mod battle;
 mod canvas;
 mod map;
 mod room;
+mod words;
 
 pub struct DungeonOverlay<'a> {
     state: &'a DungeonState,
     expedition: Option<&'a Expedition>,
     above: Above<'a>,
     screen: Screen,
+    cursor_visible: bool,
 }
 
 impl<'a> DungeonOverlay<'a> {
@@ -23,18 +25,29 @@ impl<'a> DungeonOverlay<'a> {
         expedition: Option<&'a Expedition>,
         above: Above<'a>,
         screen: Screen,
+        cursor_visible: bool,
     ) -> Self {
         Self {
             state,
             expedition,
             above,
             screen,
+            cursor_visible,
         }
     }
 }
 
 impl Widget for DungeonOverlay<'_> {
     fn render(self, _area: Rect, buf: &mut Buffer) {
+        self.draw_view(buf);
+        if let Some(words) = &self.state.words {
+            words::draw(buf, words, self.cursor_visible, self.screen);
+        }
+    }
+}
+
+impl DungeonOverlay<'_> {
+    fn draw_view(&self, buf: &mut Buffer) {
         match (&self.state.view, self.expedition) {
             (View::Fight(fight), _) => battle::draw(buf, fight, self.screen),
             (View::Muster(muster), _) => {

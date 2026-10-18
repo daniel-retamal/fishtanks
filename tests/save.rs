@@ -15,6 +15,7 @@ use fishtank::loot::{ConsumableKind, MilkVariant, StockItem};
 use fishtank::sprite::{Band, ExtensionVariant};
 use fishtank::tank::{FEED_PORTION, TankKind};
 use fishtank::testing::{DEFAULT_COLS, DEFAULT_ROWS, Tui};
+use fishtank::ui::fields::{FieldKind, field_value};
 use fishtank::vault::{self, Loaded, Vault, VaultError};
 
 const SCRATCH: &str = env!("CARGO_TARGET_TMPDIR");
@@ -238,6 +239,22 @@ fn a_fish_keeps_its_looks_and_its_history() {
             .map(|record| record.history.clone())
     };
     assert_eq!(history(&after), history(&tui.app));
+}
+
+#[test]
+fn a_fish_gives_the_same_answers_on_its_card_after_a_restart() {
+    let tui = rich_game();
+    let after = reopened(&tui.app);
+    let names: Vec<String> = ["Lilith", "Eva", "Mo"].map(String::from).to_vec();
+    let card = |app: &App, name: &str| -> Vec<String> {
+        FieldKind::all()
+            .iter()
+            .map(|&kind| field_value(kind, fish(app, name), &names).text)
+            .collect()
+    };
+    for name in ["Lilith", "Eva", "Mo"] {
+        assert_eq!(card(&after, name), card(&tui.app, name), "{name}");
+    }
 }
 
 #[test]

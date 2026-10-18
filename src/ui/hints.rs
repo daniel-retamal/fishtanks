@@ -82,6 +82,7 @@ pub const HINT_I_ITEMS: &str = "I items";
 pub const HINT_P_PARTY: &str = "P party";
 pub const HINT_ENTER_HIRE: &str = "ENTER hire";
 pub const HINT_ENTER_PRAY: &str = "ENTER pray";
+pub const HINT_ENTER_SAY: &str = "ENTER say";
 pub const HINT_ENTER_SIGN: &str = "ENTER sign";
 pub const HINT_ENTER_FIGHT: &str = "ENTER fight";
 pub const HINT_ENTER_RIDE: &str = "ENTER ride";

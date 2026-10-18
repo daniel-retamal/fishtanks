@@ -1196,7 +1196,7 @@ fn a_stonefish_snaps_up_food_that_settles_by_it() {
 fn a_catfish_says_miau() {
     let mut rng = rand::rng();
     let cat = Fish::new(FishSpecies::Bagre, "Michi".into(), 0.0, 0.0, &mut rng);
-    let quote = field_value(FieldKind::FavoriteQuote, &cat, &[], &mut rng).text;
+    let quote = field_value(FieldKind::FavoriteQuote, &cat, &[]).text;
     assert!(quote.split(' ').all(|word| word == "miau"), "{quote}");
 }
 

@@ -1,5 +1,6 @@
 use crate::ui::input_action::InputAction;
 use crate::ui::layout::Scroll;
+use crate::ui::text_input::TextInput;
 
 use super::Difficulty;
 use super::event;
@@ -42,6 +43,33 @@ pub struct Lobby {
     pub reading: bool,
 }
 
+pub struct Words {
+    pub line: &'static str,
+    pub listener: &'static str,
+    pub input: TextInput,
+}
+
+impl Words {
+    fn of(line: &'static str, listener: &'static str) -> Words {
+        Words {
+            line,
+            listener,
+            input: TextInput::new(),
+        }
+    }
+
+    pub fn ghost(&self) -> &'static str {
+        let typed = self.input.as_str().to_uppercase();
+        match self.line.to_uppercase().starts_with(&typed) {
+            true => &self.line[typed.len().min(self.line.len())..],
+            false => "",
+        }
+    }
+}
+
+pub const THE_EYE: &str = "the Eye";
+pub const THE_VOID: &str = "the Void";
+
 pub enum View {
     Muster(Muster),
     Map(Chart),
@@ -65,6 +93,7 @@ pub struct DungeonState {
     pub view: View,
     pub scroll: Scroll,
     pub sheet_scroll: Scroll,
+    pub words: Option<Words>,
 }
 
 impl DungeonState {
@@ -73,6 +102,7 @@ impl DungeonState {
             view: View::Muster(muster),
             scroll: Scroll::default(),
             sheet_scroll: Scroll::default(),
+            words: None,
         }
     }
 
@@ -86,6 +116,7 @@ impl DungeonState {
             view,
             scroll: Scroll::default(),
             sheet_scroll: Scroll::default(),
+            words: None,
         }
     }
 
@@ -120,20 +151,13 @@ impl DungeonState {
         }
     }
 
-    pub fn keeps_the_bar(&self, expedition: Option<&Expedition>) -> bool {
-        match &self.view {
-            View::Fight(fight) => fight.praying(),
-            View::Room(_) | View::Muster(_) | View::Map(_) => {
-                self.wanted_words(expedition).is_some()
-            }
-        }
-    }
-
-    pub fn pray(&mut self, words: String) -> Step {
+    fn pray(&mut self, words: String) -> Step {
         match &mut self.view {
             View::Fight(fight) => match fight.pray(words) {
                 FightStep::Played => Step::Played,
-                FightStep::Stay | FightStep::Close | FightStep::Done => Step::Stay,
+                FightStep::Stay | FightStep::Close | FightStep::Done | FightStep::Words(_) => {
+                    Step::Stay
+                }
             },
             View::Room(_) => Step::Pray(words),
             View::Muster(_) | View::Map(_) => Step::Stay,
@@ -152,6 +176,47 @@ impl DungeonState {
         expedition: Option<&Expedition>,
         ground: &Ground,
     ) -> Step {
+        if self.words.is_some() {
+            return self.words_key(action, expedition);
+        }
+        let step = self.view_key(action, expedition, ground);
+        match step {
+            Step::Act(Act::Pray, _) => {
+                self.words = self
+                    .wanted_words(expedition)
+                    .map(|line| Words::of(line, THE_VOID));
+                Step::Stay
+            }
+            step => step,
+        }
+    }
+
+    fn words_key(&mut self, action: &InputAction, expedition: Option<&Expedition>) -> Step {
+        if self.wanted_words(expedition).is_none() {
+            self.words = None;
+            return Step::Stay;
+        }
+        let Some(words) = self.words.as_mut() else {
+            return Step::Stay;
+        };
+        match action {
+            InputAction::Cancel => self.words = None,
+            InputAction::Confirm if !words.input.as_str().trim().is_empty() => {
+                let said = words.input.as_str().trim().to_string();
+                self.words = None;
+                return self.pray(said);
+            }
+            _ => words.input.handle_action(action),
+        }
+        Step::Stay
+    }
+
+    fn view_key(
+        &mut self,
+        action: &InputAction,
+        expedition: Option<&Expedition>,
+        ground: &Ground,
+    ) -> Step {
         match &mut self.view {
             View::Muster(muster) => match muster.key(action) {
                 MusterStep::Stay => Step::Stay,
@@ -163,6 +228,10 @@ impl DungeonState {
                 FightStep::Close => Step::Close,
                 FightStep::Played => Step::Played,
                 FightStep::Done => Step::FightOver,
+                FightStep::Words(line) => {
+                    self.words = Some(Words::of(line, THE_EYE));
+                    Step::Stay
+                }
             },
             View::Map(chart) => {
                 let Some(expedition) = expedition else {

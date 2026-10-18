@@ -66,7 +66,7 @@ pub struct SaveFile {
     lessons: Lessons,
     #[serde(default)]
     casino: crate::casino::Casino,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::dungeon::Dungeon::is_untouched")]
     dungeon: crate::dungeon::Dungeon,
 }
 
