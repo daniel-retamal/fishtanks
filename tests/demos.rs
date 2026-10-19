@@ -1895,3 +1895,98 @@ fn the_deep_treasures_demo_runs_keystroke_for_keystroke() {
     tui.write_reel();
     assert_no_broken_borders(&tui);
 }
+
+fn deep_prayer(tui: &Tui) -> Option<&'static str> {
+    tui.app
+        .dungeon_overlay()
+        .and_then(|state| state.fight())
+        .and_then(|fight| fight.prayer())
+}
+
+fn scroll_to(tui: &mut Tui, text: &str) {
+    for _ in 0..DEEP_MAX_TURNS {
+        if tui.screen().contains(text) {
+            return;
+        }
+        tui.key(KeyCode::Down);
+    }
+    tui.screen().expect_find(text);
+}
+
+#[test]
+fn the_deep_words_and_fields_demo_runs_keystroke_for_keystroke() {
+    let mut tui = Tui::as_player(120, 38);
+    tui.film(Path::new(REEL_DIR), "demo-the-deep-words-and-fields");
+    tui.run("/index");
+    tui.screen().expect_absent("Grade");
+    tui.snap("1. /index before any dive: no Grade column");
+    tui.key(KeyCode::Esc);
+    tui.run("!debugmode");
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Tab)
+        .key(KeyCode::Enter)
+        .key(KeyCode::Enter);
+    tui.screen().expect_find("from your tanks");
+    tui.snap("2. Adam, Lilith and Eva on the first floor, Normal");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Elevator\"");
+    tui.screen().expect_find("bank it all, go home");
+    tui.key(KeyCode::Enter);
+    assert!(
+        tui.app.dungeon.expedition.is_none(),
+        "Up swims everyone home"
+    );
+    tui.snap("3. /room \"Elevator\", ENTER (Up): home; no boss fell, so no floor counts yet");
+    tui.run("/show \"Adam\" all");
+    scroll_to(&mut tui, "1 · deepest Floor 1");
+    tui.screen().expect_find("Fry (0 floors survived)");
+    tui.snap("4. /show \"Adam\" all, ↓ to the end: Grade and Dives, the Deep's fields");
+    tui.key(KeyCode::Esc);
+    tui.run("/index sort:-grade");
+    tui.screen().expect_find("Grade");
+    tui.screen().expect_find("Fry");
+    tui.snap("5. /index sort:-grade: the Grade column, sorted by rank");
+    tui.key(KeyCode::Esc);
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Tab)
+        .key(KeyCode::Enter)
+        .key(KeyCode::Enter);
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"A Line of Prayer\"");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Lair\"");
+    tui.screen().expect_find("Great Eye");
+    tui.snap("6. a second dive; /room \"A Line of Prayer\" moves it to the Eye, /room \"Lair\" opens its lair");
+    tui.key(KeyCode::Enter);
+    for _ in 0..DEEP_MAX_TURNS {
+        if tui.screen().contains("> Pray") {
+            break;
+        }
+        tui.tick_n(DEEP_WAIT_TICKS);
+    }
+    tui.screen().expect_find("> Pray");
+    let line = deep_prayer(&tui).expect("the Eye asks for a line");
+    tui.snap("7. ENTER fights: the Eye shields itself and Pray heads the menu");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Words to the Eye");
+    tui.snap("8. ENTER on Pray: the words field, the line in quotes and in grey");
+    tui.type_text(&line.to_lowercase());
+    tui.snap("9. the line typed over its ghost");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_absent("Words to the Eye");
+    assert!(
+        tui.app.editor.text.is_empty(),
+        "the command bar is never used"
+    );
+    tui.tick_n(DEEP_WAIT_TICKS);
+    tui.snap("10. ENTER says it: the Eye listens, Pray leaves the menu");
+    tui.key(KeyCode::Esc);
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}
