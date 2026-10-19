@@ -2840,6 +2840,7 @@ impl App {
             commands::Action::Fish {
                 no_escape,
                 no_fight,
+                quick_bite,
                 temper,
             } => {
                 let milk = self.milk_buffs();
@@ -2848,6 +2849,9 @@ impl App {
                 state.no_fight = no_fight;
                 state.forced_temper = temper;
                 state.lesson = self.lessons.learning();
+                if quick_bite {
+                    state.bite_soon();
+                }
                 self.set_overlay(Overlay::Fishing(state));
                 if no_fight {
                     self.hook_the_catch();

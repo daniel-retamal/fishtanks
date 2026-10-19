@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1 - 2026-10-19
+
+- **A bigger Claw.** The claw machine opens as large as the other casino tables, with a wider, taller glass and more prizes in it. The odds are the same.
+
 ## 1.6.0 - 2026-10-19
 
 - **Dungeon crawling.** `/dungeon` takes up to four of your fishes down into the dungeon under your tanks: ten floors, one for each kind of tank, and more below the tenth. Pick your party into four slots, pack food and whatever else you carry, choose Normal or Hardcore, and ride the elevator down.

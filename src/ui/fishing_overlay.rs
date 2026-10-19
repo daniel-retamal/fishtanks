@@ -272,6 +272,12 @@ impl Default for FishingState {
 }
 
 impl FishingState {
+    pub fn bite_soon(&mut self) {
+        if let FishPhase::Catch(catch) = &mut self.phase {
+            catch.wait_remaining = BITE_MIN_WAIT_SECS;
+        }
+    }
+
     pub fn new(milk: MilkBuffs, rng: &mut impl RngExt) -> Self {
         Self {
             phase: FishPhase::Catch(CatchPhase::new(milk, rng)),

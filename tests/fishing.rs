@@ -578,6 +578,35 @@ fn the_debug_flags_choose_how_the_hooked_fish_fights() {
 }
 
 #[test]
+fn a_quick_bite_comes_within_three_seconds_of_the_cast() {
+    const FPS: u32 = 25;
+    const LATEST_BITE_SECS: u32 = 3;
+    const CASTS: usize = 10;
+    let mut tui = Tui::new();
+    tui.clear_tank();
+    tui.run(&format!("/fps {FPS}"));
+    for cast in 0..CASTS {
+        tui.run("/fish --quick-bite");
+        let bitten_at = (1..=FPS * LATEST_BITE_SECS).find(|_| {
+            tui.tick_n(1);
+            tui.app.fishing_state().expect("fishing").is_biting()
+        });
+        assert!(
+            bitten_at.is_some(),
+            "cast {cast} bites within {LATEST_BITE_SECS} s"
+        );
+        tui.key(KeyCode::Esc);
+    }
+}
+
+#[test]
+fn a_player_cannot_ask_for_a_quick_bite() {
+    let mut tui = Tui::as_player(80, 24);
+    tui.run("/fish --quick-bite");
+    assert!(tui.app.fishing_state().is_none(), "a debug flag is refused");
+}
+
+#[test]
 fn a_player_cannot_choose_how_a_fish_fights() {
     let mut tui = Tui::as_player(80, 24);
     tui.run("/fish --legendary");
