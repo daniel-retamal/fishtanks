@@ -7,12 +7,11 @@ use crate::entities::bubble::{Bubble, BubblePhase};
 use crate::entities::speech::SpeechBubble;
 use crate::fishes::fish::{EATING_DURATION, Fish, FishState};
 use crate::fishes::habits::{Chase, Echo, Footstep};
-use crate::fishes::species::{Habit, Locomotion, Zoomie};
+use crate::fishes::species::{Habit, Locomotion, Pen, Zoomie};
 use crate::sprite::TRANSPARENT;
 use crate::util::{events_in, sample_exponential};
 
-pub const TRAIL_SECS: f32 = 10.0;
-const TRAIL_FADE_SECS: f32 = 3.0;
+const TRAIL_FADE_SHARE: f32 = 0.3;
 pub const TRAIL_GLYPH: char = '·';
 const TRAIL_DEFAULT: Color = GRAY;
 const TRAIL_FADED: Color = DARK_GRAY;
@@ -66,12 +65,13 @@ pub struct TrailMark {
     pub x: i32,
     pub y: i32,
     pub ttl: f32,
+    pub life: f32,
     pub color: Color,
 }
 
 impl TrailMark {
     pub fn color_now(&self) -> Color {
-        if self.ttl < TRAIL_FADE_SECS {
+        if self.ttl < self.life * TRAIL_FADE_SHARE {
             TRAIL_FADED
         } else {
             self.color
@@ -265,20 +265,24 @@ impl Tank {
         }
         self.trails.retain(|mark| mark.ttl > 0.0);
         for fish in &mut self.fish {
-            let Some(tint) = fish.species.config().trail else {
+            let Some(trail) = fish.species.config().trail else {
                 continue;
             };
             let color = fish
                 .wake_color()
-                .unwrap_or_else(|| tint.resolve(TRAIL_DEFAULT, fish.color));
-            let cells = painted_cells(fish);
+                .unwrap_or_else(|| trail.tint.resolve(TRAIL_DEFAULT, fish.color));
+            let cells = match trail.pen {
+                Pen::Body => painted_cells(fish),
+                Pen::Tip => vec![(fish.head_x(), fish.position.y as i32)],
+            };
             let previous = std::mem::replace(&mut fish.habits.occupied, cells.clone());
             for (x, y) in previous {
                 if !cells.contains(&(x, y)) {
                     self.trails.push(TrailMark {
                         x,
                         y,
-                        ttl: TRAIL_SECS,
+                        ttl: trail.secs,
+                        life: trail.secs,
                         color,
                     });
                 }

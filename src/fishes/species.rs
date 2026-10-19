@@ -318,6 +318,40 @@ const JUNKFISH_APPRAISAL: Appraisal = Appraisal {
     ceiling: CashValue::Million.amount() as Money,
 };
 
+pub const TRAIL_SECS: f32 = 10.0;
+pub const PENCIL_LINE_SECS: f32 = 4.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pen {
+    Body,
+    Tip,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Trail {
+    pub tint: Tint,
+    pub pen: Pen,
+    pub secs: f32,
+}
+
+impl Trail {
+    pub const fn body(tint: Tint) -> Trail {
+        Trail {
+            tint,
+            pen: Pen::Body,
+            secs: TRAIL_SECS,
+        }
+    }
+
+    pub const fn tip(tint: Tint, secs: f32) -> Trail {
+        Trail {
+            tint,
+            pen: Pen::Tip,
+            secs,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tint {
     Plain,
@@ -566,7 +600,7 @@ pub struct SpeciesConfig {
     pub locomotion: Locomotion,
     pub habit: Option<Habit>,
     pub skin: Skin,
-    pub trail: Option<Tint>,
+    pub trail: Option<Trail>,
     pub keepsake: Option<StockItem>,
     pub born_with: &'static [Mutation],
     pub eye_color: Option<Color>,
@@ -1495,7 +1529,7 @@ impl FishSpecies {
             }
             Hacha => {
                 let mut config = deep_config("Hacha", &HACHA, &HACHA_PALETTE, (2.0, 3.5), Rare);
-                config.trail = Some(Tint::Fixed(LIGHT_CYAN));
+                config.trail = Some(Trail::body(Tint::Fixed(LIGHT_CYAN)));
                 config.deep = DeepRole::CounterLight;
                 config
             }
@@ -1616,7 +1650,7 @@ impl FishSpecies {
                 );
                 config.locomotion = Locomotion::Glass;
                 config.zoomie = Zoomie::Still;
-                config.trail = Some(Tint::Fixed(GRAY));
+                config.trail = Some(Trail::body(Tint::Fixed(GRAY)));
                 config.deep = DeepRole::Shell;
                 config
             }
@@ -1641,7 +1675,7 @@ impl FishSpecies {
                 );
                 config.locomotion = Locomotion::Glass;
                 config.zoomie = Zoomie::None;
-                config.trail = Some(Tint::Body);
+                config.trail = Some(Trail::body(Tint::Body));
                 config.deep = DeepRole::Glitter;
                 config
             }
@@ -2106,7 +2140,7 @@ impl FishSpecies {
                     Rare,
                 );
                 config.eye_color = Some(DARK_GRAY);
-                config.trail = Some(Tint::Fixed(DARK_GRAY));
+                config.trail = Some(Trail::tip(Tint::Fixed(DARK_GRAY), PENCIL_LINE_SECS));
                 config.deep = DeepRole::Cartographer;
                 config
             }
