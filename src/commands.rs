@@ -1430,6 +1430,7 @@ pub enum Action {
     Fish {
         no_escape: bool,
         no_fight: bool,
+        quick_bite: bool,
         temper: Option<Temper>,
     },
     Inventory,
@@ -1778,6 +1779,7 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
             Action::Fish {
                 no_escape: flags.contains(&"--no-escape"),
                 no_fight: flags.contains(&"--no-fight"),
+                quick_bite: flags.contains(&"--quick-bite"),
                 temper: fish_temper(&flags),
             }
         }
@@ -1855,8 +1857,9 @@ impl Action {
             Fish {
                 no_escape,
                 no_fight,
+                quick_bite,
                 temper,
-            } if *no_escape || *no_fight || temper.is_some() => Clearance::Debug,
+            } if *no_escape || *no_fight || *quick_bite || temper.is_some() => Clearance::Debug,
             Feed
             | SetFps(_)
             | SetClock(_)
@@ -2100,6 +2103,7 @@ mod tests {
             Action::Fish {
                 no_escape: false,
                 no_fight: false,
+                quick_bite: false,
                 temper: None
             }
         ));
@@ -2113,6 +2117,7 @@ mod tests {
             Action::Fish {
                 no_escape: true,
                 no_fight: false,
+                quick_bite: false,
                 temper: None
             }
         ));
@@ -2126,6 +2131,7 @@ mod tests {
             Action::Fish {
                 no_escape: false,
                 no_fight: true,
+                quick_bite: false,
                 temper: None
             }
         ));
@@ -2139,6 +2145,7 @@ mod tests {
             Action::Fish {
                 no_escape: true,
                 no_fight: true,
+                quick_bite: false,
                 temper: None
             }
         ));
