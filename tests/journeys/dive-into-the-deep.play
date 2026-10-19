@@ -1,0 +1,36 @@
+# JOURNEY · the Deep: pick the new game's three fish, pack a meal, ride the first elevator on Normal, walk into the first room, leave, and find the dive waiting.
+# Every map is rolled fresh, so the journey only expects what every first room shows: its own menu and the way out.
+
+run /dungeon
+expect The Deep · Party
+expect ENTER pick
+key enter
+expect in the party
+key down
+key enter
+key down
+key enter
+expect TAB pack
+snap three fish picked
+key tab
+expect The Deep · Items
+expect Food
+key right
+expect 1 of 10
+snap one meal packed
+key enter
+expect Elevator
+expect Normal
+expect ENTER ride
+key enter
+expect The Shallows
+expect ENTER go
+snap the first floor
+key enter
+expect ESC leave
+snap the first room
+key esc
+absent ESC leave
+run /dungeon
+expect ESC leave
+snap the room was waiting where it was left

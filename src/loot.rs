@@ -8,6 +8,7 @@ use crate::colors::{
     PURPLE_LIGHT, RED, SILVER, STEEL, TAN, TERRACOTTA, WHITE,
 };
 use crate::consumable::{Caster, Measure, MilkStatus};
+use crate::dungeon::treasure::{Treasure, Use};
 use crate::economy::{Purchasable, Rarity, Sellable};
 use crate::entities::cow::CowVariant;
 use crate::entities::glistening::GlisteningMode;
@@ -317,6 +318,7 @@ pub enum ConsumableKind {
     Part(Part),
     Fabricator,
     BlankBlueprint,
+    Treasure(Treasure),
 }
 
 impl ConsumableKind {
@@ -336,7 +338,15 @@ impl ConsumableKind {
         v.push(ConsumableKind::BlankWafer);
         v.push(ConsumableKind::Fabricator);
         v.push(ConsumableKind::BlankBlueprint);
+        v.extend(Treasure::all().into_iter().map(ConsumableKind::Treasure));
         v
+    }
+
+    pub fn treasure(self) -> Option<Treasure> {
+        match self {
+            ConsumableKind::Treasure(treasure) => Some(treasure),
+            _ => None,
+        }
     }
 
     pub fn bench_stock() -> Vec<ConsumableKind> {
@@ -376,6 +386,13 @@ impl ConsumableKind {
             .collect()
     }
 
+    pub fn resold() -> Vec<ConsumableKind> {
+        Self::all()
+            .into_iter()
+            .filter(|kind| kind.is_robotics_stock() || kind.treasure().is_some())
+            .collect()
+    }
+
     pub fn seeds() -> Vec<ConsumableKind> {
         Self::all()
             .into_iter()
@@ -397,6 +414,7 @@ impl ConsumableKind {
             ConsumableKind::Part(part) => part.display_name(),
             ConsumableKind::Fabricator => FABRICATOR_NAME,
             ConsumableKind::BlankBlueprint => BLANK_BLUEPRINT_NAME,
+            ConsumableKind::Treasure(treasure) => treasure.name(),
         }
     }
 
@@ -452,6 +470,7 @@ impl ConsumableKind {
             ConsumableKind::Part(part) => part_art(part).panel_inner_w(),
             ConsumableKind::Fabricator => fabricator_art().panel_inner_w(),
             ConsumableKind::BlankBlueprint => blank_blueprint_art().panel_inner_w(),
+            ConsumableKind::Treasure(treasure) => treasure_art(treasure).panel_inner_w(),
         }
     }
 
@@ -469,6 +488,7 @@ impl ConsumableKind {
             ConsumableKind::Part(part) => part_art(part).hook_col(),
             ConsumableKind::Fabricator => fabricator_art().hook_col(),
             ConsumableKind::BlankBlueprint => blank_blueprint_art().hook_col(),
+            ConsumableKind::Treasure(treasure) => treasure_art(treasure).hook_col(),
         }
     }
 
@@ -486,6 +506,7 @@ impl ConsumableKind {
             ConsumableKind::Part(part) => part_art(part).hook_row(),
             ConsumableKind::Fabricator => fabricator_art().hook_row(),
             ConsumableKind::BlankBlueprint => blank_blueprint_art().hook_row(),
+            ConsumableKind::Treasure(treasure) => treasure_art(treasure).hook_row(),
         }
     }
 
@@ -493,6 +514,10 @@ impl ConsumableKind {
         match self {
             ConsumableKind::Coffee => Some(COFFEE_ACTIVE_LABEL),
             ConsumableKind::Bait => Some(BAIT_ACTIVE_LABEL),
+            ConsumableKind::Treasure(treasure) => match treasure.using() {
+                Use::Casts { label, .. } => Some(label),
+                _ => None,
+            },
             ConsumableKind::Milk(_)
             | ConsumableKind::Necronomicon
             | ConsumableKind::DemonCore
@@ -510,6 +535,10 @@ impl ConsumableKind {
         match self {
             ConsumableKind::Coffee => crate::consumable::COFFEE_CASTS,
             ConsumableKind::Bait => crate::consumable::CASTS_PER_BUFF,
+            ConsumableKind::Treasure(treasure) => match treasure.using() {
+                Use::Casts { casts, .. } => casts,
+                _ => 0,
+            },
             ConsumableKind::Milk(_)
             | ConsumableKind::Necronomicon
             | ConsumableKind::DemonCore
@@ -525,7 +554,7 @@ impl ConsumableKind {
 
     pub fn improves(self, caster: Caster) -> bool {
         match self {
-            ConsumableKind::Coffee => caster == Caster::Angler,
+            ConsumableKind::Coffee | ConsumableKind::Treasure(_) => caster == Caster::Angler,
             ConsumableKind::Bait
             | ConsumableKind::Milk(_)
             | ConsumableKind::Necronomicon
@@ -544,6 +573,10 @@ impl ConsumableKind {
         match self {
             ConsumableKind::Coffee => Some(Measure::Seconds(crate::consumable::COFFEE_DURATION)),
             ConsumableKind::Bait => Some(Measure::Casts(crate::consumable::CASTS_PER_BUFF)),
+            ConsumableKind::Treasure(treasure) => match treasure.using() {
+                Use::Casts { casts, .. } => Some(Measure::Casts(casts)),
+                _ => None,
+            },
             ConsumableKind::Milk(_)
             | ConsumableKind::Necronomicon
             | ConsumableKind::DemonCore
@@ -573,7 +606,8 @@ impl ConsumableKind {
             | ConsumableKind::DemonCore
             | ConsumableKind::Computer
             | ConsumableKind::VoidSeed
-            | ConsumableKind::GoldenPearl => 0,
+            | ConsumableKind::GoldenPearl
+            | ConsumableKind::Treasure(_) => 0,
         }
     }
 
@@ -593,6 +627,7 @@ impl ConsumableKind {
             ConsumableKind::BlankWafer => BLANK_WAFER_SELL_PRICE,
             ConsumableKind::Fabricator => FABRICATOR_SELL_PRICE,
             ConsumableKind::BlankBlueprint => BLANK_BLUEPRINT_SELL_PRICE,
+            ConsumableKind::Treasure(treasure) => treasure.rarity().catch_worth(),
             ConsumableKind::Necronomicon
             | ConsumableKind::DemonCore
             | ConsumableKind::Computer
@@ -602,7 +637,13 @@ impl ConsumableKind {
     }
 
     pub fn can_be_consumed(self) -> bool {
-        !matches!(self, ConsumableKind::BlankWafer)
+        match self {
+            ConsumableKind::BlankWafer => false,
+            ConsumableKind::Treasure(treasure) => {
+                !matches!(treasure.using(), Use::AtTheTable | Use::OnTheShelf)
+            }
+            _ => true,
+        }
     }
 
     pub fn description(self) -> &'static str {
@@ -619,6 +660,7 @@ impl ConsumableKind {
             ConsumableKind::Part(part) => part.description(),
             ConsumableKind::Fabricator => FABRICATOR_DESCRIPTION,
             ConsumableKind::BlankBlueprint => BLANK_BLUEPRINT_DESCRIPTION,
+            ConsumableKind::Treasure(treasure) => treasure.spec().about,
         }
     }
 
@@ -630,6 +672,7 @@ impl ConsumableKind {
             | ConsumableKind::VoidSeed
             | ConsumableKind::GoldenPearl => Rarity::Legendary,
             ConsumableKind::Part(part) => part.rarity(),
+            ConsumableKind::Treasure(treasure) => treasure.rarity(),
             ConsumableKind::Fabricator => Rarity::Rare,
             _ => Rarity::Common,
         }
@@ -956,6 +999,15 @@ pub fn fabricator_sprite_rows() -> Vec<Vec<(char, Color)>> {
 }
 
 const PART_HOOK_ROW: u16 = 2;
+const TREASURE_HOOK_ROW: u16 = 1;
+
+pub fn treasure_art(treasure: Treasure) -> HookedArt {
+    HookedArt::new(treasure.spec().art, TREASURE_HOOK_ROW)
+}
+
+pub fn treasure_sprite_rows(treasure: Treasure) -> Vec<Vec<(char, Color)>> {
+    treasure_art(treasure).rows(crate::dungeon::treasure::art_colour(treasure))
+}
 
 pub fn part_art(part: Part) -> HookedArt {
     HookedArt::new(part.sprite_lines(), PART_HOOK_ROW)
@@ -1183,6 +1235,14 @@ enum PoolSlot {
     Consumable(ConsumableKind),
 }
 
+fn slot_rarity(slot: PoolSlot) -> Rarity {
+    match slot {
+        PoolSlot::School(rarity) => rarity,
+        PoolSlot::Consumable(kind) => kind.rarity(),
+        PoolSlot::Cash | PoolSlot::Food | PoolSlot::Junk => Rarity::Common,
+    }
+}
+
 const WILD_FISH_WEIGHT: u32 = 832;
 const RARE_SHARE_PER_MILLE: u32 = 125;
 const PER_MILLE: u32 = 1000;
@@ -1196,6 +1256,7 @@ pub fn school_weight(rarity: Rarity) -> u32 {
     }
 }
 
+#[derive(Clone)]
 pub struct LootPool {
     slots: Vec<(u32, PoolSlot)>,
     schools: Vec<(Rarity, Vec<FishSpecies>)>,
@@ -1237,6 +1298,25 @@ impl LootPool {
         self
     }
 
+    pub fn of_the_hole(kind: TankKind) -> Self {
+        let mut pool = Self::default_pool()
+            .with_native(kind)
+            .keeping_species(|_| false)
+            .with_deep();
+        pool.slots
+            .retain(|(_, slot)| !matches!(slot, PoolSlot::Cash | PoolSlot::Food));
+        pool
+    }
+
+    pub fn with_deep(mut self) -> Self {
+        for species in FishSpecies::of_the_deep() {
+            if species.config().rarity != Rarity::Legendary {
+                self.join_school(species);
+            }
+        }
+        self
+    }
+
     fn join_school(&mut self, species: FishSpecies) {
         let rarity = species.config().rarity;
         if let Some((_, members)) = self.schools.iter_mut().find(|(r, _)| *r == rarity) {
@@ -1253,6 +1333,16 @@ impl LootPool {
             .iter()
             .find(|(r, _)| *r == rarity)
             .map_or(&[], |(_, members)| members.as_slice())
+    }
+
+    pub fn consumables(&self) -> Vec<ConsumableKind> {
+        self.slots
+            .iter()
+            .filter_map(|&(_, slot)| match slot {
+                PoolSlot::Consumable(kind) => Some(kind),
+                _ => None,
+            })
+            .collect()
     }
 
     pub fn species(&self) -> Vec<FishSpecies> {
@@ -1362,6 +1452,31 @@ impl LootPool {
             }
         }
         self
+    }
+
+    pub fn charmed(self, charm: Option<Rarity>, keep: impl Fn(FishSpecies) -> bool) -> Self {
+        let Some(least) = charm else {
+            return self;
+        };
+        let mut narrowed = self.clone();
+        if least == Rarity::Legendary {
+            for species in FishSpecies::banners() {
+                if keep(species) && !narrowed.school(least).contains(&species) {
+                    narrowed.join_school(species);
+                }
+            }
+            narrowed
+                .slots
+                .retain(|(_, slot)| matches!(slot, PoolSlot::School(rarity) if *rarity == least));
+        } else {
+            narrowed
+                .slots
+                .retain(|(_, slot)| slot_rarity(*slot) as u8 >= least as u8);
+        }
+        match narrowed.slots.iter().any(|(weight, _)| *weight > 0) {
+            true => narrowed,
+            false => self,
+        }
     }
 
     pub fn with_cows(mut self, cow_counts: &CowCounts) -> Self {
@@ -1626,6 +1741,24 @@ mod tests {
             if species.config().buyable
                 || matches!(species.config().habitat, Habitat::Nowhere | Habitat::Claw)
             {
+                continue;
+            }
+            if species.config().habitat == Habitat::Deep {
+                let caught = LootPool::default_pool()
+                    .keeping_species(|_| false)
+                    .with_deep()
+                    .species()
+                    .contains(&species);
+                let dropped = crate::dungeon::bestiary::all().any(|spec| {
+                    spec.loot.iter().any(|loot| {
+                        matches!(loot, crate::dungeon::bestiary::Loot::Fish { species: s, .. } if *s == species)
+                    })
+                });
+                assert!(
+                    caught || dropped,
+                    "{} never comes out of the Deep",
+                    species.display_name()
+                );
                 continue;
             }
             if species.config().habitat == Habitat::Junkpile {

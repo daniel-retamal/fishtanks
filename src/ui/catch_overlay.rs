@@ -46,6 +46,10 @@ const NAME_LABEL: &str = "Name it";
 const CONGRATULATIONS: &str = "Congratulations!";
 const CASH_ASIDE: &str = "Chasing cash, making money.";
 const ADDED_TO_INVENTORY: &str = "Added to inventory";
+const ADDED_TO_THE_HAUL: &str = "Added to the haul";
+const HOME: &str = "Fishtank";
+const PARTY: &str = "Party";
+const HAUL: &str = "Haul";
 const MILK_OVERLAY_HEIGHT: u16 = 9;
 
 const DEMON_CORE_OVERLAY_HEIGHT: u16 = 9;
@@ -70,6 +74,7 @@ const BURGER: Color = BROWN_DARK;
 
 pub struct CatchState {
     pub loot: LootKind,
+    pub below: bool,
     pub fish: Option<Fish>,
     pub name_input: TextInput,
     pub cursor_visible: bool,
@@ -111,6 +116,7 @@ impl CatchState {
             .collect();
         Self {
             loot,
+            below: false,
             fish,
             name_input: TextInput::new(),
             cursor_visible: true,
@@ -195,7 +201,7 @@ impl Widget for CatchOverlay<'_> {
         let lines = card_lines(state);
         let hints = card_hints(state);
         let border = loot_border_color(state);
-        let title = overlay_title(&state.loot);
+        let title = overlay_title(&state.loot, state.below);
         let rows_for = |width: u16| CardLine::rows(&lines, width);
         let spec = PanelSpec {
             title: &title,
@@ -458,7 +464,14 @@ fn card_lines(state: &CatchState) -> Vec<CardLine> {
         ],
         LootKind::Item(item) => vec![
             CardLine::Text(format!("{}!", item.display_name()), WHITE),
-            CardLine::Text(ADDED_TO_INVENTORY.to_string(), WHITE),
+            CardLine::Text(
+                match state.below {
+                    true => ADDED_TO_THE_HAUL,
+                    false => ADDED_TO_INVENTORY,
+                }
+                .to_string(),
+                WHITE,
+            ),
         ],
     }
 }
@@ -518,7 +531,12 @@ fn left_panel_inner_w(loot: &LootKind, fish: Option<&Fish>) -> u16 {
     }
 }
 
-fn overlay_title(loot: &LootKind) -> String {
+fn overlay_title(loot: &LootKind, below: bool) -> String {
+    let keeper = match (below, loot) {
+        (false, _) => HOME,
+        (true, LootKind::Fish(_)) => PARTY,
+        (true, _) => HAUL,
+    };
     let catch = match loot {
         LootKind::Fish(_) => "Fish",
         LootKind::Cash(_) => "Cash",
@@ -526,7 +544,7 @@ fn overlay_title(loot: &LootKind) -> String {
         LootKind::Item(ItemKind::Consumable(ConsumableKind::Milk(_))) => "Milk",
         LootKind::Item(item) => item.display_name(),
     };
-    format!(" {catch} to the Fishtank! ")
+    format!(" {catch} to the {keeper}! ")
 }
 
 fn glistens(loot: &LootKind) -> bool {
@@ -664,7 +682,7 @@ fn necro_sprite_rows(eye_open: &[bool]) -> Vec<Vec<(char, Color)>> {
     ]
 }
 
-fn food_sprite_rows() -> Vec<Vec<(char, Color)>> {
+pub(crate) fn food_sprite_rows() -> Vec<Vec<(char, Color)>> {
     vec![
         vec![
             (' ', BREAD),
@@ -734,18 +752,46 @@ fn food_sprite_rows() -> Vec<Vec<(char, Color)>> {
 }
 
 fn consumable_rows(kind: ConsumableKind, state: &CatchState) -> Option<Vec<Vec<(char, Color)>>> {
+    still_rows(kind, state.anim_phase, state.glisten_phase)
+}
+
+fn still_rows(
+    kind: ConsumableKind,
+    anim_phase: bool,
+    glisten_phase: f32,
+) -> Option<Vec<Vec<(char, Color)>>> {
     Some(match kind {
-        ConsumableKind::Coffee => coffee_sprite_rows(state.anim_phase),
+        ConsumableKind::Coffee => coffee_sprite_rows(anim_phase),
         ConsumableKind::Bait => bait_sprite_rows(),
         ConsumableKind::Milk(v) => milk_sprite_rows(v),
-        ConsumableKind::DemonCore => demoncore_sprite_rows(state.glisten_phase),
+        ConsumableKind::DemonCore => demoncore_sprite_rows(glisten_phase),
         ConsumableKind::Computer => computer_sprite_rows(),
         ConsumableKind::BlankWafer => blank_wafer_sprite_rows(),
         ConsumableKind::Part(part) => part_sprite_rows(part),
         ConsumableKind::Fabricator => fabricator_sprite_rows(),
         ConsumableKind::BlankBlueprint => blank_blueprint_sprite_rows(),
         ConsumableKind::VoidSeed => void_seed_sprite_rows(),
-        ConsumableKind::GoldenPearl => golden_pearl_sprite_rows(state.glisten_phase),
+        ConsumableKind::GoldenPearl => golden_pearl_sprite_rows(glisten_phase),
+        ConsumableKind::Treasure(treasure) => crate::loot::treasure_sprite_rows(treasure),
         ConsumableKind::Necronomicon => return None,
     })
 }
+
+pub(crate) fn stock_sprite(stock: crate::loot::StockItem) -> Vec<Vec<(char, Color)>> {
+    match stock {
+        crate::loot::StockItem::Junk => {
+            JunkSprite::new(
+                &mut <rand::rngs::SmallRng as rand::SeedableRng>::seed_from_u64(STILL_JUNK),
+            )
+            .rows
+        }
+        crate::loot::StockItem::Consumable(ConsumableKind::Necronomicon) => {
+            necro_sprite_rows(&[true; NECRO_EYE_COUNT])
+        }
+        crate::loot::StockItem::Consumable(kind) => {
+            still_rows(kind, false, 0.0).unwrap_or_default()
+        }
+    }
+}
+
+const STILL_JUNK: u64 = 7;

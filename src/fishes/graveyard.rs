@@ -1,7 +1,28 @@
 use std::ops::Deref;
 
+use serde::{Deserialize, Serialize};
+
 use crate::fishes::fish::Fish;
 use crate::vault::Burial;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Fate {
+    Sold,
+    Killed,
+    Absorbed,
+    Dive,
+}
+
+impl Fate {
+    pub fn epitaph(self) -> &'static str {
+        match self {
+            Fate::Sold => "sold",
+            Fate::Killed => "killed",
+            Fate::Absorbed => "absorbed",
+            Fate::Dive => "died on a dive",
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct Graveyard {

@@ -25,11 +25,12 @@ pub enum Column {
     Worth,
     Fed,
     Fishtank,
+    Grade,
     Field(FieldKind),
 }
 
 impl Column {
-    pub const FIXED: [Column; 8] = [
+    pub const FIXED: [Column; 9] = [
         Column::Name,
         Column::Status,
         Column::Species,
@@ -38,6 +39,7 @@ impl Column {
         Column::Worth,
         Column::Fed,
         Column::Fishtank,
+        Column::Grade,
     ];
 
     pub fn header(self) -> &'static str {
@@ -50,6 +52,7 @@ impl Column {
             Column::Worth => crate::ui::fields::WORTH_HEADER,
             Column::Fed => crate::ui::fields::FED_HEADER,
             Column::Fishtank => "Fishtank",
+            Column::Grade => "Grade",
             Column::Field(kind) => kind.header(),
         }
     }

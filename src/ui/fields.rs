@@ -1,4 +1,5 @@
-use rand::RngExt;
+use rand::rngs::SmallRng;
+use rand::{RngExt, SeedableRng};
 use ratatui::style::Color;
 
 use crate::colors::{
@@ -9,10 +10,14 @@ use crate::economy::{Money, grouped};
 use crate::fishes::fish::{Fed, Fish};
 use crate::fishes::species::{Fortune, Sin};
 use crate::ui::table::{INFINITY, NOTHING};
+use crate::vault::Seal;
 
 pub const FED_HEADER: &str = "Fed";
 pub const WORTH_HEADER: &str = "Worth";
 const FULL: &str = "Full";
+const NO_ONE: &str = "No one";
+const PERSONALITY_SALT: u64 = 0x5EED_FACE_F15B_C0DE;
+const FIELD_STRIDE: u64 = 0x9E37_79B9_7F4A_7C15;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FieldKind {
@@ -183,42 +188,32 @@ pub fn generate_rut(rng: &mut impl RngExt) -> String {
     }
 }
 
-pub fn populate_field_cache(fish: &mut Fish, all_names: &[String], rng: &mut impl RngExt) {
-    if fish.is_unfish() {
-        return;
-    }
-    let all_kinds = FieldKind::all();
-    let n = all_kinds.len();
-    if fish.field_cache.len() < n {
-        fish.field_cache.resize(n, None);
-    }
-    for (idx, &kind) in all_kinds.iter().enumerate() {
-        if fish.field_cache[idx].is_none() {
-            let fv = gen_field_value(kind, fish, all_names, rng);
-            fish.field_cache[idx] = Some((fv.text, fv.swatch));
-        }
-    }
+fn personality(fish: &Fish, kind: FieldKind) -> SmallRng {
+    let place = FieldKind::all()
+        .iter()
+        .position(|&listed| listed == kind)
+        .unwrap_or_default() as u64
+        + 1;
+    SmallRng::seed_from_u64(fish.pattern_seed ^ PERSONALITY_SALT ^ place.wrapping_mul(FIELD_STRIDE))
 }
 
-pub fn cached_field_value(fish: &Fish, kind: FieldKind) -> Option<FieldValue> {
-    let idx = FieldKind::all().iter().position(|&k| k == kind)?;
-    let (text, swatch) = fish.field_cache.get(idx)?.as_ref()?;
-    Some(FieldValue {
-        text: text.clone(),
-        swatch: *swatch,
-    })
+fn chosen<'a>(fish: &Fish, all_names: &'a [String], rng: &mut impl RngExt) -> Option<&'a String> {
+    let key: u64 = rng.random();
+    all_names
+        .iter()
+        .filter(|name| **name != fish.name)
+        .min_by_key(|name| {
+            let mut seal = Seal::of(name.as_bytes());
+            seal.feed(&key.to_le_bytes());
+            seal.value()
+        })
 }
 
-pub fn field_value(
-    kind: FieldKind,
-    fish: &Fish,
-    all_names: &[String],
-    rng: &mut impl RngExt,
-) -> FieldValue {
+pub fn field_value(kind: FieldKind, fish: &Fish, all_names: &[String]) -> FieldValue {
     if fish.is_unfish() {
         return unfish_field_value(kind, fish);
     }
-    cached_field_value(fish, kind).unwrap_or_else(|| gen_field_value(kind, fish, all_names, rng))
+    answer(kind, fish, all_names, &mut personality(fish, kind))
 }
 
 fn unfish_field_value(kind: FieldKind, fish: &Fish) -> FieldValue {
@@ -235,12 +230,7 @@ fn plain(s: impl Into<String>) -> FieldValue {
     }
 }
 
-pub fn gen_field_value(
-    kind: FieldKind,
-    fish: &Fish,
-    all_names: &[String],
-    rng: &mut impl RngExt,
-) -> FieldValue {
+fn answer(kind: FieldKind, fish: &Fish, all_names: &[String], rng: &mut impl RngExt) -> FieldValue {
     match kind {
         FieldKind::Iq => {
             let v: i32 = match rng.random_range(0..100u32) {
@@ -445,34 +435,15 @@ pub fn gen_field_value(
 
         FieldKind::TheOrThePr => plain("The PR"),
 
-        FieldKind::Crush => {
-            if all_names.is_empty() {
-                plain(super::table::NOTHING)
-            } else {
-                plain(all_names[rng.random_range(0..all_names.len())].clone())
-            }
-        }
+        FieldKind::Crush | FieldKind::MarriedTo => match chosen(fish, all_names, rng) {
+            Some(name) => plain(name.clone()),
+            None => plain(NOTHING),
+        },
 
-        FieldKind::MarriedTo => {
-            if all_names.is_empty() {
-                plain(super::table::NOTHING)
-            } else {
-                plain(all_names[rng.random_range(0..all_names.len())].clone())
-            }
-        }
-
-        FieldKind::Hates => {
-            if all_names.is_empty() {
-                plain("No one")
-            } else {
-                let target = &all_names[rng.random_range(0..all_names.len())];
-                if *target == fish.name {
-                    plain("No one")
-                } else {
-                    plain(target.clone())
-                }
-            }
-        }
+        FieldKind::Hates => match chosen(fish, all_names, rng) {
+            Some(name) => plain(name.clone()),
+            None => plain(NO_ONE),
+        },
 
         FieldKind::Status => {
             const S: &[&str] = &[
@@ -567,7 +538,7 @@ mod tests {
     use crate::fishes::unfish::{SPAWNABLE_UNFISH, UnfishKind};
 
     fn confessed_sin(fish: &Fish) -> String {
-        field_value(FieldKind::Sin, fish, &[], &mut rand::rng()).text
+        field_value(FieldKind::Sin, fish, &[]).text
     }
 
     fn fish_of(species: FishSpecies) -> Fish {
@@ -610,11 +581,43 @@ mod tests {
         }
     }
 
+    fn card(fish: &Fish, names: &[String]) -> Vec<(String, Option<Color>)> {
+        FieldKind::all()
+            .iter()
+            .map(|&kind| field_value(kind, fish, names))
+            .map(|field| (field.text, field.swatch))
+            .collect()
+    }
+
+    #[test]
+    fn a_fish_gives_the_same_answers_every_time_it_is_asked() {
+        let names: Vec<String> = ["Ann", "Bo", "Cy", "Di"].map(String::from).to_vec();
+        let fish = fish_of(FishSpecies::Merluza);
+        assert_eq!(card(&fish, &names), card(&fish, &names));
+        assert_eq!(card(&fish, &names), card(&fish.clone(), &names));
+    }
+
+    #[test]
+    fn two_fish_of_one_species_are_two_personalities() {
+        let names: Vec<String> = ["Ann", "Bo", "Cy", "Di"].map(String::from).to_vec();
+        let one = fish_of(FishSpecies::Merluza);
+        let other = fish_of(FishSpecies::Merluza);
+        assert_ne!(card(&one, &names), card(&other, &names));
+    }
+
+    #[test]
+    fn a_crush_is_never_the_fish_itself() {
+        let fish = fish_of(FishSpecies::Merluza);
+        let names = vec![fish.name.clone()];
+        assert_eq!(field_value(FieldKind::Crush, &fish, &names).text, NOTHING);
+        assert_eq!(field_value(FieldKind::Hates, &fish, &names).text, NO_ONE);
+    }
+
     #[test]
     fn an_unfish_without_a_sin_keeps_every_field_blank() {
         let reversed = unfish_of(UnfishKind::Reversed);
         for &kind in FieldKind::all() {
-            let field = field_value(kind, &reversed, &[], &mut rand::rng());
+            let field = field_value(kind, &reversed, &[]);
             assert!(field.text.is_empty() && field.swatch.is_none());
         }
     }

@@ -83,6 +83,10 @@ pub enum TankEvent {
     UfoReleaseCow(Box<Cow>),
     UfoFinished,
     CallHome,
+    Lazarus,
+    Fill {
+        hollow: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -557,6 +561,7 @@ pub struct Tank {
     pub inks: Vec<InkBlot>,
     pub sheddings: Vec<Shedding>,
     pub watched: bool,
+    pub radiance: f32,
 }
 
 impl Tank {
@@ -605,7 +610,12 @@ impl Tank {
             inks: Vec::new(),
             sheddings: Vec::new(),
             watched: false,
+            radiance: 0.0,
         }
+    }
+
+    pub fn is_radioactive(&self) -> bool {
+        self.kind.config().auto_mutate_all || self.radiance > 0.0
     }
 
     pub fn capacity(&self) -> usize {
@@ -682,8 +692,8 @@ impl Tank {
     }
 
     pub(super) fn mark_for_devil(&self, fish: &mut Fish) {
-        if self.kind.config().marks_for_devil && fish.species.config().markable {
-            fish.devil_marked = true;
+        if self.kind.config().marks_for_devil {
+            fish.mark();
         }
     }
 
@@ -868,7 +878,7 @@ impl Tank {
         self.tick_dopplegangers();
         self.tick_cows(dt);
         self.tick_engulfment();
-        if self.kind.config().spawns_unfish {
+        if self.kind.config().spawns_unfish && self.watched {
             self.tick_void_spawn(dt, &mut rng);
         }
         let mut events = self.tick_habits(dt);
@@ -948,7 +958,7 @@ impl Tank {
     }
 
     pub fn spawn_cow(&mut self, variant: CowVariant, rng: &mut impl RngExt) -> String {
-        let name = self.unique_cow_name("Vaquita");
+        let name = self.unique_cow_name(crate::entities::cow::COW_NAME);
         let cow = Cow::new(name.clone(), variant, 0.0, 0.0, rng);
         let cow_floor = (self.height as f32) - (Cow::sprite_height() as f32);
         let x = self.cow_spot(&cow, rng);

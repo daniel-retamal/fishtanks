@@ -2,6 +2,7 @@ use crossterm::event::Event;
 
 use crate::casino::state::{CasinoState, Game, Leave};
 use crate::casino::{Casino, Entrant, House, Teller};
+use crate::dungeon::treasure::Treasure;
 use crate::economy::Money;
 use crate::fishes::fish::Fish;
 use crate::fishes::species::FishSpecies;
@@ -152,6 +153,16 @@ impl House for Cashier<'_> {
 
     fn stock_part(&mut self, part: FittedPart) {
         self.app.casino.toybox.add(part);
+    }
+
+    fn play_marked_card(&mut self) -> bool {
+        let card = StockItem::Consumable(ConsumableKind::Treasure(Treasure::MarkedCard));
+        let Some(held) = self.app.inventory.get_mut(&card).filter(|held| **held > 0) else {
+            return false;
+        };
+        *held -= 1;
+        self.app.inventory.retain(|_, held| *held > 0);
+        true
     }
 }
 

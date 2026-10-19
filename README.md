@@ -38,7 +38,7 @@
 
 `fishtanks` is an aquarium that lives in a terminal window. Leave it open in a split pane beside your editor or your shell, and it keeps itself: the fishes drift, blow bubbles, chase food and burst into zoomies whether you touch it or not.
 
-Under the calm water there is a game. Go fishing, sell what you catch, buy new fishes and new tanks, and each tank turns out to have its own rules. Some fishes mutate. Some die, and where they go depends on how they lived. Some can be wired together into computers. It saves itself as you play, and it is there where you left it the next time you open it.
+Under the calm water there is a game. Go fishing, sell what you catch, buy new fishes and new tanks, and each tank turns out to have its own rules. Some fishes mutate. Some die, and where they go depends on how they lived. Some can be wired together into computers. And under every tank there is a dungeon to crawl, ten floors deep. It saves itself as you play, and it is there where you left it the next time you open it.
 
 ## Install
 
@@ -106,6 +106,8 @@ The bar at the bottom takes commands. Type `/`, press `Tab` to complete, `↑` a
 | `/names`                  | Show or hide the fishes' names                                         |
 | `/ledger`                 | Where your money came from, and where it went                          |
 | `/casino`                 | Six tables run by Tollomind. Bet cash, or bet a fish's life            |
+| `/toybox`                 | Dress up the Toyfish you won, and look over your collection            |
+| `/dungeon`                | Take four fishes down into the dungeon. `Esc` and the dive waits       |
 | `/zen`                    | Just the water. Any key brings the rest back                           |
 | `/exit`                   | Leave. The game is saved, and it will be there when you come back      |
 
@@ -133,13 +135,23 @@ Where fished money goes to get stupid. `/casino` opens Tollomind's lobby: Blackj
 
 Every table, its odds and its keys are on the [wiki](https://github.com/daniel-retamal/fishtanks/wiki/Casino).
 
+### Dungeon crawling
+
+Under every tank there is a dungeon. `/dungeon` puts up to four of your fishes in a party, packs food and whatever else you carry, and rides the elevator down. Each floor is a kind of tank gone wrong: a map of rooms with monsters, chests, shrines, strange events and a boss in front of the next elevator. Fights take turns, and a fish fights as what it already is: a fat fish lasts, a fast one acts more often, a mutation or a Botfish's parts become skills. Go up and bank the gold and treasure, or go deeper for more. On Hardcore, fishes can die.
+
+<img src="https://raw.githubusercontent.com/daniel-retamal/fishtanks/main/.github/assets/dungeon.gif" alt="A fight on the first floor of the dungeon: the turn bar on top, the enemies, the party below" width="720" />
+
+The floors, the rooms and the fights are on the [wiki](https://github.com/daniel-retamal/fishtanks/wiki/Dungeon-crawling).
+
 ### Getting started
 
 You begin with a Fishtank, a few fishes, a little cash and a bag of food. Fishing is where money comes from, so `/fish` early and often. Sell what you do not want to keep, feed the ones you do, and save up for a second tank. Every tank is a new set of rules, not just more room. The [wiki](https://github.com/daniel-retamal/fishtanks/wiki) explains every fish, tank and mechanic.
 
 ### What is down there
 
-- **Eighty-odd species.** Commons you can buy anywhere, rares that swim a little strangely, and legendaries that live in exactly one kind of tank and are never for sale.
+- **More than ninety species.** Commons you can buy anywhere, rares that swim a little strangely, legendaries that live in exactly one kind of tank and are never for sale, and a few that live only in the dungeon. And in the Void, over twenty unfish, which are not quite fish.
+- **A toy collection.** The Claw at the casino hands out Toyfish: stitched toys in twenty-one colours and five materials, with parts to dress them in that change how they swim, roll or fly. Some come in lines of four. The shelf in `/toybox` keeps everything you ever won, and a full row of it is worth finishing.
+- **A dungeon to crawl.** Ten floors under your tanks, and more below the tenth. Bring back gold, treasure, and fishes that live nowhere else.
 - **Tanks with their own rules.** A graveyard that remembers your dead. A desert whose nights bring visitors. A candy tank. Some tanks are never sold at all: the sea gives you something, and you grow them from it.
 - **Mutation.** Radiation, milk and time change fishes. Sometimes two fishes become one.
 - **Life after death.** A fish that dies goes somewhere. Where depends on the mark it carried.

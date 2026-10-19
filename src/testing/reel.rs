@@ -374,6 +374,9 @@ impl Still {
         if OFF_VIEW.contains(&symbol) {
             return true;
         }
+        if matches!(arm, Arm::Up | Arm::Down) && is_a_room_on_a_map(neighbour) {
+            return true;
+        }
         if BRANCHES.contains(&symbol) {
             return match arm {
                 Arm::Up => is_text(neighbour),
@@ -756,6 +759,17 @@ impl Reel {
         fs::write(&html, self.html(name))?;
         Ok(html)
     }
+}
+
+fn is_a_room_on_a_map(symbol: &str) -> bool {
+    let mut glyphs = symbol.chars();
+    let (Some(glyph), None) = (glyphs.next(), glyphs.next()) else {
+        return false;
+    };
+    glyph == crate::dungeon::map::ENTRY_GLYPH
+        || crate::dungeon::map::RoomKind::ALL
+            .iter()
+            .any(|kind| kind.glyph() == glyph)
 }
 
 #[cfg(test)]

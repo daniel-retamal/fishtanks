@@ -25,6 +25,10 @@ impl Seal {
         seal
     }
 
+    pub fn value(self) -> u64 {
+        self.0
+    }
+
     pub fn feed(&mut self, bytes: &[u8]) {
         for &byte in bytes.iter().filter(|&&byte| byte != CARRIAGE_RETURN) {
             self.0 ^= u64::from(byte);

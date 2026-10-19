@@ -36,6 +36,12 @@ pub struct TankRecord {
     #[serde(alias = "pending_exiles")]
     pending_arrivals: Vec<Arrival>,
     pending_signals: BTreeSet<WorldSignal>,
+    #[serde(default, skip_serializing_if = "is_still")]
+    radiance: f32,
+}
+
+fn is_still(radiance: &f32) -> bool {
+    *radiance <= 0.0
 }
 
 impl TankRecord {
@@ -77,6 +83,7 @@ impl TankRecord {
             inks: _,
             sheddings: _,
             watched: _,
+            radiance,
         } = tank;
         let cargo = ufos
             .iter()
@@ -106,6 +113,7 @@ impl TankRecord {
             pending_loose_parts: pending_loose_parts.clone(),
             pending_arrivals: pending_arrivals.clone(),
             pending_signals: pending_signals.clone(),
+            radiance: *radiance,
         }
     }
 
@@ -155,6 +163,7 @@ impl TankRecord {
         tank.pending_loose_parts = self.pending_loose_parts;
         tank.pending_arrivals.extend(self.pending_arrivals);
         tank.pending_signals.extend(self.pending_signals);
+        tank.radiance = self.radiance;
         tank
     }
 }

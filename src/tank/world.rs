@@ -344,7 +344,7 @@ impl Tank {
 
     pub fn rads(&self) -> u32 {
         let pressure: u32 = self.fish.iter().map(Fish::auto_mutate_stacks).sum();
-        if self.kind.config().auto_mutate_all {
+        if self.is_radioactive() {
             return pressure + RAD_TANK_RADS;
         }
         pressure

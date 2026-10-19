@@ -1,31 +1,29 @@
 use crossterm::event::Event;
 
+use crate::fishes::fish::Fish;
 use crate::fishes::toy::Slot;
 use crate::ui::input_action::{InputAction, classify};
 use crate::ui::toybox::{Mode, ToyEntry, ToyboxState};
 
 use super::{App, Overlay};
 
+pub(super) fn toys_in<'a>(fish: impl Iterator<Item = &'a Fish>) -> Vec<ToyEntry> {
+    let mut toys: Vec<ToyEntry> = fish
+        .filter(|fish| fish.toy.is_some())
+        .map(|fish| ToyEntry {
+            name: fish.name.clone(),
+            fish: fish.portrait(),
+        })
+        .collect();
+    toys.sort_by(|a, b| a.name.cmp(&b.name));
+    toys
+}
+
 impl App {
     pub(super) fn open_toybox(&mut self) -> bool {
-        let state = ToyboxState::new(self.toy_entries());
+        let state = ToyboxState::new(toys_in(self.tanks.iter().flat_map(|tank| tank.fish.iter())));
         self.set_overlay(Overlay::Toybox(Box::new(state)));
         true
-    }
-
-    fn toy_entries(&self) -> Vec<ToyEntry> {
-        let mut toys: Vec<ToyEntry> = self
-            .tanks
-            .iter()
-            .flat_map(|tank| tank.fish.iter())
-            .filter(|fish| fish.toy.is_some())
-            .map(|fish| ToyEntry {
-                name: fish.name.clone(),
-                fish: fish.portrait(),
-            })
-            .collect();
-        toys.sort_by(|a, b| a.name.cmp(&b.name));
-        toys
     }
 
     pub(super) fn handle_toybox_input(&mut self, event: Event) {
@@ -70,6 +68,20 @@ impl App {
         }
     }
 
+    fn toy_named(&mut self, name: &str) -> Option<&mut Fish> {
+        if self.below.is_some() {
+            return self
+                .dungeon
+                .expedition
+                .as_mut()?
+                .party
+                .iter_mut()
+                .find(|fish| fish.name == name);
+        }
+        let (tank, index) = self.fish_location(name)?;
+        Some(&mut self.tanks[tank].fish[index])
+    }
+
     fn save_toy(&mut self) {
         let Some(Overlay::Toybox(state)) = self.active_overlay.as_ref() else {
             return;
@@ -81,12 +93,9 @@ impl App {
             return;
         };
         let draft = state.draft;
-        let Some((tank, index)) = self.fish_location(&name) else {
-            return;
-        };
-        let Some(worn) = self.tanks[tank].fish[index]
-            .toy
-            .as_ref()
+        let Some(worn) = self
+            .toy_named(&name)
+            .and_then(|fish| fish.toy.as_ref())
             .map(|toy| toy.fittings)
         else {
             return;
@@ -111,7 +120,9 @@ impl App {
                 self.casino.toybox.add(part);
             }
         }
-        let fish = &mut self.tanks[tank].fish[index];
+        let Some(fish) = self.toy_named(&name) else {
+            return;
+        };
         if let Some(toy) = fish.toy.as_mut() {
             toy.fittings = draft;
         }

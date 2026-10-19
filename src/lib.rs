@@ -7,6 +7,7 @@ pub mod closing;
 pub mod colors;
 pub mod commands;
 pub mod consumable;
+pub mod dungeon;
 pub mod economy;
 pub mod entities;
 pub mod fishes;

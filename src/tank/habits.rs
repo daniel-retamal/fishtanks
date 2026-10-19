@@ -7,12 +7,11 @@ use crate::entities::bubble::{Bubble, BubblePhase};
 use crate::entities::speech::SpeechBubble;
 use crate::fishes::fish::{EATING_DURATION, Fish, FishState};
 use crate::fishes::habits::{Chase, Echo, Footstep};
-use crate::fishes::species::{Habit, Locomotion, Zoomie};
+use crate::fishes::species::{Habit, Locomotion, Pen, Zoomie};
 use crate::sprite::TRANSPARENT;
 use crate::util::{events_in, sample_exponential};
 
-pub const TRAIL_SECS: f32 = 10.0;
-const TRAIL_FADE_SECS: f32 = 3.0;
+const TRAIL_FADE_SHARE: f32 = 0.3;
 pub const TRAIL_GLYPH: char = '·';
 const TRAIL_DEFAULT: Color = GRAY;
 const TRAIL_FADED: Color = DARK_GRAY;
@@ -56,6 +55,8 @@ pub const ECHO_FADE: f32 = 0.6;
 const AMBUSH_REACH: i32 = 3;
 const ALERT_SECS: f32 = 2.0;
 const ESCAPE_MEAN_SECS: f32 = 20.0 * 60.0;
+pub const LAZARUS_MEAN_SECS: f32 = 2.0 * 60.0 * 60.0;
+const PATCHES: usize = 4;
 const LURE_PULL_RADIUS: f32 = 12.0;
 pub const BLIND_SMELL_RADIUS: f32 = 6.0;
 
@@ -64,12 +65,13 @@ pub struct TrailMark {
     pub x: i32,
     pub y: i32,
     pub ttl: f32,
+    pub life: f32,
     pub color: Color,
 }
 
 impl TrailMark {
     pub fn color_now(&self) -> Color {
-        if self.ttl < TRAIL_FADE_SECS {
+        if self.ttl < self.life * TRAIL_FADE_SHARE {
             TRAIL_FADED
         } else {
             self.color
@@ -181,8 +183,79 @@ impl Tank {
         self.graze();
         self.ambush();
         self.lunge_through_bubbles(dt);
+        self.gaze();
+        self.stitch();
         let mut events = self.echo_due(dt);
         events.extend(self.escapes(dt, &mut rng));
+        events.extend(self.lazarus(dt, &mut rng));
+        events.extend(self.hollows(&mut rng));
+        events
+    }
+
+    fn gaze(&mut self) {
+        let spans: Vec<(f32, f32, f32)> = self
+            .fish
+            .iter()
+            .map(|fish| {
+                let left = fish.position.x;
+                (left, left + fish.display_width as f32, fish.position.y)
+            })
+            .collect();
+        for (index, fish) in self.fish.iter_mut().enumerate() {
+            if fish.habit() != Some(Habit::Gaze) {
+                continue;
+            }
+            let (left, right, y) = spans[index];
+            fish.habits.gazing = spans
+                .iter()
+                .enumerate()
+                .any(|(other, &(l, r, oy))| other != index && oy < y && l < right && r > left);
+        }
+    }
+
+    fn stitch(&mut self) {
+        let around: Vec<(f32, ratatui::style::Color)> = self
+            .fish
+            .iter()
+            .map(|fish| (fish.position.x, fish.color))
+            .collect();
+        for (index, fish) in self.fish.iter_mut().enumerate() {
+            if fish.habit() != Some(Habit::Stitch) {
+                continue;
+            }
+            let x = around[index].0;
+            let mut nearest: Vec<&(f32, ratatui::style::Color)> = around
+                .iter()
+                .enumerate()
+                .filter(|&(other, _)| other != index)
+                .map(|(_, entry)| entry)
+                .collect();
+            nearest.sort_by(|a, b| (a.0 - x).abs().total_cmp(&(b.0 - x).abs()));
+            fish.habits.patches = nearest
+                .into_iter()
+                .take(PATCHES)
+                .map(|&(_, color)| color)
+                .collect();
+        }
+    }
+
+    fn lazarus(&mut self, dt: f32, rng: &mut impl RngExt) -> Vec<TankEvent> {
+        let mut events = Vec::new();
+        for fish in &mut self.fish {
+            if fish.habit() != Some(Habit::Lazarus) {
+                continue;
+            }
+            let clock = fish
+                .habits
+                .lazarus_clock
+                .get_or_insert_with(|| sample_exponential(rng, LAZARUS_MEAN_SECS));
+            *clock -= dt;
+            if *clock > 0.0 {
+                continue;
+            }
+            fish.habits.lazarus_clock = None;
+            events.push(TankEvent::Lazarus);
+        }
         events
     }
 
@@ -192,20 +265,24 @@ impl Tank {
         }
         self.trails.retain(|mark| mark.ttl > 0.0);
         for fish in &mut self.fish {
-            let Some(tint) = fish.species.config().trail else {
+            let Some(trail) = fish.species.config().trail else {
                 continue;
             };
             let color = fish
                 .wake_color()
-                .unwrap_or_else(|| tint.resolve(TRAIL_DEFAULT, fish.color));
-            let cells = painted_cells(fish);
+                .unwrap_or_else(|| trail.tint.resolve(TRAIL_DEFAULT, fish.color));
+            let cells = match trail.pen {
+                Pen::Body => painted_cells(fish),
+                Pen::Tip => vec![(fish.head_x(), fish.position.y as i32)],
+            };
             let previous = std::mem::replace(&mut fish.habits.occupied, cells.clone());
             for (x, y) in previous {
                 if !cells.contains(&(x, y)) {
                     self.trails.push(TrailMark {
                         x,
                         y,
-                        ttl: TRAIL_SECS,
+                        ttl: trail.secs,
+                        life: trail.secs,
                         color,
                     });
                 }

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.0 - 2026-10-19
+
+- **Dungeon crawling.** `/dungeon` takes up to four of your fishes down into the dungeon under your tanks: ten floors, one for each kind of tank, and more below the tenth. Pick your party into four slots, pack food and whatever else you carry, choose Normal or Hardcore, and ride the elevator down.
+- **A fish fights as what it already is.** Its weight is its health, its size its bite, its speed how often it acts, and its species, mutations, fusions, a Botfish's parts and a toy's parts become its skills. Fights take turns, every enemy shows its health and its bubbles, and the box under the menu explains whatever you highlight.
+- **A map of rooms on every floor.** Monsters, dens, chests that are not always chests, bell jars, schools of fish to hire, shrines, altars, laboratories, a vent to rest at, a fishing hole, a vending machine, strange events with choices, and a boss in front of each elevator. Go up and bank the haul, or go deeper for more.
+- **Normal or Hardcore.** On Normal nobody dies, and a party that falls leaves its haul below as a wreck to win back. On Hardcore fishes die for real, and the pay is double.
+- **Pause whenever you like.** `Esc` leaves the dungeon and the dive waits, party, haul and all, even if you quit the game.
+- **Treasure for home.** Shells, inks, vials, chips, shards, roe and charms that only the dungeon gives up, used from `/inventory`. Four toy parts are found down there too.
+- **Six new fish** that live only in the dungeon, and **the Hollow**, a new unfish that wears your dead.
+- **Grades.** A fish that comes back from a dive carries its Grade: `/show` lists its dives, and `/index` gains a Grade column.
+- **The Pencilfish draws a line.** Only the tip of the pencil draws now, and the line fades sooner.
+- **The Void waits for you.** Unfish crawl out of the Voidtank only while you are watching it.
+
 ## 1.5.1 - 2026-10-08
 
 - **Toys move their feet.** Wheels spin, treads roll and feet step while a Toyfish is on the go, and stop when a wind-up toy runs down.

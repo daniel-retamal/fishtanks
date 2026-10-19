@@ -30,6 +30,7 @@ const COW_HEAD_CAP: usize = 5;
 const COW_HEAD_TOP_W: usize = 4;
 pub const COW_DEFAULT_SWAY_SPEED: f32 = 0.05;
 pub const COW_TRANSPARENT: char = crate::sprite::TRANSPARENT;
+pub const COW_NAME: &str = "Vaquita";
 pub const COW_ANTENNA_ROWS: u16 = 1;
 const ANTENNA_BALL: char = 'o';
 const ANTENNA_LEFT_STEM: char = '\\';
@@ -47,7 +48,7 @@ pub fn cow_default_sway_speed() -> f32 {
 const COW_MIN_TORSO: usize = 3;
 const COW_MAX_TORSO: usize = 12;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub enum CowVariant {
     Brown,
     WhiteBlack,

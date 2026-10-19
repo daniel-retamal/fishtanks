@@ -33,6 +33,9 @@ const LURE_BY_DAY: Color = AMBER_DARK;
 const FLASH_PALETTE: [Color; 3] = [GOLD_BRIGHT, LIGHT_YELLOW, GOLD_PALE];
 const BLUSH_PEAK: Color = LIGHT_MAGENTA;
 const TWINKLE_PEAK: Color = WHITE;
+pub const GAZE_AHEAD: char = 'o';
+pub const GAZE_UP: char = '°';
+pub const PATCHWORK_EYE: char = '°';
 const WING_UP: char = '/';
 const WING_DOWN: char = '\\';
 const WING_ROOT: usize = 1;
@@ -408,6 +411,12 @@ impl Fish {
         if habit == Some(Habit::Shy) && self.sky.calm {
             glisten(&mut sprite, self.sway.phase, PINK, BLUSH_PEAK);
         }
+        if habit == Some(Habit::Gaze) && self.habits.gazing {
+            look_up(&mut sprite);
+        }
+        if self.skin() == Skin::Patchwork {
+            patch(&mut sprite, &self.habits.patches);
+        }
         self.tint(&mut sprite);
         sprite
     }
@@ -486,6 +495,28 @@ fn fin_cells(
         (back, (FIN_BACK, color_at(back))),
         (front, (mirror_char(lead_glyph), color_at(front))),
     ]
+}
+
+fn look_up(sprite: &mut LineSprite) {
+    let body = sprite.body_row;
+    for cell in &mut sprite.rows[body] {
+        if cell.0 == GAZE_AHEAD {
+            cell.0 = GAZE_UP;
+        }
+    }
+}
+
+fn patch(sprite: &mut LineSprite, patches: &[Color]) {
+    if patches.is_empty() {
+        return;
+    }
+    for row in &mut sprite.rows {
+        for (i, cell) in row.iter_mut().enumerate() {
+            if is_painted(*cell) && cell.0 != PATCHWORK_EYE {
+                cell.1 = patches[i % patches.len()];
+            }
+        }
+    }
 }
 
 fn recolor(sprite: &mut LineSprite, color: impl Fn(usize, Color) -> Color) {

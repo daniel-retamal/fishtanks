@@ -52,6 +52,7 @@ use crate::{
 mod casino;
 mod cheats;
 mod console;
+mod dungeon;
 mod heaven;
 mod input;
 mod lessons;
@@ -62,6 +63,7 @@ mod persistence;
 mod room;
 mod snapshot;
 mod toybox;
+mod treasure;
 mod zen;
 
 pub use cheats::Launch;
@@ -105,6 +107,7 @@ enum Overlay {
     Ledger(LedgerState),
     Casino(Box<crate::casino::state::CasinoState>),
     Toybox(Box<crate::ui::toybox::ToyboxState>),
+    Dungeon(Box<crate::dungeon::screen::DungeonState>),
 }
 
 pub const CAJETANS_GRACE_SECS: f32 = 3.0 * 60.0 + 33.0;
@@ -148,6 +151,14 @@ pub struct App {
     newer_release: bool,
     lessons: Lessons,
     pub casino: crate::casino::Casino,
+    pub dungeon: crate::dungeon::Dungeon,
+    below: Option<Below>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Below {
+    Hole,
+    Workshop,
 }
 
 impl Default for App {
@@ -211,7 +222,7 @@ impl App {
         }
     }
 
-    fn fishing_state_mut(&mut self) -> Option<&mut FishingState> {
+    pub fn fishing_state_mut(&mut self) -> Option<&mut FishingState> {
         match &mut self.active_overlay {
             Some(Overlay::Fishing(s)) => Some(s),
             _ => None,
@@ -362,6 +373,9 @@ impl App {
         self.leave_console();
         self.held_keys.let_go();
         self.active_overlay = None;
+        if let Some(below) = self.below.take() {
+            self.surface(below);
+        }
     }
 
     fn tank(&self) -> &Tank {
@@ -382,6 +396,23 @@ impl App {
             .filter(|c| matches!(c.kind, ConsumableKind::Coffee))
             .map(|c| c.stacks)
             .sum()
+    }
+
+    fn buff_stacks(&self, kind: ConsumableKind) -> u32 {
+        self.active_consumables
+            .iter()
+            .filter(|c| c.kind == kind)
+            .map(|c| c.stacks)
+            .sum()
+    }
+
+    fn catch_charm(&self) -> Option<crate::economy::Rarity> {
+        use crate::dungeon::treasure::Treasure;
+        let held = |treasure| self.buff_stacks(ConsumableKind::Treasure(treasure)) > 0;
+        if held(Treasure::KrakenInk) {
+            return Some(crate::economy::Rarity::Legendary);
+        }
+        held(Treasure::PincoyasShell).then_some(crate::economy::Rarity::Rare)
     }
 
     fn bait_stacks(&self) -> u32 {
@@ -438,14 +469,23 @@ impl App {
     }
 
     fn devils_luck(&self) -> u32 {
-        Self::devils_luck_in(self.tank())
+        self.devils_luck_at(self.current_tank)
     }
 
-    fn devils_luck_in(tank: &Tank) -> u32 {
+    fn devils_luck_at(&self, tank_idx: usize) -> u32 {
+        let tank = &self.tanks[tank_idx];
         if !tank.kind.config().devils_luck {
             return 0;
         }
-        (tank.fish.len() + tank.soul_count()) as u32
+        let first = self
+            .tanks
+            .iter()
+            .position(|tank| tank.kind.config().devils_luck);
+        let bound = match first == Some(tank_idx) {
+            true => self.dungeon.mammon,
+            false => 0,
+        };
+        (tank.fish.len() + tank.soul_count()) as u32 + bound
     }
 
     fn grace_stacks(&self) -> u32 {
@@ -634,24 +674,9 @@ impl App {
             ConsumableKind::Fabricator => return self.open_foundry(),
             ConsumableKind::Coffee | ConsumableKind::Bait => {
                 self.consume_item(kind);
-                let entry = self.inventory.entry(stock).or_insert(0);
-                *entry = entry.saturating_sub(1);
-                self.inventory.retain(|_, v| *v > 0);
-                let now_empty = if let Some(Overlay::Inventory(state)) = &mut self.active_overlay {
-                    state.update_from(&self.inventory, &self.blueprints, &mut rand::rng());
-                    state.items.is_empty()
-                } else {
-                    false
-                };
-                if now_empty {
-                    self.close_overlay();
-                }
-                let bh = self.bar_height();
-                let tw = self.terminal_width;
-                let th = self.terminal_height.saturating_sub(bh);
-                let dead_names = self.graveyard_names();
-                self.tanks[self.current_tank].resize(tw, th, &dead_names);
+                self.spend_one(stock);
             }
+            ConsumableKind::Treasure(treasure) => return self.use_treasure(treasure, source),
         }
         true
     }
@@ -678,10 +703,32 @@ impl App {
         }
         let mut rng = rand::rng();
         let hooked = self.fishing_state_mut().and_then(FishingState::take_catch);
-        let loot = hooked.unwrap_or_else(|| self.roll_catch(self.current_tank, &mut rng));
+        let loot = hooked.unwrap_or_else(|| self.roll_this_catch(&mut rng));
         self.spend_a_cast(Caster::Angler);
-        let card = self.counted(CatchState::new(loot, &mut rng));
+        let mut card = self.counted(CatchState::new(loot, &mut rng));
+        if self.below.is_some() {
+            card.below = true;
+            card.item_qty = self.counted_below(&card.loot);
+        }
         self.set_overlay(Overlay::Catch(card));
+    }
+
+    fn counted_below(&self, loot: &LootKind) -> u32 {
+        let LootKind::Item(item) = loot else {
+            return 0;
+        };
+        let held = StockItem::from_item(item).map_or(0, |stock| {
+            self.dungeon.expedition.as_ref().map_or(0, |expedition| {
+                expedition
+                    .haul
+                    .treasures
+                    .iter()
+                    .filter(|treasure| treasure.stock == stock)
+                    .map(|treasure| treasure.count)
+                    .sum()
+            })
+        });
+        held + 1
     }
 
     fn counted(&self, mut card: CatchState) -> CatchState {
@@ -703,7 +750,7 @@ impl App {
             .with_native(tank.kind)
             .with_bait(self.bait_stacks())
             .without(&self.withheld_loot())
-            .with_devils_luck(Self::devils_luck_in(tank))
+            .with_devils_luck(self.devils_luck_at(tank_idx))
             .with_grace(self.grace_stacks())
             .keeping_species(|species| self.has_room_for_a_new(species))
     }
@@ -711,6 +758,25 @@ impl App {
     pub(super) fn roll_catch(&self, tank_idx: usize, rng: &mut impl RngExt) -> LootKind {
         self.catch_pool(tank_idx)
             .with_cows(&Self::cow_counts_in(&self.tanks[tank_idx]))
+            .charmed(self.catch_charm(), |species| {
+                self.has_room_for_a_new(species)
+            })
+            .roll(rng)
+    }
+
+    fn roll_this_catch(&self, rng: &mut impl RngExt) -> LootKind {
+        match self.below {
+            Some(Below::Hole) => self.roll_below(rng),
+            Some(Below::Workshop) | None => self.roll_catch(self.current_tank, rng),
+        }
+    }
+
+    fn roll_below(&self, rng: &mut impl RngExt) -> LootKind {
+        let depth = self.dungeon.expedition.as_ref().map_or(1, |e| e.floor);
+        LootPool::of_the_hole(crate::dungeon::floor::FloorSpec::of(depth).tank)
+            .with_bait(self.bait_stacks())
+            .without(&self.withheld_loot())
+            .with_grace(self.grace_stacks())
             .roll(rng)
     }
 
@@ -771,6 +837,10 @@ impl App {
                 self.tick_casino();
                 return;
             }
+            Some(Overlay::Dungeon(_)) => {
+                self.tick_dungeon();
+                return;
+            }
             Some(Overlay::Circuit(_))
             | Some(Overlay::ConsumePicker(_))
             | Some(Overlay::Console(_))
@@ -819,7 +889,7 @@ impl App {
                     .or_insert(0) += 1;
             }
             for lost in std::mem::take(&mut self.tanks[i].pending_graveyard) {
-                self.bury(lost);
+                self.bury(lost, crate::fishes::graveyard::Fate::Absorbed);
             }
             for event in events {
                 match event {
@@ -857,6 +927,10 @@ impl App {
                     }
                     TankEvent::UfoFinished => {}
                     TankEvent::CallHome => self.answer_call_home(i),
+                    TankEvent::Lazarus => {
+                        self.bring_back_a_lost_kind(i);
+                    }
+                    TankEvent::Fill { hollow } => self.fill_the_hollow(i, &hollow),
                 }
             }
         }
@@ -1014,8 +1088,9 @@ impl App {
         }
 
         {
+            let wishing = matches!(self.void_ritual, VoidRitualState::Wish { .. });
             let ritual_blocking = self.void_ritual.is_blocking()
-                && self.tanks[self.current_tank].kind.config().hosts_ritual;
+                && (wishing || self.tanks[self.current_tank].kind.config().hosts_ritual);
             let mut tv = TankView::new(self.tank())
                 .with_names(self.settings.show_names && !self.zen)
                 .with_nets(self.settings.show_nets && !self.zen)
@@ -1144,6 +1219,16 @@ impl App {
             }
             Some(Overlay::Toybox(state)) => frame.render_widget(
                 crate::ui::toybox::ToyboxOverlay::new(state, &self.casino.toybox, screen),
+                full_area,
+            ),
+            Some(Overlay::Dungeon(state)) => frame.render_widget(
+                crate::ui::dungeon::DungeonOverlay::new(
+                    state,
+                    self.dungeon.expedition.as_ref(),
+                    self.above(),
+                    screen,
+                    self.editor.visible,
+                ),
                 full_area,
             ),
             Some(Overlay::Console(_)) | None => {}
@@ -1279,7 +1364,7 @@ impl App {
         const UFO_BAY_LEFT_EYE_COL: i32 = 7;
         const COW_HEAD_EYE_OFFSET: i32 = 1;
         let tank = &mut self.tanks[tank_idx];
-        let name = tank.unique_cow_name("Vaquita");
+        let name = tank.unique_cow_name(crate::entities::cow::COW_NAME);
         let cow_floor = (tank.height as f32) - (Cow::sprite_height() as f32);
         let probe = Cow::new(name.clone(), variant, 0.0, cow_floor.max(0.0), rng);
         let cow_w = probe.display_width as i32;

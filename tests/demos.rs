@@ -1697,3 +1697,296 @@ fn the_casino_demo_runs_keystroke_for_keystroke() {
     tui.write_reel();
     assert_no_broken_borders(&tui);
 }
+
+const DEEP_WAIT_TICKS: usize = 900;
+const DEEP_MAX_TURNS: usize = 200;
+
+fn deep_view(tui: &Tui) -> &'static str {
+    use fishtank::dungeon::screen::View;
+    match tui.app.dungeon_overlay().map(|state| &state.view) {
+        Some(View::Muster(_)) => "muster",
+        Some(View::Map(_)) => "map",
+        Some(View::Room(_)) => "room",
+        Some(View::Fight(_)) => "fight",
+        None => "closed",
+    }
+}
+
+#[test]
+fn the_deep_demo_runs_keystroke_for_keystroke() {
+    let mut tui = Tui::as_player(120, 38);
+    tui.film(Path::new(REEL_DIR), "demo-the-deep");
+    tui.run("/dungeon");
+    tui.screen().expect_find("The Deep · Party");
+    tui.snap("1. /dungeon opens the party pick; ENTER picks the highlighted fish");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.screen().expect_find("┌─ Eva ");
+    tui.snap("2. all three picked, each in its slot; TAB goes on to the Items");
+    tui.key(KeyCode::Tab);
+    tui.key(KeyCode::Right).key(KeyCode::Right);
+    tui.screen().expect_find("2 of 10");
+    tui.snap("3. right arrow packs a meal; ENTER walks to the elevator");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Hardcore");
+    tui.snap("4. the first elevator: Normal or Hardcore, for the whole dive");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("from your tanks");
+    tui.snap("5. the floor map: three passages down to the boss and the elevator");
+    tui.key(KeyCode::Right);
+    tui.snap("6. left and right arrows pick the next room");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("ESC leave");
+    tui.snap("7. a room: read it, choose a row, ENTER");
+    tui.key(KeyCode::Esc);
+    tui.screen().expect_absent("ESC leave");
+    tui.run("/dungeon");
+    tui.screen().expect_find("ESC leave");
+    tui.snap("8. ESC left the Deep; /dungeon finds the room where it was left");
+    tui.key(KeyCode::Up).key(KeyCode::Enter);
+    for _ in 0..DEEP_MAX_TURNS {
+        match deep_view(&tui) {
+            "fight" => {
+                tui.tick_n(DEEP_WAIT_TICKS);
+                tui.key(KeyCode::Enter).key(KeyCode::Enter);
+            }
+            "room" => {
+                tui.key(KeyCode::Enter);
+            }
+            _ => break,
+        }
+    }
+    tui.screen().expect_find("ENTER go");
+    tui.snap(
+        "9. the bottom row left the room (a fight, if it came to one, played out); the map waits",
+    );
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}
+
+#[test]
+fn the_deep_floors_demo_runs_keystroke_for_keystroke() {
+    let mut tui = Tui::as_player(120, 38);
+    tui.film(Path::new(REEL_DIR), "demo-the-deep-floors");
+    tui.run("/sell fish \"Eva\"");
+    tui.run("!debugmode");
+    tui.run("/spawn quimera \"Retazos\"");
+    tui.run("/spawn barril \"Domo\"");
+    tui.run("/spawn gota \"Gota\"");
+    tui.tick_n(60);
+    let spawned = tui.app.tanks[0]
+        .fish
+        .iter()
+        .filter(|fish| fish.species.config().habitat == fishtank::fishes::species::Habitat::Deep)
+        .count();
+    assert_eq!(spawned, 3, "debug mode spawns the Deep's own fish");
+    tui.snap("0. three fish of the Deep, spawned in debug mode");
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter).key(KeyCode::Tab);
+    tui.key(KeyCode::Enter).key(KeyCode::Enter);
+    tui.screen().expect_find("from your tanks");
+    tui.snap("1. Eva sold, debug mode on, Adam alone on the first floor");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"The Séance Table\"");
+    tui.screen().expect_find("Call Eva");
+    tui.screen().expect_find("sold");
+    tui.snap("2. /room \"The Séance Table\": the Graveyard's séance, Eva carved round the edge");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Eva remembers, and it is angry.");
+    tui.snap("3. ENTER calls Eva: she was sold, and she remembers");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"A Giant Pearl\"");
+    tui.screen().expect_find("Reach in");
+    tui.snap("4. /room \"A Giant Pearl\": a Reef event");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Fishing Hole\"");
+    tui.screen().expect_find("Casts left: 3");
+    tui.snap("5. /room \"Fishing Hole\": three casts, Deep catches only");
+    tui.key(KeyCode::Enter);
+    assert!(tui.app.fishing_state().is_some(), "the real minigame");
+    tui.snap("6. ENTER casts: the real fishing minigame");
+    tui.key(KeyCode::Esc);
+    tui.screen().expect_find("Casts left: 2");
+    tui.snap("7. ESC lets it go: back at the hole, one cast spent");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Hydrothermal Vent\"");
+    tui.screen().expect_find("Program a botfish");
+    tui.screen().expect_find("needs a Fabricator");
+    tui.snap("8. /room \"Hydrothermal Vent\": the workshop rows");
+    tui.key(KeyCode::Esc);
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}
+
+#[test]
+fn the_deep_treasures_demo_runs_keystroke_for_keystroke() {
+    use fishtank::dungeon::treasure::Treasure;
+    use fishtank::loot::{ConsumableKind, StockItem};
+    let held = |tui: &Tui, treasure: Treasure| {
+        tui.app
+            .inventory
+            .get(&StockItem::Consumable(ConsumableKind::Treasure(treasure)))
+            .copied()
+            .unwrap_or(0)
+    };
+    let mut tui = Tui::as_player(120, 38);
+    tui.film(Path::new(REEL_DIR), "demo-the-deep-treasures");
+    tui.run("!debugmode");
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter).key(KeyCode::Tab);
+    tui.key(KeyCode::Enter).key(KeyCode::Enter);
+    tui.screen().expect_find("from your tanks");
+    tui.snap("1. Adam alone on the first floor");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"A Line of Prayer\"");
+    let seed = tui
+        .app
+        .dungeon
+        .expedition
+        .as_ref()
+        .and_then(|e| e.visit.as_ref())
+        .map(|visit| visit.seed)
+        .expect("the prayer room");
+    let line = fishtank::dungeon::event::prayer_line(seed);
+    let first = line.split(' ').next().unwrap_or(line);
+    tui.screen().expect_find(&format!("\"{first}"));
+    tui.snap("2. /room \"A Line of Prayer\": the line in quotes, Say it under the cursor");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Words to the Void");
+    tui.type_text(&line.to_lowercase());
+    tui.snap("3. ENTER opens the words field: the line typed over its grey ghost");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("The Void listens");
+    tui.screen().expect_find("Found: Wish Shard.");
+    tui.snap("4. ENTER says it: a Wish Shard");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"A Glowing Pool\"");
+    tui.screen().expect_find("Choosing: Adam");
+    tui.snap("5. /room \"A Glowing Pool\": ←→ picks the fish to dip");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Adam takes");
+    tui.snap("6. ENTER dips Adam: a mutation, gift and quirk");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"The Scales\"");
+    tui.key(KeyCode::Enter);
+    tui.snap("7. /room \"The Scales\", ENTER: Adam weighed against the feather");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Elevator\"");
+    tui.screen().expect_find("bank it all, go home");
+    tui.key(KeyCode::Enter);
+    assert!(tui.app.dungeon.expedition.is_none(), "Up banks it all");
+    assert_eq!(held(&tui, Treasure::WishShard), 1, "the shard came home");
+    tui.snap("8. /room \"Elevator\", ENTER (Up): home, the haul banked");
+    tui.run("/give wish shard");
+    tui.run("/consume wish shard");
+    tui.screen().expect_find(fishtank::void_ritual::WISH_PROMPT);
+    tui.snap("9. /give wish shard, /consume wish shard: three shards make the Void's wish, in the Fishtank");
+    tui.run("give coffee");
+    assert!(
+        tui.app.inventory.contains_key(&StockItem::COFFEE),
+        "the wish gave coffee"
+    );
+    tui.snap("10. give coffee: the wish is granted on the spot");
+    tui.run("/give kraken ink");
+    tui.run("/consume kraken ink");
+    tui.screen().expect_find("kraken ink");
+    tui.snap("11. /give kraken ink, /consume kraken ink: the next cast lands a Legendary");
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}
+
+fn deep_prayer(tui: &Tui) -> Option<&'static str> {
+    tui.app
+        .dungeon_overlay()
+        .and_then(|state| state.fight())
+        .and_then(|fight| fight.prayer())
+}
+
+fn scroll_to(tui: &mut Tui, text: &str) {
+    for _ in 0..DEEP_MAX_TURNS {
+        if tui.screen().contains(text) {
+            return;
+        }
+        tui.key(KeyCode::Down);
+    }
+    tui.screen().expect_find(text);
+}
+
+#[test]
+fn the_deep_words_and_fields_demo_runs_keystroke_for_keystroke() {
+    let mut tui = Tui::as_player(120, 38);
+    tui.film(Path::new(REEL_DIR), "demo-the-deep-words-and-fields");
+    tui.run("/index");
+    tui.screen().expect_absent("Grade");
+    tui.snap("1. /index before any dive: no Grade column");
+    tui.key(KeyCode::Esc);
+    tui.run("!debugmode");
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Tab)
+        .key(KeyCode::Enter)
+        .key(KeyCode::Enter);
+    tui.screen().expect_find("from your tanks");
+    tui.snap("2. Adam, Lilith and Eva on the first floor, Normal");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Elevator\"");
+    tui.screen().expect_find("bank it all, go home");
+    tui.key(KeyCode::Enter);
+    assert!(
+        tui.app.dungeon.expedition.is_none(),
+        "Up swims everyone home"
+    );
+    tui.snap("3. /room \"Elevator\", ENTER (Up): home; no boss fell, so no floor counts yet");
+    tui.run("/show \"Adam\" all");
+    scroll_to(&mut tui, "1 · deepest Floor 1");
+    tui.screen().expect_find("Fry (0 floors survived)");
+    tui.snap("4. /show \"Adam\" all, ↓ to the end: Grade and Dives, the Deep's fields");
+    tui.key(KeyCode::Esc);
+    tui.run("/index sort:-grade");
+    tui.screen().expect_find("Grade");
+    tui.screen().expect_find("Fry");
+    tui.snap("5. /index sort:-grade: the Grade column, sorted by rank");
+    tui.key(KeyCode::Esc);
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Tab)
+        .key(KeyCode::Enter)
+        .key(KeyCode::Enter);
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"A Line of Prayer\"");
+    tui.key(KeyCode::Esc);
+    tui.run("/room \"Lair\"");
+    tui.screen().expect_find("Great Eye");
+    tui.snap("6. a second dive; /room \"A Line of Prayer\" moves it to the Eye, /room \"Lair\" opens its lair");
+    tui.key(KeyCode::Enter);
+    for _ in 0..DEEP_MAX_TURNS {
+        if tui.screen().contains("> Pray") {
+            break;
+        }
+        tui.tick_n(DEEP_WAIT_TICKS);
+    }
+    tui.screen().expect_find("> Pray");
+    let line = deep_prayer(&tui).expect("the Eye asks for a line");
+    tui.snap("7. ENTER fights: the Eye shields itself and Pray heads the menu");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_find("Words to the Eye");
+    tui.snap("8. ENTER on Pray: the words field, the line in quotes and in grey");
+    tui.type_text(&line.to_lowercase());
+    tui.snap("9. the line typed over its ghost");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_absent("Words to the Eye");
+    assert!(
+        tui.app.editor.text.is_empty(),
+        "the command bar is never used"
+    );
+    tui.tick_n(DEEP_WAIT_TICKS);
+    tui.snap("10. ENTER says it: the Eye listens, Pray leaves the menu");
+    tui.key(KeyCode::Esc);
+    tui.write_reel();
+    assert_no_broken_borders(&tui);
+}

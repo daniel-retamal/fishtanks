@@ -1,4 +1,5 @@
 use rand::RngExt;
+use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
 use super::mutant::MutationRecord;
@@ -41,6 +42,11 @@ pub const MOLT_MEAN_SECS: f32 = 45.0;
 pub const NEGATIVE_REST_MEAN_SECS: f32 = 60.0;
 pub const GRAEAE_PASS_REST_SECS: f32 = 3.0;
 pub const RING_CELLS_PER_SEC: f32 = 4.0;
+pub const HOLLOW_EMPTY_MEAN_SECS: f32 = 300.0;
+pub const HOLLOW_FULL_MEAN_SECS: f32 = 120.0;
+pub const HOLLOW_SPECK: char = '·';
+const HOLLOW_SPECK_EVERY: usize = 3;
+const HOLLOW_DRIFT_PER_SEC: f32 = 1.5;
 pub const BLIND_EYE: char = EYE_CIRCLE_SHUT;
 const SIDE_SIZE_MIN: usize = 1;
 const SIDE_SIZE_MAX: usize = 9;
@@ -261,6 +267,37 @@ pub struct Ring {
     pub turn: f32,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Worn {
+    pub name: String,
+    pub species: FishSpecies,
+    pub color: Color,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct Hollow {
+    pub clock: f32,
+    pub drift: f32,
+    #[serde(default)]
+    pub worn: Option<Worn>,
+}
+
+impl Hollow {
+    pub fn speck(&self, offset: usize) -> bool {
+        (offset + self.drift as usize).is_multiple_of(HOLLOW_SPECK_EVERY)
+    }
+
+    pub fn wear(&mut self, worn: Worn, rng: &mut impl RngExt) {
+        self.worn = Some(worn);
+        self.clock = sample_exponential(rng, HOLLOW_FULL_MEAN_SECS);
+    }
+
+    pub fn empty(&mut self, rng: &mut impl RngExt) {
+        self.worn = None;
+        self.clock = sample_exponential(rng, HOLLOW_EMPTY_MEAN_SECS);
+    }
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub enum Quirk {
     #[default]
@@ -277,6 +314,7 @@ pub enum Quirk {
     Graeae(Graeae),
     Negative(Negative),
     Ring(Ring),
+    Hollow(Hollow),
 }
 
 pub fn borrowable_bodies() -> Vec<FishSpecies> {
@@ -356,6 +394,10 @@ impl Quirk {
             UnfishKind::Graeae => Quirk::Graeae(Graeae::default()),
             UnfishKind::Negative => Quirk::Negative(Negative::default()),
             UnfishKind::Ouroboros => Quirk::Ring(Ring::default()),
+            UnfishKind::Hollow => Quirk::Hollow(Hollow {
+                clock: sample_exponential(rng, HOLLOW_EMPTY_MEAN_SECS),
+                ..Hollow::default()
+            }),
             UnfishKind::Reversed
             | UnfishKind::Doppleganger
             | UnfishKind::Phantom
@@ -403,6 +445,10 @@ impl Quirk {
                 }
             }
             Quirk::Ring(ring) => ring.turn += RING_CELLS_PER_SEC * dt,
+            Quirk::Hollow(hollow) => {
+                hollow.clock -= dt;
+                hollow.drift += HOLLOW_DRIFT_PER_SEC * dt;
+            }
             Quirk::Negative(negative) => {
                 for (_, rest) in &mut negative.rests {
                     *rest -= dt;

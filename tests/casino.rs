@@ -610,3 +610,29 @@ fn every_table_and_popup_is_filmed_whole_at_every_size() {
         assert!(flaws.is_empty(), "{cols}x{rows}: {flaws}");
     }
 }
+
+#[test]
+fn a_marked_card_plays_a_lost_round_again_as_if_it_never_happened() {
+    let card = StockItem::Consumable(ConsumableKind::Treasure(
+        fishtank::dungeon::treasure::Treasure::MarkedCard,
+    ));
+    let mut tui = Tui::new();
+    tui.app.inventory.insert(card, 1);
+    open(&mut tui, "/casino pufferfish");
+    stake_adam(&mut tui);
+    tui.key(KeyCode::Enter);
+    if let View::Table(table) = &mut casino(&mut tui).view
+        && let Play::Pufferfish(puffer) = &mut table.play
+    {
+        puffer.phase = PuffPhase::Puffing {
+            clock: 0.0,
+            pops_at: Multiple::ONE,
+        };
+    }
+    tui.tick_n(3);
+    assert!(!graves(&tui).contains(&"Adam".to_string()));
+    assert_eq!(living(&tui, "Adam"), 1);
+    assert_eq!(tui.app.inventory.get(&card), None, "the card is spent");
+    tui.screen()
+        .expect_find(fishtank::casino::seat::MARKED_CARD);
+}

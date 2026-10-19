@@ -219,6 +219,7 @@ pub struct Chip {
     board: Vec<BotfishState>,
     compiled: Compiled,
     heard: bool,
+    sealed: bool,
 }
 
 impl Chip {
@@ -234,7 +235,17 @@ impl Chip {
             board,
             compiled,
             heard: false,
+            sealed: false,
         }
+    }
+
+    pub fn sealed(mut self) -> Self {
+        self.sealed = true;
+        self
+    }
+
+    pub fn is_sealed(&self) -> bool {
+        self.sealed
     }
 
     pub fn name(&self) -> &str {
@@ -269,6 +280,7 @@ impl Chip {
             board: self.board.iter().map(BotfishState::design).collect(),
             compiled: self.compiled.design(),
             heard: false,
+            sealed: self.sealed,
         }
     }
 
@@ -403,7 +415,10 @@ impl Chip {
     }
 
     pub fn hardware(&self) -> impl Iterator<Item = (Part, u32)> + '_ {
-        self.board.iter().flat_map(BotfishState::hardware)
+        self.board
+            .iter()
+            .filter(|_| !self.sealed)
+            .flat_map(BotfishState::hardware)
     }
 
     pub fn displays(&self) -> impl Iterator<Item = Display> + '_ {

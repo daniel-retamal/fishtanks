@@ -66,6 +66,8 @@ pub struct SaveFile {
     lessons: Lessons,
     #[serde(default)]
     casino: crate::casino::Casino,
+    #[serde(default, skip_serializing_if = "crate::dungeon::Dungeon::is_untouched")]
+    dungeon: crate::dungeon::Dungeon,
 }
 
 impl SaveFile {
@@ -101,6 +103,7 @@ impl SaveFile {
             catch: None,
             lessons: Lessons::default(),
             casino: crate::casino::Casino::default(),
+            dungeon: crate::dungeon::Dungeon::default(),
         }
     }
 
@@ -180,10 +183,12 @@ impl App {
             newer_release: _,
             lessons,
             casino,
+            dungeon,
+            below,
         } = self;
         let food_in_the_water: u32 = tanks.iter().map(TankRecord::food_in_the_water).sum();
         let catch = match active_overlay {
-            Some(Overlay::Catch(card)) => Some(PendingCatch {
+            Some(Overlay::Catch(card)) if below.is_none() => Some(PendingCatch {
                 loot: card.loot.clone(),
                 fish: card.fish.clone(),
             }),
@@ -222,6 +227,7 @@ impl App {
                 on_the_table: self.fish_on_the_table(),
                 ..casino.clone()
             },
+            dungeon: dungeon.clone(),
         }
     }
 
@@ -252,6 +258,7 @@ impl App {
             running: true,
             history: save.history,
             active_overlay: None,
+            below: None,
             held_keys: HeldKeys::default(),
             terminal_height: height,
             terminal_width: width,
@@ -270,6 +277,7 @@ impl App {
                 on_the_table: Vec::new(),
                 ..save.casino.clone()
             },
+            dungeon: save.dungeon,
         };
         app.hang_the_souls();
         app.walk_away_from_the_table(&save.casino.on_the_table);

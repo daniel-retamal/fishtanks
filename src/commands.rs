@@ -1,4 +1,5 @@
 use crate::casino::state::Game;
+use crate::dungeon::life::Grade;
 use crate::entities::cow::CowVariant;
 use crate::fishes::mutations::Mutation;
 use crate::fishes::species::{ALL_SPECIES, FishSpecies};
@@ -47,7 +48,7 @@ pub enum SellTarget {
     Bait { qty: u32 },
     Milk { variant: MilkVariant, qty: u32 },
     Seed { kind: ConsumableKind, qty: u32 },
-    Robotics { kind: ConsumableKind, qty: u32 },
+    Stock { kind: ConsumableKind, qty: u32 },
 }
 
 impl SellTarget {
@@ -200,6 +201,7 @@ static COMMAND_NAMES: &[(&str, Clearance)] = &[
     ("console", Clearance::Player),
     ("consume", Clearance::Player),
     ("cowsay", Clearance::Player),
+    ("dungeon", Clearance::Player),
     ("etch", Clearance::Player),
     ("exit", Clearance::Player),
     ("expand", Clearance::God),
@@ -228,6 +230,7 @@ static COMMAND_NAMES: &[(&str, Clearance)] = &[
     ("reset", Clearance::Debug),
     ("restore", Clearance::God),
     ("revive", Clearance::God),
+    ("room", Clearance::Debug),
     ("say", Clearance::Player),
     ("sell", Clearance::Player),
     ("shop", Clearance::Player),
@@ -1021,6 +1024,10 @@ fn index_words_for(word: &str, tank_names: &[&str]) -> Vec<String> {
                 .iter()
                 .map(|species| format!("{key}:{}", species.display_name().to_lowercase()))
                 .collect(),
+            Some(Column::Grade) => Grade::ALL
+                .iter()
+                .map(|grade| format!("{key}:{}", grade.name().to_lowercase()))
+                .collect(),
             _ => Vec::new(),
         };
     }
@@ -1147,10 +1154,10 @@ fn resolve_stackable_sell(name_lower: &str, qty: u32) -> Option<SellTarget> {
                     .map(|kind| SellTarget::Seed { kind, qty })
             })
             .or_else(|| {
-                ConsumableKind::robotics_stock()
+                ConsumableKind::resold()
                     .into_iter()
                     .find(|kind| kind.lowercase_name() == name_lower)
-                    .map(|kind| SellTarget::Robotics { kind, qty })
+                    .map(|kind| SellTarget::Stock { kind, qty })
             }),
     }
 }
@@ -1446,6 +1453,7 @@ pub enum Action {
     Fishtanks,
     Ledger,
     Toybox,
+    Dungeon,
     Casino(Option<Game>),
     Circuit,
     Foundry,
@@ -1456,6 +1464,7 @@ pub enum Action {
     Cowsay(String),
     Say(String),
     VoidSpawn(Option<UnfishKind>),
+    Room(String),
     StartVoidWish {
         skip: bool,
     },
@@ -1809,6 +1818,8 @@ pub fn parse(input: &str, fish_names: &[&str], tank_names: &[&str]) -> Action {
         "fishtanks" => Action::Fishtanks,
         "ledger" => Action::Ledger,
         "toybox" => Action::Toybox,
+        "dungeon" => Action::Dungeon,
+        "room" => name_command(rest, Action::Room),
         "casino" => match rest.trim() {
             "" => Action::Casino(None),
             word => Game::parse(word).map_or(Action::Unknown, |game| Action::Casino(Some(game))),
@@ -1835,6 +1846,7 @@ impl Action {
             ModResource { .. }
             | Give(_)
             | VoidSpawn(_)
+            | Room(_)
             | StartVoidWish { .. }
             | StartFishAbduction
             | StartCowAbduction
@@ -1863,6 +1875,7 @@ impl Action {
             | Fishtanks
             | Ledger
             | Toybox
+            | Dungeon
             | Casino(_)
             | Circuit
             | Foundry
@@ -2820,14 +2833,14 @@ mod tests {
         let (fish, tanks) = no_names();
         assert!(matches!(
             parse("/sell blank wafer 5", fish, tanks),
-            Action::Sell(SellTarget::Robotics {
+            Action::Sell(SellTarget::Stock {
                 kind: ConsumableKind::BlankWafer,
                 qty: 5,
             })
         ));
         assert!(matches!(
             parse("/sell blank circuit blueprint", fish, tanks),
-            Action::Sell(SellTarget::Robotics {
+            Action::Sell(SellTarget::Stock {
                 kind: ConsumableKind::BlankBlueprint,
                 qty: 1,
             })

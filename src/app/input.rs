@@ -25,7 +25,6 @@ use crate::{
     tanks::soul_wall::SoulWall,
     ui::{
         circuit_overlay::{CircuitFish, CircuitState},
-        fields,
         fishing_overlay::FishingState,
         fishtanks_overlay::FishtanksState,
         foundry_overlay::FoundryState,
@@ -151,6 +150,8 @@ impl App {
             self.handle_console_input(event);
         } else if matches!(self.active_overlay, Some(Overlay::Casino(_))) {
             self.handle_casino_input(event);
+        } else if matches!(self.active_overlay, Some(Overlay::Dungeon(_))) {
+            self.handle_dungeon_input(event);
         } else {
             self.handle_command_input(event);
         }
@@ -455,15 +456,6 @@ impl App {
                         .iter()
                         .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
                         .collect();
-                    let mut rng = rand::rng();
-                    'populate: for tank in &mut self.tanks {
-                        for fish in &mut tank.fish {
-                            if fish.name == fish_name {
-                                fields::populate_field_cache(fish, &all_names, &mut rng);
-                                break 'populate;
-                            }
-                        }
-                    }
                     let fish = self
                         .tanks
                         .iter()
@@ -486,7 +478,7 @@ impl App {
                                 &all_names,
                                 ShowSource::FromIndex,
                                 false,
-                                &mut rng,
+                                &mut rand::rng(),
                             ),
                             backed_index,
                         });
@@ -530,7 +522,7 @@ impl App {
     }
 
     fn hook_the_catch(&mut self) {
-        let catch = self.roll_catch(self.current_tank, &mut rand::rng());
+        let catch = self.roll_this_catch(&mut rand::rng());
         if let Some(s) = self.fishing_state_mut() {
             s.hook(catch);
         }
@@ -557,7 +549,13 @@ impl App {
             match action {
                 InputAction::Confirm | InputAction::Cancel | InputAction::Char('q') => {
                     if let Some(state) = self.take_catch_state() {
-                        self.apply_non_fish_loot(state.loot);
+                        match self.below {
+                            Some(_) => {
+                                self.keep_below(state.loot, None, String::new());
+                                self.close_overlay();
+                            }
+                            None => self.apply_non_fish_loot(state.loot),
+                        }
                     }
                 }
                 _ => {}
@@ -571,6 +569,11 @@ impl App {
                     && let Some(state) = self.take_catch_state()
                 {
                     let name = names::title_case(state.name_input.as_str());
+                    if self.below.is_some() {
+                        self.keep_below(state.loot, state.fish, name);
+                        self.close_overlay();
+                        return;
+                    }
                     self.keep_catch(self.current_tank, state.fish.unwrap(), name);
                 }
             }
@@ -671,6 +674,11 @@ impl App {
         &self,
         target: ConsumeTarget,
     ) -> Vec<crate::ui::consume_picker::ConsumePickerEntry> {
+        if let ConsumeTarget::Treasure(treasure) = target
+            && treasure.using() == crate::dungeon::treasure::Use::OnTheDead
+        {
+            return self.the_dead_for(treasure);
+        }
         let mut out = Vec::new();
         for (ti, tank) in self.tanks.iter().enumerate() {
             for (fi, fish) in tank.fish.iter().enumerate() {
@@ -786,17 +794,24 @@ impl App {
                     (s.target, (e.tank_idx, e.fish_idx, e.fish_name.clone()))
                 };
                 let stock = target.stock();
-                let (ti, _, fn_name) = sel_entry;
+                let (ti, fi, fn_name) = sel_entry;
                 if let ConsumeTarget::Etch(index) = target {
                     self.etch_from_picker(index, &fn_name);
                     return;
                 }
-                let mut rng = rand::rng();
-                let Some(pos) = self.tanks[ti].fish.iter().position(|f| f.name == fn_name) else {
-                    return;
-                };
-                if !target.apply_to(&mut self.tanks[ti].fish[pos], &mut rng) {
-                    return;
+                if let ConsumeTarget::Treasure(treasure) = target {
+                    if !self.give_treasure(treasure, ti, fi, &fn_name) {
+                        return;
+                    }
+                } else {
+                    let mut rng = rand::rng();
+                    let Some(pos) = self.tanks[ti].fish.iter().position(|f| f.name == fn_name)
+                    else {
+                        return;
+                    };
+                    if !target.apply_to(&mut self.tanks[ti].fish[pos], &mut rng) {
+                        return;
+                    }
                 }
                 let entry = self.inventory.entry(stock).or_insert(0);
                 *entry = entry.saturating_sub(1);
@@ -964,6 +979,20 @@ impl App {
     }
 
     fn workshop(&self) -> Workshop<'_> {
+        if let Some(expedition) = self
+            .dungeon
+            .expedition
+            .as_ref()
+            .filter(|_| self.below.is_some())
+        {
+            return Workshop {
+                stock: &self.inventory,
+                cash: Money::from(expedition.haul.gold),
+                room: usize::MAX,
+                hosts: 0,
+                connected: self.is_connected(),
+            };
+        }
         Workshop {
             stock: &self.inventory,
             cash: self.purse.spendable(),
@@ -1003,12 +1032,24 @@ impl App {
         })
     }
 
-    fn spend_on(&mut self, quote: &FabricationQuote) {
+    pub(super) fn spend_on(&mut self, quote: &FabricationQuote) {
         self.take_stock(StockItem::Consumable(ConsumableKind::Fabricator), 1);
         for material in &quote.materials {
             self.take_stock(StockItem::Consumable(material.kind), material.from_stock());
         }
-        self.pay(quote.cost, Flow::Fabrication);
+        match self
+            .dungeon
+            .expedition
+            .as_mut()
+            .filter(|_| self.below.is_some())
+        {
+            Some(expedition) => {
+                expedition.haul.spend(u64::from(quote.cost));
+            }
+            None => {
+                self.pay(quote.cost, Flow::Fabrication);
+            }
+        }
     }
 
     pub fn print_blueprint(&mut self, name: &str) -> bool {
@@ -1018,6 +1059,9 @@ impl App {
         let Ok(quote) = self.print_quote(&self.blueprints[index]) else {
             return false;
         };
+        if self.below.is_some() {
+            return self.print_below(index, &quote);
+        }
         let current = self.current_tank;
         if !self.tanks[current].print(&self.blueprints[index], &mut rand::rng()) {
             return false;
@@ -1096,6 +1140,10 @@ impl App {
         };
         if save && let Some(bot) = self.botfish_mut(state.tank_idx, &state.fish_name) {
             state.apply_to(bot);
+        }
+        if self.below.is_some() {
+            self.close_overlay();
+            return;
         }
         let Some(backed_circuit) = backed_circuit else {
             return;
@@ -1526,7 +1574,7 @@ impl App {
                                     let qty = self.inventory.entry(stock).or_insert(0);
                                     *qty = qty.saturating_sub(sell_qty);
                                 }
-                                SellEntry::Seed { kind, .. } | SellEntry::Robotics { kind, .. } => {
+                                SellEntry::Seed { kind, .. } | SellEntry::Stock { kind, .. } => {
                                     let sell_qty = confirm.sell_qty;
                                     let qty = self
                                         .inventory
@@ -1603,15 +1651,6 @@ impl App {
     }
 
     fn open_index(&mut self, query: IndexQuery) {
-        let all_names: Vec<String> = self
-            .tanks
-            .iter()
-            .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
-            .collect();
-        let mut rng = rand::rng();
-        for fish in self.tanks.iter_mut().flat_map(|t| t.fish.iter_mut()) {
-            fields::populate_field_cache(fish, &all_names, &mut rng);
-        }
         let living: Vec<(&str, &Fish)> = self
             .tanks
             .iter()
@@ -1706,7 +1745,7 @@ impl App {
         }
         for kind in ConsumableKind::seeds()
             .into_iter()
-            .chain(ConsumableKind::robotics_stock())
+            .chain(ConsumableKind::resold())
         {
             if self
                 .inventory
@@ -1912,7 +1951,7 @@ impl App {
         self.raise_from_grave(pos, self.current_tank)
     }
 
-    fn raise_from_grave(&mut self, grave: usize, from: usize) -> bool {
+    pub(super) fn raise_from_grave(&mut self, grave: usize, from: usize) -> bool {
         if self.landing_tank(from, &self.graveyard[grave]).is_none() {
             return false;
         }
@@ -2563,6 +2602,16 @@ impl App {
     }
 
     fn botfish_mut(&mut self, tank_idx: usize, fish_name: &str) -> Option<&mut BotfishState> {
+        if self.below == Some(super::Below::Workshop) {
+            return self
+                .dungeon
+                .expedition
+                .as_mut()?
+                .party
+                .iter_mut()
+                .find(|f| f.name == fish_name)
+                .and_then(|f| f.script_mut());
+        }
         self.tanks
             .get_mut(tank_idx)?
             .fish
@@ -2822,6 +2871,8 @@ impl App {
             commands::Action::Move { fish, tank } => self.move_entity(&fish, &tank),
             commands::Action::Ledger => self.open_ledger(),
             commands::Action::Toybox => self.open_toybox(),
+            commands::Action::Dungeon => self.open_dungeon(),
+            commands::Action::Room(name) => self.open_room_below(&name),
             commands::Action::Fishtanks => {
                 self.set_overlay(Overlay::Fishtanks(FishtanksState::new(
                     &self.tanks,
@@ -2838,15 +2889,6 @@ impl App {
                     .iter()
                     .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
                     .collect();
-                let mut rng = rand::rng();
-                'populate: for tank in &mut self.tanks {
-                    for fish in &mut tank.fish {
-                        if fish.name.eq_ignore_ascii_case(&fish_name) {
-                            fields::populate_field_cache(fish, &all_names, &mut rng);
-                            break 'populate;
-                        }
-                    }
-                }
                 let found = self
                     .tanks
                     .iter()
@@ -2873,7 +2915,7 @@ impl App {
                         &all_names,
                         ShowSource::FromCommand,
                         all,
-                        &mut rng,
+                        &mut rand::rng(),
                     ),
                     backed_index: None,
                 });
@@ -3027,7 +3069,7 @@ impl App {
                 ConsumableKind::Milk(variant).sell_price(),
             ),
             commands::SellTarget::Seed { kind, qty }
-            | commands::SellTarget::Robotics { kind, qty } => {
+            | commands::SellTarget::Stock { kind, qty } => {
                 self.sell_stock_checked(StockItem::Consumable(kind), qty, kind.sell_price())
             }
         }
@@ -3069,7 +3111,7 @@ impl App {
         for keepsake in fish.keepsakes() {
             self.stock_up(keepsake, 1);
         }
-        self.bury(fish);
+        self.bury(fish, crate::fishes::graveyard::Fate::Sold);
     }
 
     fn sell_tank_by_name(&mut self, name: &str) -> bool {
@@ -3153,5 +3195,10 @@ mod casino_tests {
     #[test]
     fn the_casino_is_never_a_bot_verb() {
         assert!(!bot_action_allowed(&commands::Action::Casino(None)));
+    }
+
+    #[test]
+    fn the_deep_is_never_a_bot_verb() {
+        assert!(!bot_action_allowed(&commands::Action::Dungeon));
     }
 }

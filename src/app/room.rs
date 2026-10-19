@@ -56,7 +56,7 @@ impl App {
         }
     }
 
-    fn land_cow(&mut self, from: usize, cow: Cow) {
+    pub(super) fn land_cow(&mut self, from: usize, cow: Cow) {
         let pasture = self
             .tanks_from(from)
             .find(|&index| self.tanks[index].welcomes_cows());

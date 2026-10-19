@@ -43,6 +43,7 @@ pub enum UnfishKind {
     Face,
     Graeae,
     Still,
+    Hollow,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -276,6 +277,7 @@ pub const SPAWNABLE_UNFISH: &[UnfishKind] = &[
     UnfishKind::Face,
     UnfishKind::Graeae,
     UnfishKind::Still,
+    UnfishKind::Hollow,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -516,6 +518,7 @@ pub const BLINKER_PEAK_COLOR: Color = WHITE;
 
 pub const UNFISH_BODY_COLOR: Color = WHITE;
 pub const UNFISH_EYE_COLOR: Color = DARK_GRAY;
+pub const HOLLOW_SPECK_COLOR: Color = DARK_GRAY;
 pub const BALL_HEIGHT: u16 = 9;
 pub const SKULL_HEIGHT: u16 = 6;
 
@@ -766,6 +769,13 @@ impl UnfishState {
         match &self.quirk {
             Quirk::Forgetting(forgetting) => chars_of(forgetting.body, FORGETTING_EYE),
             Quirk::Verso(verso) => chars_of(verso.side.body, EYE_ROUND),
+            Quirk::Hollow(hollow) if hollow.worn.is_some() => {
+                let worn = hollow
+                    .worn
+                    .as_ref()
+                    .map_or(FishSpecies::Unfish, |w| w.species);
+                chars_of(worn, EYE_ROUND)
+            }
             _ => match self.kind {
                 UnfishKind::Bones => BONES_CHARS,
                 UnfishKind::Leech => LEECH_CHARS,

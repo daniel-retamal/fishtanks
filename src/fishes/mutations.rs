@@ -36,7 +36,9 @@ pub const ONE_EYE: usize = 1;
 const HYDRA_EYES_PER_APPLICATION_MIN: usize = 1;
 const HYDRA_EYES_PER_APPLICATION_MAX: usize = 2;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, serde::Serialize, serde::Deserialize,
+)]
 pub enum Mutation {
     SizeIncrease,
     EyeIncrease,
@@ -1049,6 +1051,17 @@ impl Fish {
         match self.species.config().body {
             BodyTemplate::Standard(_) | BodyTemplate::Alternating(_, _) => (1, 1),
             BodyTemplate::Fixed { .. } | BodyTemplate::Figure(_) => (0, 0),
+        }
+    }
+
+    pub fn eyes_a_side(&self) -> usize {
+        let drawn = self.mutant.as_ref().map_or(0, |mutant| {
+            mutant.left_eyes.len().max(mutant.right_eyes.len())
+        });
+        let config = self.species.config();
+        match (config.body, self.mutant.is_some()) {
+            (BodyTemplate::Standard(_) | BodyTemplate::Alternating(_, _), true) => drawn,
+            _ => drawn.max(config.eyes),
         }
     }
 

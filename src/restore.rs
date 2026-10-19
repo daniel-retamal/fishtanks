@@ -14,6 +14,9 @@ impl Restorable for Fish {
         self.mutations = None;
         self.devil_marked = false;
         self.sell_price_bonus_pct = 0;
+        if let Some(life) = self.deep.as_mut() {
+            life.wipe_marks();
+        }
         let config = self.species.config();
         self.sway_speed = config.sway_speed;
         if !matches!(config.body, BodyTemplate::Fixed { .. }) {

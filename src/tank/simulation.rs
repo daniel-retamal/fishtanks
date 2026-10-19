@@ -1934,3 +1934,44 @@ mod wiring_tests {
         assert!(tank.pending_loose_parts.is_empty());
     }
 }
+
+#[cfg(test)]
+mod void_watch_tests {
+    use super::*;
+    use crate::settings::Settings;
+    use crate::tank::TankKind;
+    use crate::tank::world::Sky;
+
+    const TANK_W: u16 = 60;
+    const TANK_H: u16 = 20;
+    const TICKS: usize = 30;
+
+    fn a_due_voidtank(watched: bool) -> Tank {
+        let mut tank = Tank::new("Void".to_string(), TankKind::Void, &[]);
+        tank.resize(TANK_W, TANK_H, &[]);
+        tank.void_spawn_timer = 0.0;
+        tank.watched = watched;
+        tank
+    }
+
+    fn unfish_after_ticks(tank: &mut Tank) -> usize {
+        let settings = Settings::default();
+        for _ in 0..TICKS {
+            tank.tick(&settings, 0, Sky::default());
+        }
+        tank.fish.iter().filter(|fish| fish.is_unfish()).count()
+    }
+
+    #[test]
+    fn the_void_spawns_nothing_while_nobody_watches_it() {
+        let mut tank = a_due_voidtank(false);
+        assert_eq!(unfish_after_ticks(&mut tank), 0);
+        assert!(tank.void_spawn_timer <= 0.0, "its clock waits for the eye");
+    }
+
+    #[test]
+    fn the_void_spawns_its_unfish_under_the_players_eye() {
+        let mut tank = a_due_voidtank(true);
+        assert_eq!(unfish_after_ticks(&mut tank), 1);
+    }
+}

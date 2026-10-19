@@ -596,12 +596,14 @@ fn a_trail_never_covers_anything() {
         x,
         y,
         ttl: 5.0,
+        life: 5.0,
         color: Color::Gray,
     });
     tank.trails.push(fishtank::tank::TrailMark {
         x: 1,
         y: 1,
         ttl: 5.0,
+        life: 5.0,
         color: Color::Gray,
     });
     let buf = render(&tank);
@@ -1134,13 +1136,26 @@ fn a_pencilfish_draws_a_graphite_line_where_it_swims() {
     tank.fish[pencil].velocity.dx = 4.0;
     tank.fish[pencil].velocity.dy = 0.0;
     tank.fish[pencil].facing = Direction::Right;
-    tick(&mut tank, DAY, 20);
+    for _ in 0..20 {
+        let before = tank.trails.len();
+        tick(&mut tank, DAY, 1);
+        assert!(
+            tank.trails.len() <= before + 1,
+            "only the tip of the pencil draws, one cell at a time"
+        );
+    }
     assert!(!tank.trails.is_empty(), "it leaves a line behind it");
     assert!(
         tank.trails
             .iter()
             .all(|mark| mark.color == fishtank::colors::DARK_GRAY),
         "in graphite"
+    );
+    assert!(
+        tank.trails
+            .iter()
+            .all(|mark| mark.ttl <= fishtank::fishes::species::PENCIL_LINE_SECS),
+        "a pencil line fades sooner than a slime trail"
     );
 }
 
@@ -1196,7 +1211,7 @@ fn a_stonefish_snaps_up_food_that_settles_by_it() {
 fn a_catfish_says_miau() {
     let mut rng = rand::rng();
     let cat = Fish::new(FishSpecies::Bagre, "Michi".into(), 0.0, 0.0, &mut rng);
-    let quote = field_value(FieldKind::FavoriteQuote, &cat, &[], &mut rng).text;
+    let quote = field_value(FieldKind::FavoriteQuote, &cat, &[]).text;
     assert!(quote.split(' ').all(|word| word == "miau"), "{quote}");
 }
 
