@@ -878,7 +878,7 @@ impl Tank {
         self.tick_dopplegangers();
         self.tick_cows(dt);
         self.tick_engulfment();
-        if self.kind.config().spawns_unfish {
+        if self.kind.config().spawns_unfish && self.watched {
             self.tick_void_spawn(dt, &mut rng);
         }
         let mut events = self.tick_habits(dt);
