@@ -5,7 +5,7 @@ use crate::ui::text_input::TextInput;
 use super::Difficulty;
 use super::event;
 use super::expedition::{Expedition, Ground, Place};
-use super::muster::{Muster, MusterStep};
+use super::muster::{Leg, Muster, MusterStep};
 use super::room::{Act, Panel, Stage};
 use super::state::{FightState, FightStep};
 
@@ -93,6 +93,7 @@ pub struct DungeonState {
     pub view: View,
     pub scroll: Scroll,
     pub sheet_scroll: Scroll,
+    pub page: Scroll,
     pub words: Option<Words>,
 }
 
@@ -102,6 +103,7 @@ impl DungeonState {
             view: View::Muster(muster),
             scroll: Scroll::default(),
             sheet_scroll: Scroll::default(),
+            page: Scroll::default(),
             words: None,
         }
     }
@@ -116,6 +118,7 @@ impl DungeonState {
             view,
             scroll: Scroll::default(),
             sheet_scroll: Scroll::default(),
+            page: Scroll::default(),
             words: None,
         }
     }
@@ -179,6 +182,11 @@ impl DungeonState {
         if self.words.is_some() {
             return self.words_key(action, expedition);
         }
+        if let Some(turn) = self.page_turn(action, expedition) {
+            self.page.nudge(turn);
+            return Step::Stay;
+        }
+        self.page.reset();
         let step = self.view_key(action, expedition, ground);
         match step {
             Step::Act(Act::Pray, _) => {
@@ -189,6 +197,20 @@ impl DungeonState {
             }
             step => step,
         }
+    }
+
+    fn page_turn(&self, action: &InputAction, expedition: Option<&Expedition>) -> Option<isize> {
+        let turn = match action {
+            InputAction::Left => -1,
+            InputAction::Right => 1,
+            _ => return None,
+        };
+        let paged = match &self.view {
+            View::Muster(muster) => muster.leg == Leg::Party,
+            View::Map(chart) => chart.popup == Some(Popup::Party) && expedition.is_some(),
+            View::Room(_) | View::Fight(_) => false,
+        };
+        paged.then_some(turn)
     }
 
     fn words_key(&mut self, action: &InputAction, expedition: Option<&Expedition>) -> Step {

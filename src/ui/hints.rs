@@ -77,6 +77,7 @@ pub const HINT_TARGET: &str = "←→ target";
 pub const HINT_WHICH_FISH: &str = "←→ which fish";
 pub const HINT_ESC_BACK: &str = "ESC back";
 pub const HINT_ROUTE: &str = "←→ route";
+pub const HINT_PAGE: &str = "←→ page";
 pub const HINT_ENTER_GO: &str = "ENTER go";
 pub const HINT_I_ITEMS: &str = "I items";
 pub const HINT_P_PARTY: &str = "P party";

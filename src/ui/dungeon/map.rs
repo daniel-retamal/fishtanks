@@ -14,7 +14,7 @@ use crate::dungeon::items::PACK_STACKS;
 use crate::dungeon::kit::Kit;
 use crate::dungeon::map::{ENTRY_GLYPH, ENTRY_LANE, LANES, RoomKind};
 use crate::dungeon::room::hidden;
-use crate::dungeon::screen::Chart;
+use crate::dungeon::screen::{Chart, Popup};
 use crate::dungeon::traits::Trait;
 use crate::ui::circuit_overlay::{EAST, NORTH, SOUTH, WEST, wire_char};
 use crate::ui::hint_bar::HintBar;
@@ -381,7 +381,7 @@ pub fn draw(
     buf: &mut Buffer,
     expedition: &Expedition,
     chart_state: &Chart,
-    (scroll, sheet_scroll): (&Scroll, &Scroll),
+    (scroll, sheet_scroll, page): (&Scroll, &Scroll, &Scroll),
     screen: Screen,
 ) {
     let width = frame_width(screen);
@@ -455,18 +455,31 @@ pub fn draw(
     } else {
         draw_column(buf, expedition, chart_state, scroll, screen, &bar);
     }
-    if let Some(panel) = chart_state.sheet(expedition) {
-        let sheet = super::room::Sheet {
+    let Some(panel) = chart_state.sheet(expedition) else {
+        return;
+    };
+    let selected = chart_state.at.min(panel.rows.len().saturating_sub(1));
+    if chart_state.popup == Some(Popup::Party) {
+        let party = super::roster::Roster {
             panel: &panel,
-            cursor: super::room::Cursor {
-                selected: chart_state.at.min(panel.rows.len().saturating_sub(1)),
-                fish: 0,
-                reading: false,
-            },
-            scroll: sheet_scroll,
+            selected,
+            slots: None,
+            list: sheet_scroll,
+            page,
         };
-        super::room::draw(buf, &sheet, screen);
+        super::roster::draw(buf, &party, screen);
+        return;
     }
+    let sheet = super::room::Sheet {
+        panel: &panel,
+        cursor: super::room::Cursor {
+            selected,
+            fish: 0,
+            reading: false,
+        },
+        scroll: sheet_scroll,
+    };
+    super::room::draw(buf, &sheet, screen);
 }
 
 fn draw_column(

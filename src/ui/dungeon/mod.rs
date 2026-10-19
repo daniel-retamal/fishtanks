@@ -2,6 +2,7 @@ use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
 use crate::dungeon::Above;
 use crate::dungeon::expedition::Expedition;
+use crate::dungeon::muster::Leg;
 use crate::dungeon::screen::{DungeonState, View};
 use crate::ui::layout::Screen;
 
@@ -9,6 +10,7 @@ mod battle;
 mod canvas;
 mod map;
 mod room;
+mod roster;
 mod words;
 
 pub struct DungeonOverlay<'a> {
@@ -50,6 +52,17 @@ impl DungeonOverlay<'_> {
     fn draw_view(&self, buf: &mut Buffer) {
         match (&self.state.view, self.expedition) {
             (View::Fight(fight), _) => battle::draw(buf, fight, self.screen),
+            (View::Muster(muster), _) if muster.leg == Leg::Party => {
+                let panel = muster.panel();
+                let party = roster::Roster {
+                    panel: &panel,
+                    selected: muster.selected(),
+                    slots: Some(muster.slots()),
+                    list: &self.state.scroll,
+                    page: &self.state.page,
+                };
+                roster::draw(buf, &party, self.screen);
+            }
             (View::Muster(muster), _) => {
                 let panel = muster.panel();
                 let sheet = room::Sheet {
@@ -67,7 +80,11 @@ impl DungeonOverlay<'_> {
                 buf,
                 expedition,
                 chart,
-                (&self.state.scroll, &self.state.sheet_scroll),
+                (
+                    &self.state.scroll,
+                    &self.state.sheet_scroll,
+                    &self.state.page,
+                ),
                 self.screen,
             ),
             (View::Room(lobby), Some(expedition)) => {

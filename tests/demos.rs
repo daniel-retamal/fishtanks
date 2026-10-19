@@ -1722,8 +1722,8 @@ fn the_deep_demo_runs_keystroke_for_keystroke() {
     tui.key(KeyCode::Enter);
     tui.key(KeyCode::Down).key(KeyCode::Enter);
     tui.key(KeyCode::Down).key(KeyCode::Enter);
-    tui.screen().expect_find("(3 of 4)");
-    tui.snap("2. all three picked; TAB goes on to the Items");
+    tui.screen().expect_find("┌─ Eva ");
+    tui.snap("2. all three picked, each in its slot; TAB goes on to the Items");
     tui.key(KeyCode::Tab);
     tui.key(KeyCode::Right).key(KeyCode::Right);
     tui.screen().expect_find("2 of 10");

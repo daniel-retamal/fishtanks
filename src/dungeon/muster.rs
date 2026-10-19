@@ -39,7 +39,6 @@ fn packed_tone(supply: &Supply) -> Tone {
 pub struct Candidate {
     pub tank: String,
     pub fish: Fish,
-    pub picked: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +66,7 @@ pub enum MusterStep {
 pub struct Muster {
     pub leg: Leg,
     pub candidates: Vec<Candidate>,
+    pub party: Vec<usize>,
     pub supplies: Vec<Supply>,
     pub at: [usize; 3],
 }
@@ -76,6 +76,7 @@ impl Muster {
         Muster {
             leg: Leg::Party,
             candidates,
+            party: Vec::new(),
             supplies,
             at: [0; 3],
         }
@@ -90,8 +91,20 @@ impl Muster {
     }
 
     pub fn picked(&self) -> Vec<usize> {
-        (0..self.candidates.len())
-            .filter(|&i| self.candidates[i].picked)
+        self.party.clone()
+    }
+
+    pub fn is_picked(&self, candidate: usize) -> bool {
+        self.party.contains(&candidate)
+    }
+
+    pub fn slots(&self) -> Vec<Option<&Fish>> {
+        (0..MAX_PARTY)
+            .map(|slot| {
+                self.party
+                    .get(slot)
+                    .map(|&index| &self.candidates[index].fish)
+            })
             .collect()
     }
 
@@ -115,38 +128,24 @@ impl Muster {
         }
     }
 
-    fn party_line(&self) -> LogLine {
-        let names: Vec<&str> = self
-            .picked()
-            .into_iter()
-            .map(|i| self.candidates[i].fish.name.as_str())
-            .collect();
-        let count = format!("{} of {MAX_PARTY}", names.len());
-        match names.is_empty() {
-            true => LogLine::new(format!("Party: nobody yet ({count})"), Tone::Quiet),
-            false => LogLine::new(
-                format!("Party: {} ({count})", names.join(", ")),
-                Tone::Focus,
-            ),
-        }
-    }
-
     fn party_panel(&self) -> Panel {
-        let shown = self.candidates.get(self.selected());
-        let picked = self.picked().len();
+        let selected = self.selected();
+        let shown = self.candidates.get(selected);
+        let picked = self.party.len();
         let rows = self
             .candidates
             .iter()
             .enumerate()
             .map(|(index, candidate)| {
-                let note = match candidate.picked {
+                let in_the_party = self.is_picked(index);
+                let note = match in_the_party {
                     true => (IN_THE_PARTY.to_string(), Tone::Focus),
                     false => (
                         candidate.fish.species.display_name().to_string(),
                         Tone::Quiet,
                     ),
                 };
-                let full = picked >= MAX_PARTY && !candidate.picked;
+                let full = picked >= MAX_PARTY && !in_the_party;
                 Row::new(candidate.fish.name.clone(), Act::Choice(index as u8))
                     .note(note.0, note.1)
                     .usable(!full)
@@ -159,20 +158,13 @@ impl Muster {
                 Some(candidate) => Scene::Card(fish_card(
                     &candidate.fish,
                     &candidate.tank,
-                    candidate.picked,
+                    self.is_picked(selected),
                 )),
                 None => Scene::Rows(&[]),
             },
             figures: Vec::new(),
             draw_figures: false,
-            text: vec![
-                LogLine::new(
-                    "Take one to four fish down. Whoever joins on the way has no limit.",
-                    Tone::Plain,
-                ),
-                LogLine::new(String::new(), Tone::Plain),
-                self.party_line(),
-            ],
+            text: Vec::new(),
             rows,
             which_fish: false,
             verb: Verb::Pick,
@@ -323,11 +315,15 @@ impl Muster {
         match self.leg {
             Leg::Party => {
                 let at = self.at[Leg::Party as usize];
-                let picked = self.picked().len();
-                if let Some(candidate) = self.candidates.get_mut(at)
-                    && (candidate.picked || picked < MAX_PARTY)
-                {
-                    candidate.picked = !candidate.picked;
+                if at >= self.candidates.len() {
+                    return MusterStep::Stay;
+                }
+                match self.party.iter().position(|&index| index == at) {
+                    Some(slot) => {
+                        self.party.remove(slot);
+                    }
+                    None if self.party.len() < MAX_PARTY => self.party.push(at),
+                    None => {}
                 }
                 MusterStep::Stay
             }

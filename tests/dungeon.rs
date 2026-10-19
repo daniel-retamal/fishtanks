@@ -5,7 +5,9 @@ use fishtank::dungeon::Difficulty;
 use fishtank::dungeon::Wreck;
 use fishtank::dungeon::battle::Stakes;
 use fishtank::dungeon::boon::{Boon, Charm, Curse};
-use fishtank::dungeon::expedition::{Expedition, FightRecord, Ground, HAUNT_SAMPLE, Route, Wound};
+use fishtank::dungeon::expedition::{
+    Expedition, FightRecord, Ground, HAUNT_SAMPLE, MAX_PARTY, Route, Wound,
+};
 use fishtank::dungeon::fighter::Ghost;
 use fishtank::dungeon::floor;
 use fishtank::dungeon::haul::Haul;
@@ -131,6 +133,97 @@ fn the_muster_on_film() {
         tui.write_reel();
         no_flaws(&tui);
     }
+}
+
+const CROWD: usize = 12;
+const PAGE_TURNS: usize = 40;
+
+fn crowded_muster(cols: u16, rows: u16) -> Tui {
+    let mut tui = Tui::with_size(cols, rows);
+    for n in 1..=CROWD {
+        tui.run(&format!("/spawn salmon \"Crowd {n}\""));
+    }
+    tui.run("/dungeon");
+    tui
+}
+
+fn every_page(tui: &mut Tui) -> String {
+    let mut seen = tui.screen().text();
+    for _ in 0..PAGE_TURNS {
+        tui.key(KeyCode::Right);
+        seen.push_str(&tui.screen().text());
+    }
+    seen
+}
+
+#[test]
+fn a_crowded_muster_keeps_every_line_of_the_sheet_on_some_page() {
+    for (cols, rows) in SIZES {
+        let mut tui = crowded_muster(cols, rows);
+        tui.film(reels(), &format!("deep-crowded-muster-{cols}x{rows}"));
+        tui.key(KeyCode::Enter);
+        tui.key(KeyCode::Down).key(KeyCode::Enter);
+        tui.key(KeyCode::Down).key(KeyCode::Enter);
+        for _ in 0..CROWD {
+            tui.key(KeyCode::Down);
+        }
+        tui.key(KeyCode::Enter);
+        tui.snap("four slots filled, the last fish highlighted");
+        let slots = slot_row(&mut tui);
+        assert!(
+            !slots.contains("┌────"),
+            "{cols}x{rows}: an empty slot is left: {slots}"
+        );
+        let read = every_page(&mut tui);
+        tui.snap("its last page");
+        tui.write_reel();
+        for needle in ["Vigor", "Dodge", "Skills", "Fishtank"] {
+            assert!(read.contains(needle), "{cols}x{rows} never showed {needle}");
+        }
+        no_flaws(&tui);
+    }
+}
+
+fn slot_row(tui: &mut Tui) -> String {
+    let screen = tui.screen();
+    let (_, title) = screen.expect_find("The Deep · Party");
+    screen.rows()[title + 1].clone()
+}
+
+#[test]
+fn the_slots_keep_the_order_the_fish_were_picked_in() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    tui.run("/dungeon");
+    tui.key(KeyCode::Down)
+        .key(KeyCode::Down)
+        .key(KeyCode::Enter);
+    tui.key(KeyCode::Up).key(KeyCode::Up).key(KeyCode::Enter);
+    let slots = slot_row(&mut tui);
+    let first = slots.find("┌─ Eva ").expect("Eva in a slot");
+    let second = slots.find("┌─ Adam ").expect("Adam in a slot");
+    assert!(first < second);
+    tui.key(KeyCode::Tab)
+        .key(KeyCode::Enter)
+        .key(KeyCode::Enter);
+    let expedition = tui.app.dungeon.expedition.as_ref().expect("a dive");
+    let names: Vec<&str> = expedition
+        .party
+        .iter()
+        .map(|fish| fish.name.as_str())
+        .collect();
+    assert_eq!(names, ["Eva", "Adam"]);
+}
+
+#[test]
+fn dropping_a_fish_frees_its_slot_for_the_next() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter);
+    tui.key(KeyCode::Down).key(KeyCode::Enter);
+    tui.key(KeyCode::Up).key(KeyCode::Enter);
+    let slots = slot_row(&mut tui);
+    assert!(!slots.contains("┌─ Adam "), "{slots}");
+    assert!(slots.contains("┌─ Lilith "), "{slots}");
 }
 
 #[test]
@@ -876,6 +969,33 @@ fn film_crowd(name: &str, party: impl Fn() -> Vec<Fish>) {
         tui.key(KeyCode::Down);
         tui.key(KeyCode::Enter);
         tui.snap("its skills");
+        tui.write_reel();
+        no_flaws(&tui);
+    }
+}
+
+#[test]
+fn the_party_pick_holds_big_and_uneven_fish_whole() {
+    for (cols, rows) in SIZES {
+        let mut tui = Tui::as_player(cols, rows);
+        tui.clear_tank();
+        let mut rng = SmallRng::seed_from_u64(CROWD_SEED);
+        let lion = Fish::new(FishSpecies::Lionfish, "Leo".to_string(), 0.0, 0.0, &mut rng);
+        for fish in big_fish().into_iter().chain([lion]) {
+            let name = fish.name.clone();
+            tui.app.tanks[0].place_fish(fish, name, &mut rng);
+        }
+        tui.film(reels(), &format!("deep-big-muster-{cols}x{rows}"));
+        tui.run("/dungeon");
+        for _ in 0..MAX_PARTY {
+            tui.key(KeyCode::Enter).key(KeyCode::Down);
+        }
+        tui.snap("a Ball, a Skull, a double and a moray in the slots, a lionfish highlighted");
+        tui.key(KeyCode::Up)
+            .key(KeyCode::Up)
+            .key(KeyCode::Up)
+            .key(KeyCode::Up);
+        tui.snap("the Ball highlighted");
         tui.write_reel();
         no_flaws(&tui);
     }

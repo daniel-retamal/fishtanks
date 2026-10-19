@@ -55,7 +55,6 @@ impl App {
                     .map(|fish| Candidate {
                         tank: tank.name.clone(),
                         fish: fish.clone(),
-                        picked: false,
                     })
             })
             .collect();

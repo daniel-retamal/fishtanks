@@ -66,8 +66,8 @@ pub const PENGUIN_GAP: usize = 1;
 pub const LABEL_GAP: usize = 2;
 pub const TAG_OPEN: &str = "[";
 pub const TAG_CLOSE: &str = "]";
-const DIVIDER: u16 = 1;
-const RULE_ROWS: u16 = 1;
+pub(super) const DIVIDER: u16 = 1;
+pub(super) const RULE_ROWS: u16 = 1;
 const SHELF_TOP: usize = 1;
 const SHELF_FOOT: usize = 2;
 
@@ -78,7 +78,7 @@ pub struct Cursor {
     pub reading: bool,
 }
 
-fn verb_hint(verb: Verb) -> Option<&'static str> {
+pub(super) fn verb_hint(verb: Verb) -> Option<&'static str> {
     Some(match verb {
         Verb::Select => HINT_ENTER_SELECT,
         Verb::Fight => HINT_ENTER_FIGHT,
@@ -95,7 +95,7 @@ fn verb_hint(verb: Verb) -> Option<&'static str> {
     })
 }
 
-fn tab_hint(tab: Tab) -> &'static str {
+pub(super) fn tab_hint(tab: Tab) -> &'static str {
     match tab {
         Tab::ReadBoth => HINT_TAB_READ,
         Tab::Pack => HINT_TAB_PACK,
@@ -248,7 +248,7 @@ fn item_canvas(item: Item) -> Canvas {
     canvas.trimmed()
 }
 
-fn boxed(canvas: &mut Canvas, x: usize, y: usize, w: usize, h: usize, ink: Style) {
+pub(super) fn boxed(canvas: &mut Canvas, x: usize, y: usize, w: usize, h: usize, ink: Style) {
     if w < 2 || h < 2 {
         return;
     }
@@ -266,7 +266,7 @@ fn boxed(canvas: &mut Canvas, x: usize, y: usize, w: usize, h: usize, ink: Style
     canvas.set(x + w - 1, y + h - 1, '┘', ink);
 }
 
-fn titled_box(canvas: &mut Canvas, (w, h): (usize, usize), title: &str, ink: Style) {
+pub(super) fn titled_box(canvas: &mut Canvas, (w, h): (usize, usize), title: &str, ink: Style) {
     boxed(canvas, 0, 0, w, h, ink);
     let room = w.saturating_sub(TITLE_INSET as usize * 2 + 2);
     let title = format!(" {} ", ellipsize(title, room));
@@ -281,12 +281,16 @@ fn seabed(canvas: &mut Canvas, x: usize, y: usize, width: usize) {
     }
 }
 
-fn cards(card: &Card) -> Vec<Canvas> {
-    let (portrait, grounded) = match &card.portrait {
+pub(super) fn portrait(portrait: &Portrait) -> (Canvas, bool) {
+    match portrait {
         Portrait::Fish(fish) => (Canvas::fish(fish).trimmed(), true),
         Portrait::Cow(cow) => (Canvas::cow(cow).trimmed(), true),
         Portrait::Item(item) => (item_canvas(*item), false),
-    };
+    }
+}
+
+pub(super) fn cards(card: &Card) -> Vec<Canvas> {
+    let (portrait, grounded) = portrait(&card.portrait);
     let pw = portrait.width() as usize;
     let mut inner = (pw + CARD_PAD_X * 2)
         .max(CARD_MIN_INNER)
@@ -597,7 +601,7 @@ pub fn scene(panel: &Panel, cursor: Cursor, room: usize) -> Picture {
     Picture::of(bases.iter().map(|base| below(base, &figures)).collect())
 }
 
-fn row_lines(row: &Row, selected: bool, width: usize) -> Vec<Vec<Span>> {
+pub(super) fn row_lines(row: &Row, selected: bool, width: usize) -> Vec<Vec<Span>> {
     let mark = if selected { CURSOR } else { NO_CURSOR };
     let ink = row_colour(row.usable);
     let tag = row
@@ -649,7 +653,7 @@ pub struct Body {
     pub focus: Range<usize>,
 }
 
-fn text_lines(lines: &mut Vec<Vec<Span>>, said: &[LogLine], width: usize) {
+pub(super) fn text_lines(lines: &mut Vec<Vec<Span>>, said: &[LogLine], width: usize) {
     for line in said {
         if line.text.is_empty() {
             lines.push(Vec::new());
@@ -699,7 +703,7 @@ pub fn body(panel: &Panel, cursor: Cursor, width: usize) -> Body {
     Body { lines, focus }
 }
 
-fn draw_lines(buf: &mut Buffer, lines: &[Vec<Span>], area: Rect) {
+pub(super) fn draw_lines(buf: &mut Buffer, lines: &[Vec<Span>], area: Rect) {
     for (row, spans) in lines.iter().enumerate() {
         let y = area.y + row as u16;
         if y >= area.bottom() {
@@ -709,7 +713,7 @@ fn draw_lines(buf: &mut Buffer, lines: &[Vec<Span>], area: Rect) {
     }
 }
 
-fn frame(buf: &mut Buffer, rect: Rect, title: &str) {
+pub(super) fn frame(buf: &mut Buffer, rect: Rect, title: &str) {
     clear(buf, rect, BACKGROUND);
     draw_box_border(buf, rect, "", FRAME, BACKGROUND);
     draw_box_title(buf, rect, &titled(title), WHITE, BACKGROUND);
@@ -753,7 +757,7 @@ pub fn draw(buf: &mut Buffer, sheet: &Sheet, screen: Screen) {
     draw_stacked(buf, sheet, screen, art);
 }
 
-fn place(screen: Screen, width: u16, content_h: u16) -> Rect {
+pub(super) fn place(screen: Screen, width: u16, content_h: u16) -> Rect {
     let floor = DESIGN_H.min(screen.whole.height);
     let height = content_h.max(floor).min(screen.whole.height);
     screen.place(width, height)
