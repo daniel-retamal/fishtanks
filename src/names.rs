@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 pub fn title_case(s: &str) -> String {
     s.split_whitespace()
@@ -105,6 +107,58 @@ fn roman_to_u32(s: &str) -> Option<u32> {
         prev = v;
     }
     if total == 0 { None } else { Some(total) }
+}
+
+#[derive(Clone, Default)]
+pub struct NameBook(Rc<RefCell<HashSet<String>>>);
+
+impl NameBook {
+    pub fn contains(&self, name: &str) -> bool {
+        self.0.borrow().contains(name)
+    }
+
+    pub fn insert(&self, name: String) -> bool {
+        self.0.borrow_mut().insert(name)
+    }
+
+    pub fn remove(&self, name: &str) -> bool {
+        self.0.borrow_mut().remove(name)
+    }
+
+    pub fn clear(&self) {
+        self.0.borrow_mut().clear();
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.borrow().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
+
+    pub fn names(&self) -> HashSet<String> {
+        self.0.borrow().clone()
+    }
+
+    pub fn unique(&self, requested: &str) -> String {
+        unique_name_in(&self.0.borrow(), requested)
+    }
+
+    pub fn unique_roman(&self) -> String {
+        unique_roman_in(&self.0.borrow())
+    }
+
+    pub fn renamed(&self, name: &str) -> String {
+        match roman_to_u32(name) {
+            Some(_) => self.unique_roman(),
+            None => self.unique(name),
+        }
+    }
+
+    pub fn shares(&self, other: &NameBook) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
 }
 
 #[cfg(test)]

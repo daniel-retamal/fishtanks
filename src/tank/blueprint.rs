@@ -393,7 +393,7 @@ impl Tank {
     }
 
     fn printed_names(&self, blueprint: &Blueprint, instance: u32) -> Vec<String> {
-        let mut taken = self.used_names.clone();
+        let mut taken = self.used_names.names();
         blueprint
             .fish
             .iter()

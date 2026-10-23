@@ -13,7 +13,6 @@ use crate::fishes::unfish::{
     PHANTOM_CROSS_TANK_CHANCE, PHANTOM_TELEPORT_MEAN, SPAWNABLE_UNFISH, UnfishKind,
     VOID_SPAWN_MEAN_SECS, is_multi_row,
 };
-use crate::names;
 use crate::settings::Settings;
 use crate::util::{events_in, sample_exponential};
 
@@ -459,9 +458,9 @@ impl Tank {
             return false;
         }
         let actual_name = if kind == crate::fishes::unfish::UnfishKind::Doppleganger {
-            names::unique_name_in(&self.used_names, "Doppleganger")
+            self.used_names.unique("Doppleganger")
         } else {
-            names::unique_roman_in(&self.used_names)
+            self.used_names.unique_roman()
         };
         let Position { x, y } = self.spawn_point(rng);
         let fish = crate::fishes::fish::Fish::new_unfish(kind, actual_name.clone(), x, y, rng);
@@ -508,7 +507,7 @@ impl Tank {
             us.doppleganger_cloned = true;
         }
 
-        let new_name = names::unique_name_in(&self.used_names, &format!("{}?", target_name));
+        let new_name = self.used_names.unique(&format!("{}?", target_name));
         self.used_names.insert(new_name.clone());
         self.fish[d_idx].name = new_name;
     }
@@ -534,7 +533,7 @@ impl Tank {
             return;
         };
 
-        let new_name = names::unique_name_in(&self.used_names, &format!("{target_name}?"));
+        let new_name = self.used_names.unique(&format!("{target_name}?"));
         self.used_names.insert(new_name.clone());
 
         let Some(mutant) = self.fish[h_idx].mutant.as_mut() else {

@@ -57,6 +57,7 @@ mod heaven;
 mod input;
 mod lessons;
 mod money;
+mod naming;
 mod news;
 mod oddities;
 mod persistence;
