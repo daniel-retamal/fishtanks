@@ -75,7 +75,18 @@ impl App {
                 })
             })
             .collect();
-        Some(Muster::new(candidates, supplies))
+        let charms = self
+            .inventory
+            .iter()
+            .filter_map(|(stock, &held)| {
+                let StockItem::Consumable(ConsumableKind::Treasure(treasure)) = stock else {
+                    return None;
+                };
+                Some(std::iter::repeat_n(treasure.charm()?, held as usize))
+            })
+            .flatten()
+            .collect();
+        Some(Muster::new(candidates, supplies, charms))
     }
 
     pub fn deep_ground(&self) -> Ground {
@@ -94,7 +105,7 @@ impl App {
 
     fn dungeon_state(&self) -> DungeonState {
         let Some(expedition) = self.dungeon.expedition.as_ref() else {
-            return DungeonState::muster(Muster::new(Vec::new(), Vec::new()));
+            return DungeonState::muster(Muster::new(Vec::new(), Vec::new(), Vec::new()));
         };
         DungeonState::of(expedition, fight_of(expedition))
     }
@@ -405,9 +416,12 @@ impl App {
             })
             .collect();
         let packed = muster.packed();
+        let fitted = muster.fitted();
+        let picked_order = muster.picked();
         let mut party = Vec::new();
         let mut homes = Vec::new();
-        for (tank_name, fish_name) in picked {
+        let mut aboard = Vec::new();
+        for (member, (tank_name, fish_name)) in picked.into_iter().enumerate() {
             let Some(tank) = self.tanks.iter().position(|tank| tank.name == tank_name) else {
                 continue;
             };
@@ -422,6 +436,19 @@ impl App {
             self.hold_name(&fish.name);
             party.push(fish);
             homes.push(tank_name);
+            aboard.push(picked_order[member]);
+        }
+        for (charm, candidate) in fitted {
+            let Some(at) = aboard.iter().position(|&c| c == candidate) else {
+                continue;
+            };
+            let stock = StockItem::Consumable(ConsumableKind::Treasure(Treasure::Charm(charm)));
+            if self.inventory.get(&stock).copied().unwrap_or(0) == 0 {
+                continue;
+            }
+            if super::treasure::wear_charm(&mut party[at], charm) {
+                self.take_from_inventory(stock, 1);
+            }
         }
         if party.is_empty() {
             return;

@@ -295,6 +295,7 @@ pub struct Panel {
     pub which_fish: bool,
     pub verb: Verb,
     pub counts: bool,
+    pub fits: bool,
     pub tab: Option<Tab>,
     pub back: bool,
 }
@@ -687,6 +688,7 @@ impl Expedition {
             which_fish: false,
             verb: Verb::Select,
             counts: false,
+            fits: false,
             tab: None,
             back: false,
         };

@@ -639,9 +639,10 @@ impl ConsumableKind {
     pub fn can_be_consumed(self) -> bool {
         match self {
             ConsumableKind::BlankWafer => false,
-            ConsumableKind::Treasure(treasure) => {
-                !matches!(treasure.using(), Use::AtTheTable | Use::OnTheShelf)
-            }
+            ConsumableKind::Treasure(treasure) => !matches!(
+                treasure.using(),
+                Use::AtTheTable | Use::OnTheShelf | Use::InTheDeep
+            ),
             _ => true,
         }
     }

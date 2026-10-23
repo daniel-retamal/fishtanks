@@ -307,7 +307,6 @@ impl ConsumeTarget {
             ConsumeTarget::Treasure(treasure) => match treasure {
                 Treasure::Vial(mutation) => fish.supports_now(mutation),
                 Treasure::Chip(_) => fish.is_programmable(),
-                Treasure::Charm(_) => fish.deep.as_ref().is_none_or(|life| life.charm.is_none()),
                 Treasure::Feather => !fish.wears_a_feather(),
                 _ => false,
             },

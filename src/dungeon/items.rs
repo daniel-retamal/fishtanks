@@ -74,6 +74,15 @@ impl Item {
         }
     }
 
+    pub fn only_below(self) -> bool {
+        match self {
+            Item::Stock(StockItem::Consumable(ConsumableKind::Treasure(treasure))) => {
+                treasure.using() == super::treasure::Use::InTheDeep
+            }
+            _ => false,
+        }
+    }
+
     pub fn packable(self) -> bool {
         self.usable_in_a_fight() || self == Item::Stock(StockItem::BAIT)
     }
@@ -150,6 +159,10 @@ impl Item {
                 ConsumableKind::VoidSeed => "One enemy is erased.",
                 ConsumableKind::GoldenPearl => "Every fish that fell comes back.",
                 ConsumableKind::Bait => "Not for a fight. A chest opened with Bait holds more.",
+                ConsumableKind::Treasure(treasure) => match treasure.charm() {
+                    Some(charm) => charm.description(),
+                    None => "Not for a fight.",
+                },
                 _ => "Not for a fight.",
             },
         }

@@ -154,6 +154,7 @@ pub enum Use {
     Wish,
     AtTheTable,
     OnTheShelf,
+    InTheDeep,
 }
 
 pub struct TreasureSpec {
@@ -302,9 +303,13 @@ impl Treasure {
                 LIGHT_RED,
                 Use::OnTheDead,
             ),
-            Treasure::Charm(charm) => {
-                spec(Legendary, charm.description(), CHARM_ART, GOLD, Use::OnFish)
-            }
+            Treasure::Charm(charm) => spec(
+                Legendary,
+                charm.description(),
+                CHARM_ART,
+                GOLD,
+                Use::InTheDeep,
+            ),
             Treasure::Toy(_) => spec(
                 Rare,
                 "A part for the toybox, found only in the Deep.",
@@ -342,6 +347,13 @@ impl Treasure {
 
     pub fn using(self) -> Use {
         self.spec().using
+    }
+
+    pub fn charm(self) -> Option<Charm> {
+        match self {
+            Treasure::Charm(charm) => Some(charm),
+            _ => None,
+        }
     }
 
     pub fn mutation(self) -> Option<Mutation> {

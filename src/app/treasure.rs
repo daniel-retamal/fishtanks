@@ -30,7 +30,7 @@ impl App {
                 true
             }
             Use::Wish => self.make_a_wish(stock),
-            Use::AtTheTable | Use::OnTheShelf => false,
+            Use::AtTheTable | Use::OnTheShelf | Use::InTheDeep => false,
         }
     }
 
@@ -144,14 +144,6 @@ impl App {
                 }
                 true
             }
-            Treasure::Charm(charm) => {
-                let life = deep_life(fish);
-                if life.charm.is_some() {
-                    return false;
-                }
-                life.charm = Some(charm);
-                true
-            }
             Treasure::Feather => {
                 deep_life(fish).feather = true;
                 true
@@ -159,6 +151,15 @@ impl App {
             _ => false,
         }
     }
+}
+
+pub(super) fn wear_charm(fish: &mut Fish, charm: crate::dungeon::boon::Charm) -> bool {
+    let life = deep_life(fish);
+    if life.charm.is_some() {
+        return false;
+    }
+    life.charm = Some(charm);
+    true
 }
 
 fn deep_life(fish: &mut Fish) -> &mut DeepLife {

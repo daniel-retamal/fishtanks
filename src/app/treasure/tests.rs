@@ -125,10 +125,16 @@ fn a_salvaged_chip_seals_onto_a_botfish_and_hands_back_its_old_parts() {
 fn a_charm_is_worn_for_life_and_only_one() {
     let lantern = Treasure::Charm(Charm::CaleuchesLantern);
     let mut app = holding(lantern, 2);
-    let name = app.tanks[0].fish[0].name.clone();
-    assert!(app.give_treasure(lantern, 0, 0, &name));
-    assert!(!ConsumeTarget::Treasure(lantern).accepts(&app.tanks[0].fish[0]));
-    assert!(!app.give_treasure(Treasure::Charm(Charm::Halo), 0, 0, &name));
+    assert!(
+        !spend(&mut app, lantern),
+        "a charm is never consumed at home"
+    );
+    assert_eq!(held(&app, lantern), 2);
+    assert!(super::wear_charm(
+        &mut app.tanks[0].fish[0],
+        Charm::CaleuchesLantern
+    ));
+    assert!(!super::wear_charm(&mut app.tanks[0].fish[0], Charm::Halo));
     app.tanks[0].fish[0].restore();
     let life = app.tanks[0].fish[0].deep.as_ref().expect("a deep life");
     assert_eq!(
