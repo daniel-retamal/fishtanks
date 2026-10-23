@@ -12,7 +12,8 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::colors::{CYAN, DARK_GRAY, GREEN, LIGHT_GREEN, LIGHT_RED, LIGHT_YELLOW, RED, WHITE};
 use crate::consumable::{
-    PHYSICAL_INSTRUMENT_ALPHA, REACTION_SPEED_ALPHA, VISUAL_CALCULUS_ALPHA, VOLITION_ALPHA,
+    COFFEE_REEL_ALPHA, PHYSICAL_INSTRUMENT_ALPHA, REACTION_SPEED_ALPHA, VISUAL_CALCULUS_ALPHA,
+    VOLITION_ALPHA,
 };
 use crate::economy::Rarity;
 use crate::loot::LootKind;
@@ -23,7 +24,7 @@ use crate::util::{Metronome, hyperbolic_scale};
 const DAMPING: f32 = 0.95;
 const PLAYER_FORCE: f32 = 0.028;
 const REEL_RATE: f32 = 0.009;
-const COFFEE_REEL_RATE_PER_STACK: f32 = 0.002;
+const COFFEE_REEL_CEILING: f32 = 0.002;
 const WALL_BOUNCE: f32 = -0.5;
 const EDGE_DRAIN_RATE: f32 = 0.004;
 const EDGE_DRAIN_SLOPE: f32 = 1.0;
@@ -502,7 +503,7 @@ impl FishingState {
 
         let reel_punish = self.is_reeling && abs_offset > safe_zone;
 
-        let reel_rate = REEL_RATE + COFFEE_REEL_RATE_PER_STACK * coffee_stacks as f32;
+        let reel_rate = REEL_RATE + milk.coffee_reel(coffee_stacks);
         if self.is_reeling {
             if reel_punish {
                 self.completion -= drain * self.opening_penalty();
@@ -569,6 +570,18 @@ fn hyperbolic_ramp(stacks: u32, alpha: f32) -> f32 {
 }
 
 impl MilkBuffs {
+    fn glasses(&self) -> u32 {
+        self.visual_calculus + self.volition + self.physical_instrument + self.reaction_speed
+    }
+
+    fn coffee_reel(&self, coffee_stacks: u32) -> f32 {
+        if coffee_stacks == 0 {
+            return 0.0;
+        }
+        let latte = (1 + self.glasses()) as f32;
+        COFFEE_REEL_CEILING * latte * hyperbolic_ramp(coffee_stacks, COFFEE_REEL_ALPHA)
+    }
+
     fn safe_zone(&self) -> f32 {
         if self.visual_calculus == 0 {
             return REEL_PENALTY_THRESHOLD;
@@ -1321,6 +1334,89 @@ mod temper_tests {
             }
         }
         false
+    }
+
+    fn lands_buffed(temper: Temper, reaction: usize, coffee: u32, milk: MilkBuffs) -> bool {
+        let mut state = FishingState {
+            forced_temper: Some(temper),
+            ..FishingState::default()
+        };
+        state.hook(LootKind::Food(1));
+        let mut seen: VecDeque<(f32, f32)> = VecDeque::new();
+        for _ in 0..FIGHT_STEPS {
+            seen.push_back((state.fish_pos, state.fish_velocity));
+            if seen.len() > reaction {
+                seen.pop_front();
+            }
+            let (pos, velocity) = seen[0];
+            let ahead = pos + velocity * (reaction as f32 + LOOKAHEAD_STEPS);
+            state.is_pushing_left = ahead > 0.5 + STEER_DEADBAND;
+            state.is_pushing_right = ahead < 0.5 - STEER_DEADBAND;
+            state.is_reeling = (ahead - 0.5).abs() * 2.0 < CAREFUL_REEL_ZONE;
+            state.tick(DEFAULT_FPS, coffee, milk, None);
+            if state.captured || state.game_over {
+                return state.captured;
+            }
+        }
+        false
+    }
+
+    fn buffed_landings(temper: Temper, reaction: usize, coffee: u32, milk: MilkBuffs) -> usize {
+        (0..BUFFED_FIGHTS)
+            .filter(|_| lands_buffed(temper, reaction, coffee, milk))
+            .count()
+    }
+
+    const POT_OF_COFFEE: u32 = 40;
+    const BUFFED_FIGHTS: usize = 400;
+    const PLAIN_MILK: MilkBuffs = MilkBuffs {
+        visual_calculus: 0,
+        volition: 0,
+        physical_instrument: 1,
+        reaction_speed: 0,
+    };
+
+    #[test]
+    fn a_pot_of_coffee_alone_never_lands_most_legendaries() {
+        let landed = buffed_landings(
+            Temper::Legendary,
+            SKILLED_REACTION_STEPS,
+            POT_OF_COFFEE,
+            MilkBuffs::default(),
+        );
+        assert!(landed * 2 < BUFFED_FIGHTS, "{landed} of {BUFFED_FIGHTS}");
+    }
+
+    #[test]
+    fn the_first_cup_still_lands_more_normal_fish() {
+        let none = MilkBuffs::default();
+        let base = buffed_landings(Temper::Normal, LEARNER_REACTION_STEPS, 0, none);
+        let cup = buffed_landings(Temper::Normal, LEARNER_REACTION_STEPS, 1, none);
+        assert!(cup * 10 > base * 11, "{base} without, {cup} with a cup");
+    }
+
+    #[test]
+    fn a_latte_lands_the_legendaries_coffee_alone_cannot() {
+        let pot = buffed_landings(
+            Temper::Legendary,
+            LEARNER_REACTION_STEPS,
+            POT_OF_COFFEE,
+            MilkBuffs::default(),
+        );
+        let latte = buffed_landings(Temper::Legendary, LEARNER_REACTION_STEPS, 1, PLAIN_MILK);
+        assert!(pot * 20 < BUFFED_FIGHTS, "a pot of coffee landed {pot}");
+        assert!(latte * 10 >= BUFFED_FIGHTS * 8, "a latte landed {latte}");
+    }
+
+    #[test]
+    fn every_glass_of_milk_raises_what_coffee_can_add() {
+        let cup = 1;
+        let bare = MilkBuffs::default().coffee_reel(cup);
+        let latte = PLAIN_MILK.coffee_reel(cup);
+        assert!(bare > 0.0);
+        assert!((latte - 2.0 * bare).abs() < 1e-6, "{bare} and {latte}");
+        assert!(MilkBuffs::default().coffee_reel(POT_OF_COFFEE) < COFFEE_REEL_CEILING);
+        assert_eq!(MilkBuffs::default().coffee_reel(0), 0.0);
     }
 
     fn landed(temper: Temper, angler: Angler, fights: usize) -> usize {
