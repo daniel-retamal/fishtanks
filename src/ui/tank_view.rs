@@ -788,7 +788,7 @@ fn render_text(text: &str, start: i32, y: i32, color: Color, area: Rect, buf: &m
         }
         overdraw(buf, abs_x, y as u16)
             .set_char(ch)
-            .set_style(Style::new().fg(color).remove_modifier(Modifier::all()));
+            .set_style(ink(color));
     }
 }
 
@@ -2350,7 +2350,7 @@ fn render_ufo(ufo: &Ufo, area: Rect, buf: &mut Buffer) {
 fn render_ritual_text(lines: &[Option<String>; 2], area: Rect, buf: &mut Buffer) {
     let target_eye_y = area.height as i32 / 2 + VOID_EYE_VERTICAL_OFFSET;
     let text_y_base = target_eye_y + VOID_TEXT_BELOW_EYE_OFFSET;
-    let s = Style::new().fg(WHITE).remove_modifier(Modifier::all());
+    let s = ink(WHITE);
 
     for (i, line_opt) in lines.iter().enumerate() {
         if let Some(text) = line_opt {
@@ -2365,10 +2365,14 @@ fn render_ritual_text(lines: &[Option<String>; 2], area: Rect, buf: &mut Buffer)
                 if x < area.x as i32 || x >= area.right() as i32 {
                     continue;
                 }
-                buf[(x as u16, y as u16)].set_char(ch).set_style(s);
+                overdraw(buf, x as u16, y as u16).set_char(ch).set_style(s);
             }
         }
     }
+}
+
+fn ink(color: Color) -> Style {
+    Style::reset().fg(color)
 }
 
 #[cfg(test)]
@@ -2954,6 +2958,36 @@ mod tests {
             let mut buf = Buffer::empty(area);
             render_fish(&fish, Color::Reset, area, &mut buf);
             assert_body_row_matches(&fish, &buf, area);
+        }
+    }
+
+    #[test]
+    fn the_ritual_text_shows_over_a_negative_unfish() {
+        let mut tank = Tank::new("Voidtank".to_string(), TankKind::Void, &[]);
+        tank.resize(80, 30, &[]);
+        let row = 30 / 2 + VOID_EYE_VERTICAL_OFFSET + VOID_TEXT_BELOW_EYE_OFFSET;
+        let words = "say the words";
+        for x in (20..60).step_by(8) {
+            let mut negative = Fish::new_unfish(
+                UnfishKind::Negative,
+                format!("N{x}"),
+                x as f32,
+                row as f32,
+                &mut rand::rng(),
+            );
+            negative.frozen = true;
+            tank.fish.push(negative);
+        }
+        let area = Rect::new(0, 0, tank.width, tank.height);
+        let mut buf = Buffer::empty(area);
+        TankView::new(&tank)
+            .with_ritual([Some(words.to_string()), None])
+            .render(area, &mut buf);
+        let (x, y) = find_cells(&buf, words).expect("the words are drawn");
+        assert_eq!(y as i32, row);
+        for col in x..x + words.chars().count() as u16 {
+            assert_eq!(buf[(col, y)].bg, Color::Reset, "column {col}");
+            assert_eq!(buf[(col, y)].fg, WHITE, "column {col}");
         }
     }
 }
