@@ -14,10 +14,10 @@ key enter
 absent to the botfishes
 
 run /program "Counter"
-expect threshold
 key down 2
 type botfish
 key down
+expect threshold
 key backspace 2
 type 1
 key down 4
@@ -32,6 +32,7 @@ key enter
 
 tick 3
 run /circuit
+key down
 expect ●  Crowd
 snap two botfish are more than one, so Crowd is lit
 key esc

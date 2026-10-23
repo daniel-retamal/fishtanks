@@ -17,7 +17,7 @@ use crate::ui::hints::{
     HINT_CHOOSE, HINT_ENTER_BUY, HINT_ENTER_CAST, HINT_ENTER_FIGHT, HINT_ENTER_HIRE,
     HINT_ENTER_ONWARD, HINT_ENTER_PAY, HINT_ENTER_PICK, HINT_ENTER_PRAY, HINT_ENTER_RIDE,
     HINT_ENTER_SELECT, HINT_ENTER_SIGN, HINT_ESC_BACK, HINT_ESC_LEAVE, HINT_HOW_MANY,
-    HINT_TAB_PACK, HINT_TAB_READ, HINT_WHICH_FISH,
+    HINT_TAB_PACK, HINT_TAB_READ, HINT_WHICH_FISH, HINT_WHO_WEARS,
 };
 use crate::ui::layout::{Screen, Scroll, Scrollbar};
 use crate::ui::modal::clear;
@@ -113,7 +113,8 @@ pub fn hints(panel: &Panel, position: Option<(usize, usize)>) -> HintBar {
     }
     bar = bar
         .action_if(panel.which_fish, HINT_WHICH_FISH)
-        .action_if(panel.counts, HINT_HOW_MANY);
+        .action_if(panel.counts, HINT_HOW_MANY)
+        .action_if(panel.fits, HINT_WHO_WEARS);
     if let Some(verb) = verb_hint(panel.verb) {
         bar = bar.action(verb);
     }

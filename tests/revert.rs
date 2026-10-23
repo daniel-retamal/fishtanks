@@ -311,3 +311,44 @@ fn a_fish_with_one_eye_is_never_offered_cyclops() {
     let fish = salmon();
     assert!(!fish.supports_now(Mutation::Cyclops));
 }
+
+fn count(fish: &Fish) -> u32 {
+    fish.mutations.as_ref().map_or(0, |record| record.count)
+}
+
+#[test]
+fn a_second_negative_cancels_the_first_and_leaves_no_mark() {
+    let mut fish = salmon();
+    mutate(&mut fish, &[Mutation::BodyColor, Mutation::Negative]);
+    assert!(fish.is_negative());
+    assert_eq!(history(&fish), ["bodycolor", "negative"]);
+    assert_eq!(count(&fish), 2);
+    let color = fish.color;
+    mutate(&mut fish, &[Mutation::Ear, Mutation::Negative]);
+    assert!(!fish.is_negative());
+    assert_eq!(history(&fish), ["bodycolor", "ear"]);
+    assert_eq!(count(&fish), 2);
+    assert_eq!(fish.color, color, "cancelling keeps every other roll");
+    for _ in 0..40 {
+        mutate(&mut fish, &[Mutation::Negative]);
+    }
+    assert!(!fish.is_negative());
+    assert_eq!(history(&fish), ["bodycolor", "ear"]);
+    assert_eq!(count(&fish), 2);
+}
+
+#[test]
+fn a_negative_settled_into_the_record_still_cancels() {
+    let mut fish = salmon();
+    mutate(&mut fish, &[Mutation::Negative]);
+    fishtank::fishes::revert::settle(&mut fish);
+    mutate(&mut fish, &[Mutation::Negative, Mutation::Ear]);
+    assert!(!fish.is_negative());
+    assert_eq!(history(&fish), ["ear"]);
+    assert_eq!(count(&fish), 1);
+    assert!(revert_latest(&mut fish, Mutation::Ear));
+    assert!(
+        !fish.is_negative(),
+        "reverting replays from a look that is not inverted"
+    );
+}

@@ -43,6 +43,14 @@ impl Food {
         }
     }
 
+    pub fn fit(&mut self, tank_width: u16, tank_height: u16) {
+        let last_column = (tank_width as f32 - 1.0).max(0.0);
+        let last_row = (tank_height as f32 - 1.0).max(0.0);
+        self.position.x = self.position.x.min(last_column);
+        self.base_x = self.base_x.min(last_column);
+        self.position.y = self.position.y.min(last_row);
+    }
+
     pub fn tick(&mut self, settings: &Settings, tank_width: u16, tank_height: u16) {
         let max_y = (tank_height as f32 - 1.0).max(0.0);
         if self.settled {

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.2 - 2026-10-23
+
+- **Every fish has a name of its own.** Two fishes in different tanks can no longer share a name: a new one takes the next numeral (`Glurp II`), and a save that already had namesakes is renumbered when it loads. Commands like `/show`, `/move` and `/sell` now always reach the fish you meant.
+- **Coffee and milk, rebalanced.** Coffee still makes you reel faster, but each cup helps a little less than the one before, so coffee alone no longer lands every Legendary. Milk is what does: every glass of fishing milk lets your coffee go further, and coffee with milk is the strongest fishing there is. A cup now costs $30.
+- **Bait catches fish.** A baited hook never brings up junk or food.
+- **Charms stay in the dungeon.** A charm can no longer be used from `/inventory` (it shows `Deep` there). Give it to a fish of the party while you pack for a dive; it wears it for life.
+- **Fishes swim the bottom row.** A swimming fish now stays in the last row as long as in the first instead of bouncing straight up.
+- **No more stuck dinners.** Big fishes, fishes with a lure, and fishes too long for a small window reach their food, a fish too wide for its window no longer flips back and forth, and food on the floor follows the glass when you shrink the window.
+- **Windows keep off the command bar.** `/index`, `/show`, the shop and every other window stay above the prompt and the status line; only fishing, the casino and the dungeon take the whole screen. On a very short terminal the command bar drops its two lines to leave them room.
+- **The Negative stops piling up mutations.** Inverting a fish counts as one mutation, inverting it back leaves none, and the Negative waits longer between touches.
+- **The Void's words stay readable** even when the Negative swims across them.
+- **The Desertank's UFOs abduct only while you watch it.**
+
 ## 1.6.1 - 2026-10-19
 
 - **A bigger Claw.** The claw machine opens as large as the other casino tables, with a wider, taller glass and more prizes in it. The odds are the same.

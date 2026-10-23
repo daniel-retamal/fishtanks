@@ -16,7 +16,6 @@ use crate::fishes::quirk::{
 };
 use crate::fishes::species::{EYE_CIRCLE, EYE_ROUND, SizeCategory};
 use crate::fishes::unfish::UnfishKind;
-use crate::names;
 use crate::util::sample_exponential;
 
 const LEECH_REACH_X: f32 = 2.0;
@@ -389,7 +388,7 @@ impl Tank {
             self.take_fish(i);
         }
         for (k, &size) in ribs.iter().enumerate().skip(kept) {
-            let name = names::unique_roman_in(&self.used_names);
+            let name = self.used_names.unique_roman();
             let mut fish = Fish::new_unfish(UnfishKind::Bones, name.clone(), spot(k), y, rng);
             fish.body_size = size;
             fish.display_width = fish.unfish_line_width();

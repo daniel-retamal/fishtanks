@@ -279,6 +279,7 @@ impl App {
             },
             dungeon: save.dungeon,
         };
+        app.enrol_every_tank();
         app.hang_the_souls();
         app.walk_away_from_the_table(&save.casino.on_the_table);
         if let Some(catch) = save.catch {

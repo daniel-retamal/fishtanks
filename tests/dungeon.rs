@@ -14,16 +14,18 @@ use fishtank::dungeon::haul::Haul;
 use fishtank::dungeon::items::{Item, Pack};
 use fishtank::dungeon::life::DeepLife;
 use fishtank::dungeon::map::{Map, RoomKind, Shape};
+use fishtank::dungeon::muster::NOT_WORN;
 use fishtank::dungeon::room::{Offer, Stage, Visit};
 use fishtank::dungeon::screen::View;
 use fishtank::dungeon::sim::Tier;
 use fishtank::dungeon::traits::Haunt;
+use fishtank::dungeon::treasure::Treasure;
 use fishtank::fishes::fish::Fish;
 use fishtank::fishes::graveyard::Fate;
 use fishtank::fishes::mutations::{Mutation, apply_mutation_to_fish};
 use fishtank::fishes::species::FishSpecies;
 use fishtank::fishes::unfish::UnfishKind;
-use fishtank::loot::StockItem;
+use fishtank::loot::{ConsumableKind, StockItem};
 use fishtank::testing::Tui;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
@@ -116,6 +118,9 @@ fn the_muster_on_film() {
     for (cols, rows) in SIZES {
         let mut tui = Tui::as_player(cols, rows);
         tui.film(reels(), &format!("deep-muster-{cols}x{rows}"));
+        tui.app
+            .inventory
+            .insert(charm_stock(Charm::CaleuchesLantern), 1);
         tui.run("/dungeon");
         tui.snap("the party pick");
         tui.key(KeyCode::Enter);
@@ -126,6 +131,9 @@ fn the_muster_on_film() {
         tui.snap("packing");
         tui.key(KeyCode::Right).key(KeyCode::Right);
         tui.snap("two meals packed");
+        to_the_first_charm(&mut tui);
+        tui.key(KeyCode::Right);
+        tui.snap("the lantern fitted to the first fish");
         tui.key(KeyCode::Enter);
         tui.snap("the first elevator");
         tui.key(KeyCode::Enter);
@@ -1867,4 +1875,76 @@ fn a_tank_that_never_dived_shows_no_grade() {
     tui.key(KeyCode::Esc);
     tui.run("/index grade:elder");
     tui.screen().expect_find("Grade");
+}
+
+fn charm_stock(charm: Charm) -> StockItem {
+    StockItem::Consumable(ConsumableKind::Treasure(Treasure::Charm(charm)))
+}
+
+fn to_the_first_charm(tui: &mut Tui) {
+    for _ in 0..PACK_ROWS_PATIENCE {
+        let Some(View::Muster(muster)) = tui.app.dungeon_overlay().map(|state| &state.view) else {
+            panic!("the muster is open");
+        };
+        if muster.selected() >= muster.supplies.len() {
+            return;
+        }
+        tui.key(KeyCode::Down);
+    }
+    panic!("no charm row in the pack");
+}
+
+const PACK_ROWS_PATIENCE: usize = 40;
+
+#[test]
+fn a_charm_is_fitted_at_the_muster_and_worn_for_life() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    let lantern = charm_stock(Charm::CaleuchesLantern);
+    tui.app.inventory.insert(lantern, 1);
+    let wearer = tui.app.tanks[0].fish[0].name.clone();
+    tui.run("/dungeon");
+    tui.key(KeyCode::Enter).key(KeyCode::Tab);
+    to_the_first_charm(&mut tui);
+    tui.screen().expect_find(NOT_WORN);
+    tui.key(KeyCode::Right);
+    tui.screen().expect_find(&format!("worn by {wearer}"));
+    tui.key(KeyCode::Enter).key(KeyCode::Enter);
+    let expedition = tui.app.dungeon.expedition.as_ref().expect("a dive");
+    let charm = expedition.party[0]
+        .deep
+        .as_ref()
+        .and_then(|life| life.charm);
+    assert_eq!(charm, Some(Charm::CaleuchesLantern));
+    assert_eq!(tui.app.inventory.get(&lantern).copied().unwrap_or(0), 0);
+}
+
+#[test]
+fn a_charm_nobody_wears_stays_in_the_bag() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    let halo = charm_stock(Charm::Halo);
+    tui.app.inventory.insert(halo, 1);
+    set_out(&mut tui);
+    let expedition = tui.app.dungeon.expedition.as_ref().expect("a dive");
+    assert!(
+        expedition
+            .party
+            .iter()
+            .all(|fish| fish.deep.as_ref().is_none_or(|life| life.charm.is_none()))
+    );
+    assert_eq!(tui.app.inventory.get(&halo).copied(), Some(1));
+}
+
+#[test]
+fn a_charm_is_never_consumed_at_home() {
+    let mut tui = Tui::as_player(SIZE.0, SIZE.1);
+    let beak = charm_stock(Charm::KrakensBeak);
+    tui.app.inventory.insert(beak, 1);
+    tui.run("/inventory");
+    tui.screen().expect_find("Deep");
+    tui.key(KeyCode::Enter);
+    tui.screen().expect_absent("to the fishes");
+    tui.key(KeyCode::Esc);
+    tui.run("/consume the kraken's beak");
+    assert_eq!(tui.app.inventory.get(&beak).copied(), Some(1));
+    assert!(tui.app.tanks[0].fish.iter().all(|fish| fish.deep.is_none()));
 }

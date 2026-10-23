@@ -84,6 +84,22 @@ const ZOOMIE_TIMER_DISPLAY_DEFAULT: f32 = 60.0;
 const LINE_TAIL_W: usize = 2;
 const HYDRA_EYES_PER_HEAD: usize = 2;
 const HELPEDBYGOD_COFFEE_MULT: f32 = 2.0;
+const CRAMPED_ROOM: f32 = 1.0;
+const LAST_ROW_DEPTH: f32 = 0.999;
+
+pub struct MouthReach {
+    pub columns: std::ops::RangeInclusive<i32>,
+    pub rows: std::ops::RangeInclusive<i32>,
+}
+
+impl MouthReach {
+    pub fn nearest(&self, x: i32, y: i32) -> (i32, i32) {
+        (
+            x.clamp(*self.columns.start(), *self.columns.end()),
+            y.clamp(*self.rows.start(), *self.rows.end()),
+        )
+    }
+}
 const HELPEDBYGOD_ZOOMIE_MULT: f32 = 3.0;
 const NIGHTOWL_SPEED_MULT: f32 = 0.4;
 const NIGHTOWL_SINK_DY: f32 = 1.5;
@@ -2925,8 +2941,11 @@ impl Fish {
         }
         let (min_x, max_x, min_y, max_y) = self.position_bounds(tank_width, tank_height);
 
-        let hit_wall = self.position.x < min_x || self.position.x > max_x;
-        if self.position.x < min_x {
+        let braced = self.brace_against_the_walls(min_x, max_x);
+        let hit_wall = !braced && (self.position.x < min_x || self.position.x > max_x);
+        if braced {
+            self.velocity.dx = 0.0;
+        } else if self.position.x < min_x {
             self.position.x = min_x;
             self.velocity.dx = self.velocity.dx.abs();
             if matches!(self.state, FishState::Idle | FishState::Zoomie { .. }) {
@@ -2943,12 +2962,43 @@ impl Fish {
             self.habits.bumped = true;
         }
 
-        if self.position.y < min_y {
+        if max_y <= min_y {
+            self.position.y = min_y;
+            self.velocity.dy = 0.0;
+        } else if self.position.y < min_y {
             self.position.y = min_y;
             self.velocity.dy = self.velocity.dy.abs();
         } else if self.position.y > max_y {
             self.position.y = max_y;
             self.velocity.dy = -self.velocity.dy.abs();
+        }
+    }
+
+    pub(crate) fn brace_against_the_walls(&mut self, min_x: f32, max_x: f32) -> bool {
+        if max_x - min_x >= CRAMPED_ROOM {
+            return false;
+        }
+        self.position.x = self.braced_x(min_x, max_x);
+        self.velocity.dx = 0.0;
+        true
+    }
+
+    fn braced_x(&self, min_x: f32, max_x: f32) -> f32 {
+        if self.facing_left() { min_x } else { max_x }
+    }
+
+    pub fn mouth_reach(&self, tank_width: u16, tank_height: u16) -> MouthReach {
+        let (min_x, max_x, min_y, max_y) = self.position_bounds(tank_width, tank_height);
+        let (lo, hi) = if max_x - min_x < CRAMPED_ROOM {
+            let braced = self.braced_x(min_x, max_x);
+            (braced, braced)
+        } else {
+            (min_x, max_x)
+        };
+        let mouth = self.head_x() - self.position.x as i32;
+        MouthReach {
+            columns: lo as i32 + mouth..=hi as i32 + mouth,
+            rows: min_y as i32..=(max_y.max(min_y)) as i32,
         }
     }
 
@@ -2962,7 +3012,7 @@ impl Fish {
             0.0,
             tank_width as f32 - self.display_width as f32,
             top_margin,
-            (tank_height as f32 - 1.0) - bottom_margin,
+            (tank_height as f32 - 1.0) - bottom_margin + LAST_ROW_DEPTH,
         )
     }
 

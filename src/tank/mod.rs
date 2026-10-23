@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 
 use rand::RngExt;
 
@@ -17,7 +17,7 @@ use crate::fishes::fish::{Fish, FishState};
 use crate::fishes::parts::Part;
 use crate::fishes::species::FishSpecies;
 use crate::fishes::unfish::VOID_SPAWN_MEAN_SECS;
-use crate::names;
+use crate::names::NameBook;
 use crate::settings::Settings;
 use crate::tanks::candy::man_sway_offset;
 use crate::tanks::soul_wall::SoulWall;
@@ -537,8 +537,8 @@ pub struct Tank {
     pub bubbles: Vec<Bubble>,
     pub width: u16,
     pub height: u16,
-    pub used_names: HashSet<String>,
-    pub used_cow_names: HashSet<String>,
+    pub used_names: NameBook,
+    pub used_cow_names: NameBook,
     pub pending_star_cash: Money,
     pub pending_graveyard: Vec<Fish>,
     pub pending_loose_parts: Vec<Part>,
@@ -586,8 +586,8 @@ impl Tank {
             bubbles: Vec::new(),
             width: INITIAL_WIDTH,
             height: INITIAL_HEIGHT,
-            used_names: HashSet::new(),
-            used_cow_names: HashSet::new(),
+            used_names: NameBook::default(),
+            used_cow_names: NameBook::default(),
             pending_star_cash: 0,
             pending_graveyard: Vec::new(),
             pending_loose_parts: Vec::new(),
@@ -657,9 +657,7 @@ impl Tank {
             }
         }
         for food in &mut self.food {
-            if food.position.y > max_y {
-                food.position.y = max_y;
-            }
+            food.fit(width, height);
         }
         let cow_floor = (height as f32) - (crate::entities::cow::Cow::sprite_height() as f32);
         for cow in &mut self.cows {
@@ -949,12 +947,32 @@ impl Tank {
             .count()
     }
 
+    pub fn join_names(&mut self, fish_book: &NameBook, cow_book: &NameBook) {
+        if self.used_names.shares(fish_book) {
+            return;
+        }
+        for fish in &mut self.fish {
+            if fish_book.contains(&fish.name) {
+                fish.name = fish_book.renamed(&fish.name);
+            }
+            fish_book.insert(fish.name.clone());
+        }
+        for cow in &mut self.cows {
+            if cow_book.contains(&cow.name) {
+                cow.name = cow_book.renamed(&cow.name);
+            }
+            cow_book.insert(cow.name.clone());
+        }
+        self.used_names = fish_book.clone();
+        self.used_cow_names = cow_book.clone();
+    }
+
     fn unique_name(&self, requested: &str) -> String {
-        names::unique_name_in(&self.used_names, requested)
+        self.used_names.unique(requested)
     }
 
     pub fn unique_cow_name(&self, requested: &str) -> String {
-        names::unique_name_in(&self.used_cow_names, requested)
+        self.used_cow_names.unique(requested)
     }
 
     pub fn spawn_cow(&mut self, variant: CowVariant, rng: &mut impl RngExt) -> String {

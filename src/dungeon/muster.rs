@@ -1,8 +1,10 @@
 use crate::fishes::fish::Fish;
+use crate::loot::{ConsumableKind, StockItem};
 use crate::ui::input_action::InputAction;
 
 use super::Difficulty;
 use super::beat::{LogLine, Tone};
+use super::boon::Charm;
 use super::expedition::MAX_PARTY;
 use super::items::{Item, PACK_STACKS};
 use super::room::{Act, Card, Panel, Portrait, Row, Scene, Tab, Verb};
@@ -10,6 +12,14 @@ use super::sheet;
 
 pub const DIFFICULTIES: [Difficulty; 2] = [Difficulty::Normal, Difficulty::Hardcore];
 pub const IN_THE_PARTY: &str = "in the party";
+pub const NOT_WORN: &str = "not worn";
+const CHARM_LINE: &str = "A charm is worn for life, one a fish: ←→ picks who wears it.";
+
+pub fn charm_item(charm: Charm) -> Item {
+    Item::Stock(StockItem::Consumable(ConsumableKind::Treasure(
+        super::treasure::Treasure::Charm(charm),
+    )))
+}
 
 pub fn fish_card(fish: &Fish, home: &str, lit: bool) -> Card {
     let mut caption = sheet::caption(fish, home);
@@ -49,6 +59,12 @@ pub struct Supply {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fitting {
+    pub charm: Charm,
+    pub wearer: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Leg {
     Party,
     Pack,
@@ -68,17 +84,90 @@ pub struct Muster {
     pub candidates: Vec<Candidate>,
     pub party: Vec<usize>,
     pub supplies: Vec<Supply>,
+    pub fittings: Vec<Fitting>,
     pub at: [usize; 3],
 }
 
 impl Muster {
-    pub fn new(candidates: Vec<Candidate>, supplies: Vec<Supply>) -> Muster {
+    pub fn new(candidates: Vec<Candidate>, supplies: Vec<Supply>, charms: Vec<Charm>) -> Muster {
         Muster {
             leg: Leg::Party,
             candidates,
             party: Vec::new(),
             supplies,
+            fittings: charms
+                .into_iter()
+                .map(|charm| Fitting {
+                    charm,
+                    wearer: None,
+                })
+                .collect(),
             at: [0; 3],
+        }
+    }
+
+    pub fn fitted(&self) -> Vec<(Charm, usize)> {
+        self.fittings
+            .iter()
+            .filter_map(|fitting| Some((fitting.charm, self.worn_by(fitting)?)))
+            .collect()
+    }
+
+    fn worn_by(&self, fitting: &Fitting) -> Option<usize> {
+        fitting
+            .wearer
+            .filter(|&candidate| self.is_picked(candidate))
+    }
+
+    fn wearers_for(&self, fitting: usize) -> Vec<Option<usize>> {
+        let taken: Vec<usize> = self
+            .fittings
+            .iter()
+            .enumerate()
+            .filter(|&(other, _)| other != fitting)
+            .filter_map(|(_, other)| self.worn_by(other))
+            .collect();
+        let free = self
+            .party
+            .iter()
+            .copied()
+            .filter(|candidate| !taken.contains(candidate))
+            .filter(|&candidate| {
+                let fish = &self.candidates[candidate].fish;
+                fish.deep.as_ref().is_none_or(|life| life.charm.is_none())
+            })
+            .map(Some);
+        std::iter::once(None).chain(free).collect()
+    }
+
+    fn fit(&mut self, fitting: usize, forward: bool) {
+        let Some(current) = self.fittings.get(fitting).map(|f| self.worn_by(f)) else {
+            return;
+        };
+        let options = self.wearers_for(fitting);
+        let at = options.iter().position(|&o| o == current).unwrap_or(0);
+        let step = if forward { 1 } else { options.len() - 1 };
+        self.fittings[fitting].wearer = options[(at + step) % options.len()];
+    }
+
+    fn wearer_note(&self, fitting: &Fitting) -> (String, Tone) {
+        match self.worn_by(fitting) {
+            Some(candidate) => (
+                format!("worn by {}", self.candidates[candidate].fish.name),
+                Tone::Focus,
+            ),
+            None => (NOT_WORN.to_string(), Tone::Quiet),
+        }
+    }
+
+    fn fitting_card(&self, fitting: &Fitting) -> Card {
+        let (note, tone) = self.wearer_note(fitting);
+        let item = charm_item(fitting.charm);
+        Card {
+            title: item.name().to_string(),
+            portrait: Portrait::Item(item),
+            caption: vec![LogLine::new(note, tone)],
+            lit: self.worn_by(fitting).is_some(),
         }
     }
 
@@ -115,7 +204,7 @@ impl Muster {
     fn rows(&self) -> usize {
         match self.leg {
             Leg::Party => self.candidates.len(),
-            Leg::Pack => self.supplies.len(),
+            Leg::Pack => self.supplies.len() + self.fittings.len(),
             Leg::Lift => DIFFICULTIES.len(),
         }
     }
@@ -169,6 +258,7 @@ impl Muster {
             which_fish: false,
             verb: Verb::Pick,
             counts: false,
+            fits: false,
             tab: Some(Tab::Pack),
             back: false,
         }
@@ -176,53 +266,64 @@ impl Muster {
 
     fn pack_panel(&self) -> Panel {
         let stacks = self.stacks();
-        let rows = self
-            .supplies
-            .iter()
-            .enumerate()
-            .map(|(index, supply)| {
-                let room = supply.packed > 0 || stacks < PACK_STACKS;
-                Row::new(supply.item.name(), Act::Choice(index as u8))
-                    .note(packed_note(supply), packed_tone(supply))
-                    .usable(room)
-                    .about(sheet::item(supply.item))
-            })
-            .collect();
-        let shown = self.supplies.get(self.selected());
-        Panel {
-            title: "The Deep · Items".to_string(),
-            art: match shown {
-                Some(supply) => Scene::Card(Card {
-                    title: supply.item.name().to_string(),
-                    portrait: Portrait::Item(supply.item),
-                    caption: vec![LogLine::new(
-                        format!("{} packed", packed_note(supply)),
-                        packed_tone(supply),
-                    )],
-                    lit: supply.packed > 0,
-                }),
+        let supplies = self.supplies.iter().enumerate().map(|(index, supply)| {
+            let room = supply.packed > 0 || stacks < PACK_STACKS;
+            Row::new(supply.item.name(), Act::Choice(index as u8))
+                .note(packed_note(supply), packed_tone(supply))
+                .usable(room)
+                .about(sheet::item(supply.item))
+        });
+        let charms = self.fittings.iter().enumerate().map(|(k, fitting)| {
+            let (note, tone) = self.wearer_note(fitting);
+            let item = charm_item(fitting.charm);
+            Row::new(item.name(), Act::Choice((self.supplies.len() + k) as u8))
+                .note(note, tone)
+                .usable(self.wearers_for(k).len() > 1)
+                .about(sheet::item(item))
+        });
+        let rows = supplies.chain(charms).collect();
+        let selected = self.selected();
+        let art = match self.supplies.get(selected) {
+            Some(supply) => Scene::Card(Card {
+                title: supply.item.name().to_string(),
+                portrait: Portrait::Item(supply.item),
+                caption: vec![LogLine::new(
+                    format!("{} packed", packed_note(supply)),
+                    packed_tone(supply),
+                )],
+                lit: supply.packed > 0,
+            }),
+            None => match self.fittings.get(selected - self.supplies.len()) {
+                Some(fitting) => Scene::Card(self.fitting_card(fitting)),
                 None => Scene::Rows(&[]),
             },
+        };
+        let mut text = vec![LogLine::new(
+            "Pack up to eight stacks. Whatever is not used comes home.",
+            Tone::Plain,
+        )];
+        if !self.fittings.is_empty() {
+            text.push(LogLine::new(CHARM_LINE, Tone::Plain));
+        }
+        text.push(LogLine::new(String::new(), Tone::Plain));
+        text.push(LogLine::new(
+            format!("Stacks: {stacks} of {PACK_STACKS}"),
+            match stacks {
+                0 => Tone::Quiet,
+                _ => Tone::Focus,
+            },
+        ));
+        Panel {
+            title: "The Deep · Items".to_string(),
+            art,
             figures: Vec::new(),
             draw_figures: false,
-            text: vec![
-                LogLine::new(
-                    "Pack up to eight stacks. Whatever is not used comes home.",
-                    Tone::Plain,
-                ),
-                LogLine::new(String::new(), Tone::Plain),
-                LogLine::new(
-                    format!("Stacks: {stacks} of {PACK_STACKS}"),
-                    match stacks {
-                        0 => Tone::Quiet,
-                        _ => Tone::Focus,
-                    },
-                ),
-            ],
+            text,
             rows,
             which_fish: false,
             verb: Verb::Pack,
-            counts: true,
+            counts: selected < self.supplies.len(),
+            fits: selected >= self.supplies.len(),
             tab: None,
             back: true,
         }
@@ -255,6 +356,7 @@ impl Muster {
             which_fish: false,
             verb: Verb::Ride,
             counts: false,
+            fits: false,
             tab: None,
             back: true,
         }
@@ -288,7 +390,11 @@ impl Muster {
                 MusterStep::Stay
             }
             InputAction::Left | InputAction::Right if self.leg == Leg::Pack => {
-                self.count(matches!(action, InputAction::Right));
+                let forward = matches!(action, InputAction::Right);
+                match self.at[Leg::Pack as usize].checked_sub(self.supplies.len()) {
+                    Some(fitting) => self.fit(fitting, forward),
+                    None => self.count(forward),
+                }
                 MusterStep::Stay
             }
             InputAction::Confirm => self.confirm(),

@@ -31,7 +31,6 @@ run /nudge "Lcd" 200 20
 run /nudge "Lcd" -15 0
 
 run /program "Ram"
-expect data_out[8]
 key down
 type d6
 key down
@@ -39,6 +38,7 @@ type d
 key down
 type d
 key down
+expect data_out[8]
 type q
 key down
 type d6
@@ -48,6 +48,7 @@ absent listens
 
 tick 4
 run /circuit
+key down
 expect data_out ▸ q
 snap the circuit reads the stack's wires back, data_out flowing onto q
 key esc

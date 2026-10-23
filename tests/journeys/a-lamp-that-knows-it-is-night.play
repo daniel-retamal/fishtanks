@@ -14,8 +14,8 @@ key enter
 absent to the botfishes
 
 run /program "Clock"
-expect night[1]
 key down 3
+expect night[1]
 type dark
 snap the clock's night flag is wired to dark
 key enter

@@ -93,4 +93,5 @@ pub const HINT_ENTER_ONWARD: &str = "ENTER to the elevator";
 pub const HINT_TAB_READ: &str = "TAB read both";
 pub const HINT_TAB_PACK: &str = "TAB pack";
 pub const HINT_HOW_MANY: &str = "←→ how many";
+pub const HINT_WHO_WEARS: &str = "←→ who wears it";
 pub const HINT_ENTER_GO_ON: &str = "ENTER go on";

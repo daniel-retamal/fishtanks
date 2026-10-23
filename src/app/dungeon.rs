@@ -75,7 +75,18 @@ impl App {
                 })
             })
             .collect();
-        Some(Muster::new(candidates, supplies))
+        let charms = self
+            .inventory
+            .iter()
+            .filter_map(|(stock, &held)| {
+                let StockItem::Consumable(ConsumableKind::Treasure(treasure)) = stock else {
+                    return None;
+                };
+                Some(std::iter::repeat_n(treasure.charm()?, held as usize))
+            })
+            .flatten()
+            .collect();
+        Some(Muster::new(candidates, supplies, charms))
     }
 
     pub fn deep_ground(&self) -> Ground {
@@ -94,7 +105,7 @@ impl App {
 
     fn dungeon_state(&self) -> DungeonState {
         let Some(expedition) = self.dungeon.expedition.as_ref() else {
-            return DungeonState::muster(Muster::new(Vec::new(), Vec::new()));
+            return DungeonState::muster(Muster::new(Vec::new(), Vec::new(), Vec::new()));
         };
         DungeonState::of(expedition, fight_of(expedition))
     }
@@ -233,6 +244,16 @@ impl App {
         true
     }
 
+    fn join_below(&mut self, mut fish: Fish) -> String {
+        self.name_a_newcomer(&mut fish);
+        let Some(expedition) = self.dungeon.expedition.as_mut() else {
+            return fish.name;
+        };
+        let name = expedition.join(fish);
+        self.hold_name(&name);
+        name
+    }
+
     pub(super) fn print_below(&mut self, index: usize, quote: &FabricationQuote) -> bool {
         let mut bench = Tank::new(String::new(), TankKind::Base, &[]);
         bench.resize(self.terminal_width, self.terminal_height, &[]);
@@ -241,13 +262,16 @@ impl App {
             return false;
         }
         let printed: Vec<Fish> = (0..bench.fish.len()).map(|_| bench.take_fish(0)).collect();
+        if self.dungeon.expedition.is_none() {
+            return false;
+        }
+        let names: Vec<String> = printed
+            .into_iter()
+            .map(|fish| self.join_below(fish))
+            .collect();
         let Some(expedition) = self.dungeon.expedition.as_mut() else {
             return false;
         };
-        let names: Vec<String> = printed
-            .into_iter()
-            .map(|fish| expedition.join(fish))
-            .collect();
         expedition.landed(LogLine::new(
             format!("{} joins the party.", names.join(", ")),
             Tone::Heal,
@@ -274,23 +298,27 @@ impl App {
     }
 
     pub(super) fn keep_below(&mut self, loot: LootKind, fish: Option<Fish>, name: String) {
+        let fish = fish.map(|mut fish| {
+            if !name.is_empty() {
+                fish.name = name;
+            }
+            if fish.name.is_empty() {
+                fish.name = fish.species.display_name().to_string();
+            }
+            fish
+        });
+        if self.dungeon.expedition.is_none() {
+            return;
+        }
+        let joined = fish.map(|fish| self.join_below(fish));
         let Some(expedition) = self.dungeon.expedition.as_mut() else {
             return;
         };
-        let said = match (loot, fish) {
-            (_, Some(mut fish)) => {
-                if !name.is_empty() {
-                    fish.name = name;
-                }
-                if fish.name.is_empty() {
-                    fish.name = fish.species.display_name().to_string();
-                }
-                let name = expedition.join(fish);
-                LogLine::new(
-                    format!("{name} comes up on the line and joins the party."),
-                    Tone::Heal,
-                )
-            }
+        let said = match (loot, joined) {
+            (_, Some(name)) => LogLine::new(
+                format!("{name} comes up on the line and joins the party."),
+                Tone::Heal,
+            ),
             (LootKind::Item(item), None) => match StockItem::from_item(&item) {
                 Some(stock) => {
                     expedition.haul.add(stock, 1);
@@ -388,9 +416,12 @@ impl App {
             })
             .collect();
         let packed = muster.packed();
+        let fitted = muster.fitted();
+        let picked_order = muster.picked();
         let mut party = Vec::new();
         let mut homes = Vec::new();
-        for (tank_name, fish_name) in picked {
+        let mut aboard = Vec::new();
+        for (member, (tank_name, fish_name)) in picked.into_iter().enumerate() {
             let Some(tank) = self.tanks.iter().position(|tank| tank.name == tank_name) else {
                 continue;
             };
@@ -401,8 +432,23 @@ impl App {
             else {
                 continue;
             };
-            party.push(self.tanks[tank].take_fish(index));
+            let fish = self.tanks[tank].take_fish(index);
+            self.hold_name(&fish.name);
+            party.push(fish);
             homes.push(tank_name);
+            aboard.push(picked_order[member]);
+        }
+        for (charm, candidate) in fitted {
+            let Some(at) = aboard.iter().position(|&c| c == candidate) else {
+                continue;
+            };
+            let stock = StockItem::Consumable(ConsumableKind::Treasure(Treasure::Charm(charm)));
+            if self.inventory.get(&stock).copied().unwrap_or(0) == 0 {
+                continue;
+            }
+            if super::treasure::wear_charm(&mut party[at], charm) {
+                self.take_from_inventory(stock, 1);
+            }
         }
         if party.is_empty() {
             return;
@@ -497,6 +543,7 @@ impl App {
         }
         let died = !settled.dead.is_empty();
         for fish in settled.dead {
+            self.free_name(&fish.name);
             self.bury(fish, Fate::Dive);
         }
         self.uplink(before, after);
@@ -513,7 +560,9 @@ impl App {
             }
             return;
         };
-        let fish = self.exhume(grave);
+        let mut fish = self.exhume(grave);
+        self.name_a_newcomer(&mut fish);
+        self.hold_name(&fish.name);
         let Some(expedition) = self.dungeon.expedition.as_mut() else {
             return;
         };
@@ -553,6 +602,7 @@ impl App {
             life.dives += 1;
             life.deepest = life.deepest.max(depth);
             let name = fish.name.clone();
+            self.free_name(&name);
             let home = self.home_tank(homes.get(member).map(String::as_str));
             self.land_or_wait(home, fish, name);
         }

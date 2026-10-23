@@ -14,11 +14,11 @@ key enter
 absent to the botfishes
 
 run /program "Scale"
-expect measure
 key down 2
 key backspace 9
 type heaviest botfish
 key down
+expect measure
 key backspace 5
 type weight
 key down
@@ -36,6 +36,7 @@ key enter
 
 tick 3
 run /circuit
+key down
 expect ●  Fat
 snap every botfish weighs more than a gram, so Fat is lit
 key esc

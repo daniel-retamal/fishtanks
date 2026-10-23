@@ -28,6 +28,7 @@ fn browse(title: &str, art: Scene, text: Vec<LogLine>, rows: Vec<Row>) -> Panel 
         which_fish: false,
         verb: Verb::Browse,
         counts: false,
+        fits: false,
         tab: None,
         back: true,
     }

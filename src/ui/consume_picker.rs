@@ -159,7 +159,7 @@ impl Widget for ConsumePickerOverlay<'_> {
                 .action(state.target.confirm_hint())
         });
 
-        let grid = Grid::fit(modal.body.x, modal.body.width, &columns);
+        let mut grid = Grid::fit(modal.body.x, modal.body.width, &columns);
         let (header_y, data) = grid::split_header(modal.body);
         if let Some(y) = header_y {
             let style = HeaderStyle {
@@ -170,6 +170,8 @@ impl Widget for ConsumePickerOverlay<'_> {
                 rule: Style::default().fg(WHITE).bg(BACKGROUND),
             };
             grid::draw_header(buf, &grid, modal.rect, y, &headers, &style);
+        } else {
+            grid.bare = true;
         }
 
         let shown = state

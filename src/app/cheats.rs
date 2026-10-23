@@ -206,6 +206,7 @@ impl App {
 
     pub(super) fn found_tank(&mut self, mut tank: Tank) -> usize {
         tank.boundless = self.cheats.boundless;
+        self.enrol(&mut tank);
         self.gather_the_dead(&mut tank);
         self.tanks.push(tank);
         self.tanks.len() - 1

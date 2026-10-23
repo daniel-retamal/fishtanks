@@ -26,6 +26,7 @@ pub const VISUAL_CALCULUS_ALPHA: f32 = 0.175;
 pub const VOLITION_ALPHA: f32 = 0.9;
 pub const PHYSICAL_INSTRUMENT_ALPHA: f32 = 0.9;
 pub const REACTION_SPEED_ALPHA: f32 = 0.9;
+pub const COFFEE_REEL_ALPHA: f32 = 0.9;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum MilkStatus {
@@ -307,7 +308,6 @@ impl ConsumeTarget {
             ConsumeTarget::Treasure(treasure) => match treasure {
                 Treasure::Vial(mutation) => fish.supports_now(mutation),
                 Treasure::Chip(_) => fish.is_programmable(),
-                Treasure::Charm(_) => fish.deep.as_ref().is_none_or(|life| life.charm.is_none()),
                 Treasure::Feather => !fish.wears_a_feather(),
                 _ => false,
             },

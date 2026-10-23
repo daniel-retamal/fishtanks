@@ -229,7 +229,8 @@ impl MilkVariant {
 }
 
 const COFFEE_NAME: &str = "Coffee";
-const COFFEE_BUY_PRICE: u32 = 10;
+const COFFEE_BUY_PRICE: u32 =
+    BAIT_BUY_PRICE * crate::consumable::COFFEE_CASTS / crate::consumable::CASTS_PER_BUFF;
 const COFFEE_SELL_PRICE: u32 = resale_price(COFFEE_BUY_PRICE);
 const COFFEE_PANEL_INNER_W: u16 = 8;
 const COFFEE_HOOK_COL: u16 = 4;
@@ -639,9 +640,10 @@ impl ConsumableKind {
     pub fn can_be_consumed(self) -> bool {
         match self {
             ConsumableKind::BlankWafer => false,
-            ConsumableKind::Treasure(treasure) => {
-                !matches!(treasure.using(), Use::AtTheTable | Use::OnTheShelf)
-            }
+            ConsumableKind::Treasure(treasure) => !matches!(
+                treasure.using(),
+                Use::AtTheTable | Use::OnTheShelf | Use::InTheDeep
+            ),
             _ => true,
         }
     }
@@ -1440,6 +1442,8 @@ impl LootPool {
         if stacks == 0 {
             return self;
         }
+        self.slots
+            .retain(|(_, slot)| !matches!(slot, PoolSlot::Junk | PoolSlot::Food));
         let mult = 1u32 + stacks;
         for (w, slot) in &mut self.slots {
             let boostable = match slot {
@@ -1656,6 +1660,29 @@ mod tests {
 
     fn species_in(pool: &LootPool) -> Vec<FishSpecies> {
         pool.species()
+    }
+
+    #[test]
+    fn a_baited_hook_never_brings_up_junk_or_food() {
+        let rubbish = |pool: &LootPool| {
+            pool.slots
+                .iter()
+                .filter(|(_, slot)| matches!(slot, PoolSlot::Junk | PoolSlot::Food))
+                .count()
+        };
+        let wild = LootPool::default_pool();
+        assert!(rubbish(&wild) > 0);
+        let baited = wild.clone().with_bait(1);
+        assert_eq!(rubbish(&baited), 0);
+        assert_eq!(species_in(&baited), species_in(&wild));
+        let mut rng = rand::rng();
+        for _ in 0..ROLLS {
+            let catch = baited.roll(&mut rng);
+            assert!(
+                !matches!(catch, LootKind::Food(_) | LootKind::Item(ItemKind::Junk(_))),
+                "a baited cast brought up rubbish"
+            );
+        }
     }
 
     #[test]

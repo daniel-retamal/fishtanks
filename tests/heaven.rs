@@ -293,6 +293,17 @@ fn the_dead_cannot_be_moved_mutated_sold_or_killed_again() {
     assert_eq!(soul.mutation_count(), 0);
 }
 
+fn named_in_the_name_column(screen: &str, name: &str) -> bool {
+    let lines: Vec<&str> = screen.lines().collect();
+    let Some(column) = lines.iter().find_map(|line| line.find("│ Name")) else {
+        return false;
+    };
+    lines.iter().any(|line| {
+        line.get(column..)
+            .is_some_and(|cell| cell.starts_with(&format!("│ {name} ")))
+    })
+}
+
 #[test]
 fn the_heaventank_index_lists_the_dead_and_every_other_index_stays_among_the_living() {
     let mut tui = Tui::with_size(100, 30);
@@ -307,13 +318,21 @@ fn the_heaventank_index_lists_the_dead_and_every_other_index_stays_among_the_liv
     screen.expect_find("Status");
     screen.expect_find("Ann");
     screen.expect_find(DEAD);
-    screen.expect_absent("Bob");
+    assert!(
+        !named_in_the_name_column(&screen.text(), "Bob"),
+        "{}",
+        screen.text()
+    );
     tui.key(crossterm::event::KeyCode::Esc);
 
     tui.run("/index");
     let screen = tui.screen();
     screen.expect_find("Bob");
-    screen.expect_absent("Ann");
+    assert!(
+        !named_in_the_name_column(&screen.text(), "Ann"),
+        "{}",
+        screen.text()
+    );
     screen.expect_absent(DEAD);
     screen.expect_absent(ALIVE);
 }

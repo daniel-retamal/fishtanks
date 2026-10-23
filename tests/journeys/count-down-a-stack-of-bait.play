@@ -39,11 +39,11 @@ absent to the botfishes
 
 run /fps 1
 run /program "Rod"
-expect threshold
 type go
 key down
 type go
 key down 2
+expect threshold
 type go
 key enter
 absent listens

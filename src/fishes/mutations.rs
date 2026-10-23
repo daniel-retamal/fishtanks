@@ -7,7 +7,7 @@ use super::mutant::{
     Adornments, Circadian, EyeState, MIN_BODY_CHARS, Mark, MutantState, MutantTail, MutationRecord,
     random_rgb, random_rgb_other,
 };
-use super::revert::{Look, can_revert, revert, settle_old_record};
+use super::revert::{Look, can_revert, cancel, revert, settle_old_record};
 use super::species::{BodyTemplate, FishSpecies, SINGLE_EYE, TailKind};
 use super::unfish::{
     SLIME_GLISTEN_SPEED_FAST, SLIME_GLISTEN_SPEED_SLOW, UnfishKind, UnfishMutationStyle,
@@ -211,6 +211,10 @@ impl Mutation {
                 | Mutation::Endocytosis
                 | Mutation::Engulfment
         )
+    }
+
+    pub fn cancels_itself(self) -> bool {
+        self == Mutation::Negative
     }
 
     pub fn can_be_reverted(self) -> bool {
@@ -1626,6 +1630,9 @@ pub fn apply_mutation<M: Mutatable>(
 ) -> MutationOutcome {
     if mutation == Mutation::Revert {
         revert(target, rng);
+        return MutationOutcome::Applied;
+    }
+    if mutation.cancels_itself() && cancel(target, mutation, rng) {
         return MutationOutcome::Applied;
     }
     settle_old_record(target);

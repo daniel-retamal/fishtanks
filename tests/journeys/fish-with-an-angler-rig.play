@@ -45,10 +45,10 @@ absent listens
 
 run /fps 1
 run /program "Rod"
-expect threshold
 key down
 type go
 key down 2
+expect threshold
 type go
 key down
 type caught

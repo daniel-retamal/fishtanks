@@ -9,6 +9,7 @@ use ratatui::{
 };
 
 use crate::colors::{BLACK, STEEL, WHITE};
+use crate::dungeon::items::Item;
 use crate::loot::{CIRCUIT_BLUEPRINT_NAME, StockItem};
 use crate::tank::Blueprint;
 use crate::ui::{
@@ -23,6 +24,9 @@ use crate::ui::{
 const TITLE: &str = " Inventory#index ";
 const HEADERS: [&str; 4] = ["Item", "Quantity", "Consumable?", "Description"];
 const DESCRIPTION_COLUMN: usize = 3;
+const YES: &str = "Yes";
+const NO: &str = "No";
+const IN_THE_DEEP: &str = "Deep";
 const MIN_COLUMN_W: u16 = 3;
 const MIN_DESCRIPTION_W: u16 = 16;
 const BACKGROUND: Color = Color::Reset;
@@ -32,16 +36,24 @@ pub struct InventoryItem {
     pub name: String,
     pub qty: u32,
     pub is_consumable: bool,
+    pub only_below: bool,
     pub desc: String,
 }
 
 impl InventoryItem {
+    fn consumable(&self) -> &'static str {
+        match (self.is_consumable, self.only_below) {
+            (true, _) => YES,
+            (false, true) => IN_THE_DEEP,
+            (false, false) => NO,
+        }
+    }
+
     fn short_cells(&self) -> [String; 3] {
-        let consumable = if self.is_consumable { "Yes" } else { "No" };
         [
             self.name.clone(),
             self.qty.to_string(),
-            consumable.to_string(),
+            self.consumable().to_string(),
         ]
     }
 }
@@ -88,6 +100,7 @@ fn listing(
                 name,
                 qty: *qty,
                 is_consumable: stock.consumable_at(*qty),
+                only_below: Item::Stock(*stock).only_below(),
                 desc,
             }
         })
@@ -96,6 +109,7 @@ fn listing(
         name: blueprint_row_name(blueprint),
         qty: BLUEPRINT_QTY,
         is_consumable: false,
+        only_below: false,
         desc: blueprint.description(),
     }));
     items.sort_by_key(|item| item.name.clone());
@@ -207,7 +221,7 @@ impl Widget for InventoryOverlay<'_> {
         let (modal, _) =
             Modal::open_fitting(buf, self.screen, &frame, (natural_w, content_h), hints);
 
-        let grid = Grid::fit(modal.body.x, modal.body.width, &columns);
+        let mut grid = Grid::fit(modal.body.x, modal.body.width, &columns);
         let heights = row_heights(state, &grid);
         let (header_y, data) = grid::split_header(modal.body);
         if let Some(y) = header_y {
@@ -219,6 +233,8 @@ impl Widget for InventoryOverlay<'_> {
                 rule: Style::default().fg(WHITE).bg(BACKGROUND),
             };
             grid::draw_header(buf, &grid, modal.rect, y, &HEADERS, &style);
+        } else {
+            grid.bare = true;
         }
 
         let shown = state

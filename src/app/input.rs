@@ -1023,8 +1023,9 @@ impl App {
     }
 
     fn etch_hosts(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
-        self.tanks.iter().enumerate().flat_map(|(ti, tank)| {
-            tank.fish
+        self.nearest_tanks().flat_map(|ti| {
+            self.tanks[ti]
+                .fish
                 .iter()
                 .enumerate()
                 .filter(|(_, fish)| ConsumeTarget::Etch(0).accepts(fish))
@@ -1897,7 +1898,8 @@ impl App {
                 fish_name,
                 mutation,
             } => {
-                if let Some(ti) = self.tanks.iter().position(|t| {
+                if let Some(ti) = self.nearest_tanks().find(|&ti| {
+                    let t = &self.tanks[ti];
                     t.fish.iter().any(|f| f.name == fish_name)
                         || t.cows.iter().any(|c| c.name == fish_name)
                 }) {
@@ -1962,21 +1964,15 @@ impl App {
 
     fn clone_entity(&mut self, name: &str) -> bool {
         let original_fish = self
-            .tanks
-            .iter()
-            .flat_map(|t| t.fish.iter())
-            .find(|f| f.name.eq_ignore_ascii_case(name))
-            .cloned();
+            .fish_location(name)
+            .map(|(ti, fi)| self.tanks[ti].fish[fi].clone());
         if let Some(orig) = original_fish {
             let clone_name = format!("{}'s Clone", orig.name);
             return self.land_fish(self.current_tank, orig, clone_name).is_ok();
         }
         let original_cow = self
-            .tanks
-            .iter()
-            .flat_map(|t| t.cows.iter())
-            .find(|c| c.name.eq_ignore_ascii_case(name))
-            .cloned();
+            .cow_location(name)
+            .map(|(ti, ci)| self.tanks[ti].cows[ci].clone());
         if let Some(mut orig) = original_cow {
             orig.name = format!("{}'s Clone", orig.name);
             let ct = self.current_tank;
@@ -2110,23 +2106,13 @@ impl App {
 
     fn restore_entity(&mut self, name: &str) -> bool {
         use crate::restore::Restorable;
-        for tank in &mut self.tanks {
-            if let Some(fish) = tank
-                .fish
-                .iter_mut()
-                .find(|f| f.name.eq_ignore_ascii_case(name))
-            {
-                fish.restore();
-                return true;
-            }
-            if let Some(cow) = tank
-                .cows
-                .iter_mut()
-                .find(|c| c.name.eq_ignore_ascii_case(name))
-            {
-                cow.restore();
-                return true;
-            }
+        if let Some((ti, fi)) = self.fish_location(name) {
+            self.tanks[ti].fish[fi].restore();
+            return true;
+        }
+        if let Some((ti, ci)) = self.cow_location(name) {
+            self.tanks[ti].cows[ci].restore();
+            return true;
         }
         false
     }
@@ -2179,7 +2165,8 @@ impl App {
         else {
             return false;
         };
-        if let Some(source_idx) = (0..self.tanks.len())
+        if let Some(source_idx) = self
+            .nearest_tanks()
             .filter(|&i| i != target_idx)
             .find(|&i| {
                 self.tanks[i]
@@ -2212,7 +2199,8 @@ impl App {
             self.tanks[target_idx].place_fish(fish_obj, fish_name, &mut rng);
             return true;
         }
-        let Some(source_idx) = (0..self.tanks.len())
+        let Some(source_idx) = self
+            .nearest_tanks()
             .filter(|&i| i != target_idx)
             .find(|&i| {
                 self.tanks[i]
@@ -2292,12 +2280,31 @@ impl App {
         true
     }
 
+    pub(super) fn nearest_tanks(&self) -> impl Iterator<Item = usize> + use<> {
+        let here = self.current_tank.min(self.tanks.len().saturating_sub(1));
+        let count = self.tanks.len();
+        std::iter::once(here)
+            .filter(move |&i| i < count)
+            .chain((0..count).filter(move |&i| i != here))
+    }
+
     pub(super) fn fish_location(&self, name: &str) -> Option<(usize, usize)> {
-        self.tanks.iter().enumerate().find_map(|(ti, tank)| {
-            tank.fish
+        self.nearest_tanks().find_map(|ti| {
+            self.tanks[ti]
+                .fish
                 .iter()
                 .position(|f| f.name.eq_ignore_ascii_case(name))
                 .map(|fi| (ti, fi))
+        })
+    }
+
+    fn cow_location(&self, name: &str) -> Option<(usize, usize)> {
+        self.nearest_tanks().find_map(|ti| {
+            self.tanks[ti]
+                .cows
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(name))
+                .map(|ci| (ti, ci))
         })
     }
 
@@ -2349,8 +2356,9 @@ impl App {
     }
 
     pub(super) fn programmable_fish(&self, name: &str) -> Option<(usize, &Fish)> {
-        self.tanks.iter().enumerate().find_map(|(ti, tank)| {
-            tank.fish
+        self.nearest_tanks().find_map(|ti| {
+            self.tanks[ti]
+                .fish
                 .iter()
                 .find(|f| f.is_programmable() && f.name.eq_ignore_ascii_case(name))
                 .map(|fish| (ti, fish))
@@ -2894,11 +2902,8 @@ impl App {
                     .flat_map(|t| t.fish.iter().map(|f| f.name.clone()))
                     .collect();
                 let found = self
-                    .tanks
-                    .iter()
-                    .flat_map(|t| t.fish.iter().map(move |f| (f, t.name.as_str())))
-                    .find(|(f, _)| f.name.eq_ignore_ascii_case(&fish_name))
-                    .map(|(f, tn)| (f.clone(), tn.to_string()));
+                    .fish_location(&fish_name)
+                    .map(|(ti, fi)| (self.tanks[ti].fish[fi].clone(), self.tanks[ti].name.clone()));
                 let Some((fish, tank_name)) = found else {
                     return false;
                 };
@@ -3090,22 +3095,19 @@ impl App {
     }
 
     fn sell_fish_by_name(&mut self, name: &str) -> bool {
-        let mut sold = None;
-        for tank in &mut self.tanks {
-            if let Some(pos) = tank
+        let Some((ti, pos)) = self.nearest_tanks().find_map(|ti| {
+            self.tanks[ti]
                 .fish
                 .iter()
                 .position(|f| f.name.eq_ignore_ascii_case(name) && f.is_sellable())
-            {
-                let price = tank.fish[pos].sell_value();
-                sold = Some((tank.take_fish(pos), price));
-                tank.signal(WorldSignal::Sale);
-                break;
-            }
-        }
-        let Some((fish, price)) = sold else {
+                .map(|pos| (ti, pos))
+        }) else {
             return false;
         };
+        let tank = &mut self.tanks[ti];
+        let price = tank.fish[pos].sell_value();
+        let fish = tank.take_fish(pos);
+        tank.signal(WorldSignal::Sale);
         self.part_with(fish);
         self.earn(price, Flow::FishSales);
         true

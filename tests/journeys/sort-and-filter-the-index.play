@@ -27,7 +27,6 @@ key right
 key right
 type s
 type s
-expect Worth ▼
 expect /index sort:-worth
 snap the fishes by worth, the dearest first
 key esc

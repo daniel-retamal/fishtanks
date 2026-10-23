@@ -7,10 +7,11 @@ const RULE: char = '│';
 const RULE_W: u16 = 1;
 pub const CELL_PAD: u16 = 1;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct Grid {
     pub x: u16,
     pub widths: Vec<u16>,
+    pub bare: bool,
 }
 
 impl Grid {
@@ -22,7 +23,11 @@ impl Grid {
         if let Some(last) = widths.last_mut() {
             *last += spare;
         }
-        Self { x, widths }
+        Self {
+            x,
+            widths,
+            bare: false,
+        }
     }
 
     pub fn natural_width(columns: &[FlexItem]) -> u16 {
@@ -40,6 +45,9 @@ impl Grid {
     }
 
     pub fn rule_xs(&self) -> Vec<u16> {
+        if self.bare {
+            return Vec::new();
+        }
         (1..self.widths.len())
             .map(|column| self.cell(column, 0, 0).x - RULE_W)
             .collect()

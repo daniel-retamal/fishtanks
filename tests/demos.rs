@@ -1179,6 +1179,12 @@ fn fish_with_the_rig(tui: &mut Tui) {
         "and what came up was a fish"
     );
     tui.run("/circuit");
+    for _ in 0..shoal {
+        if tui.screen().contains("●  Bell") {
+            break;
+        }
+        tui.key(KeyCode::Down);
+    }
     tui.screen().expect_find("●  Bell");
     tui.snap("4 · /circuit — Bell latched the one-stage caught");
     tui.key(KeyCode::Esc);

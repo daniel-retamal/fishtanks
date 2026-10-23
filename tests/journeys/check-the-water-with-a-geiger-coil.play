@@ -19,8 +19,8 @@ key enter
 absent to the botfishes
 
 run /program "Geiger"
-expect mutated[1]
 key down 4
+expect hot[1]
 type hot
 snap the coil's hot flag is wired to hot
 key enter

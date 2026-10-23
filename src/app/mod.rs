@@ -57,6 +57,7 @@ mod heaven;
 mod input;
 mod lessons;
 mod money;
+mod naming;
 mod news;
 mod oddities;
 mod persistence;
@@ -959,7 +960,7 @@ impl App {
         }
         command_bar::height(
             self.settings.show_stats,
-            self.terminal_width,
+            (self.terminal_width, self.terminal_height),
             &self.stats_bar(&self.modes()),
             self.console_bar().as_ref(),
         )
@@ -1121,39 +1122,40 @@ impl App {
             command_area,
         );
 
-        let screen = Screen::new(full_area, tank_area);
+        let whole = Screen::new(full_area, tank_area);
+        let screen = Screen::only(tank_area);
         match &self.active_overlay {
             Some(Overlay::Index(state)) => {
-                frame.render_widget(IndexOverlay::new(state, screen), full_area)
+                frame.render_widget(IndexOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Show { state, .. }) => {
-                frame.render_widget(ShowOverlay::new(state, screen), full_area)
+                frame.render_widget(ShowOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Inventory(state)) => {
-                frame.render_widget(InventoryOverlay::new(state, screen), full_area)
+                frame.render_widget(InventoryOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Fishtanks(state)) => {
-                frame.render_widget(FishtanksOverlay::new(state, screen), full_area)
+                frame.render_widget(FishtanksOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::ConsumePicker(state)) => {
-                frame.render_widget(ConsumePickerOverlay { state, screen }, full_area)
+                frame.render_widget(ConsumePickerOverlay { state, screen }, tank_area)
             }
             Some(Overlay::Fishing(state)) => {
                 frame.render_widget(FishingOverlay::new(state), tank_area)
             }
             Some(Overlay::Catch(state)) => {
-                frame.render_widget(CatchOverlay::new(state, screen), full_area)
+                frame.render_widget(CatchOverlay::new(state, whole), full_area)
             }
             Some(Overlay::Shop(state)) => frame.render_widget(
                 ShopOverlay::new(state, self.shop_access(), screen),
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Circuit(state)) => {
-                frame.render_widget(CircuitOverlay::new(state, screen), full_area)
+                frame.render_widget(CircuitOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Wiring { state, .. }) => frame.render_widget(
                 WiringPanel::new(state, self.editor.visible, screen),
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Foundry(state)) => {
                 let quotes = self.blueprints.get(state.selected).map(|blueprint| Quotes {
@@ -1168,7 +1170,7 @@ impl App {
                         self.editor.visible,
                         screen,
                     ),
-                    full_area,
+                    tank_area,
                 )
             }
             Some(Overlay::Naming { input, kind }) => frame.render_widget(
@@ -1178,7 +1180,7 @@ impl App {
                     cursor_visible: self.editor.visible,
                     screen,
                 },
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Junkfish(popup)) => frame.render_widget(
                 JunkfishPopupWidget {
@@ -1186,7 +1188,7 @@ impl App {
                     cursor_visible: self.editor.visible,
                     screen,
                 },
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Cheat(input)) => frame.render_widget(
                 CheatPopup {
@@ -1194,13 +1196,13 @@ impl App {
                     cursor_visible: self.editor.visible,
                     screen,
                 },
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Notice(state)) => {
-                frame.render_widget(NoticePopup::new(state, screen), full_area)
+                frame.render_widget(NoticePopup::new(state, screen), tank_area)
             }
             Some(Overlay::Ledger(state)) => {
-                frame.render_widget(LedgerOverlay::new(state, screen), full_area)
+                frame.render_widget(LedgerOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Casino(state)) => {
                 let busy = state.at_risk();
@@ -1212,21 +1214,21 @@ impl App {
                         &self.casino,
                         self.purse.shown(),
                         self.editor.visible,
-                        screen,
+                        whole,
                     ),
                     full_area,
                 )
             }
             Some(Overlay::Toybox(state)) => frame.render_widget(
                 crate::ui::toybox::ToyboxOverlay::new(state, &self.casino.toybox, screen),
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Dungeon(state)) => frame.render_widget(
                 crate::ui::dungeon::DungeonOverlay::new(
                     state,
                     self.dungeon.expedition.as_ref(),
                     self.above(),
-                    screen,
+                    whole,
                     self.editor.visible,
                 ),
                 full_area,
@@ -1304,7 +1306,10 @@ impl App {
                 let variant = crate::entities::cow::random_cow_color(&mut rng);
                 self.plan_cow_delivery(source_idx, variant, &mut rng);
             }
-            Some(UfoRole::AbductsAtNight) if self.tanks[source_idx].background.is_night() => {
+            Some(UfoRole::AbductsAtNight)
+                if self.tanks[source_idx].watched
+                    && self.tanks[source_idx].background.is_night() =>
+            {
                 self.plan_abduction(source_idx, &mut rng);
             }
             _ => {}
@@ -1573,6 +1578,36 @@ fn pick_cow_drop_x(
 mod catch_tests {
     use super::*;
     use crate::loot::ItemKind;
+
+    fn a_desert_night(watched: bool) -> (App, usize) {
+        let mut app = App::launch(Launch::Debug);
+        let mut desert = Tank::new("Desertank".to_string(), TankKind::Desert, &[]);
+        desert.resize(80, 24, &[]);
+        let mut rng = rand::rng();
+        desert.spawn_fish(FishSpecies::Merluza, "Abductee".to_string(), &mut rng);
+        if let crate::tank::TankBackground::Desert { bg } = &mut desert.background {
+            bg.sky_angle = 3.0 * std::f32::consts::FRAC_PI_2;
+        }
+        assert!(desert.background.is_night());
+        desert.watched = watched;
+        app.tanks.push(desert);
+        let at = app.tanks.len() - 1;
+        if watched {
+            app.current_tank = at;
+        }
+        (app, at)
+    }
+
+    #[test]
+    fn a_desert_ufo_abducts_only_while_you_watch() {
+        let (mut away, desert) = a_desert_night(false);
+        away.handle_ufo_timer_fired(desert);
+        assert!(away.tanks[desert].ufos.is_empty());
+        assert!(away.tanks[desert].fish.iter().any(|f| f.name == "Abductee"));
+        let (mut watching, desert) = a_desert_night(true);
+        watching.handle_ufo_timer_fired(desert);
+        assert_eq!(watching.tanks[desert].ufos.len(), 1);
+    }
 
     const ROLLS: usize = 4_000;
 

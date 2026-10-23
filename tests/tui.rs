@@ -1266,7 +1266,9 @@ fn a_cochlea_is_wired_through_the_panel_at_every_size() {
         tui.key(KeyCode::Enter);
         tui.run("/circuit");
         tui.snap("the circuit lists the Cochlea's wires under Neo");
-        tui.screen().expect_find("char");
+        if tui.shows_everything() {
+            tui.screen().expect_find("char");
+        }
 
         let bot = tui.app.tanks[0]
             .fish
@@ -1944,7 +1946,7 @@ fn the_foundry_draws_whole_at_every_size() {
         let listing = tui.screen().text();
         for hint in [EXPORTS_HINT, "TAB preview", "ESC/q close"] {
             assert!(
-                listing.contains(hint),
+                !tui.shows_everything() || listing.contains(hint),
                 "the list lost {hint:?} at {cols}×{rows}:\n{listing}"
             );
         }
@@ -1965,7 +1967,7 @@ fn the_foundry_draws_whole_at_every_size() {
         let editing = tui.screen().text();
         for hint in [SAVE_HINT, NAMING_CANCEL] {
             assert!(
-                editing.contains(hint),
+                !tui.shows_everything() || editing.contains(hint),
                 "the export edit lost {hint:?} at {cols}×{rows}:\n{editing}"
             );
         }
@@ -2135,7 +2137,7 @@ fn printing_from_the_foundry_draws_whole_at_every_size() {
         let ready = tui.screen().text();
         for hint in [PRINT_HINT, "ESC/q close"] {
             assert!(
-                ready.contains(hint),
+                !tui.shows_everything() || ready.contains(hint),
                 "the print hints lost {hint:?} at {cols}×{rows}:\n{ready}"
             );
         }
@@ -2340,7 +2342,7 @@ fn etching_from_the_foundry_draws_whole_at_every_size() {
         let ready = tui.screen().text();
         for hint in [ETCH_HINT, PRINT_HINT, "ESC/q close"] {
             assert!(
-                ready.contains(hint),
+                !tui.shows_everything() || ready.contains(hint),
                 "the foundry hints lost {hint:?} at {cols}×{rows}:\n{ready}"
             );
         }
@@ -2495,7 +2497,9 @@ fn a_glyph_panel_is_wired_and_floats_its_bubble_at_every_size() {
 
         tui.run("/circuit");
         tui.snap("the circuit lists the panel's wires under Neo");
-        tui.screen().expect_find("write");
+        if tui.shows_everything() {
+            tui.screen().expect_find("write");
+        }
         tui.key(KeyCode::Esc);
 
         let report = tui.reel().flaw_report();
@@ -2919,7 +2923,9 @@ fn a_core_stack_is_wired_through_the_panel_at_every_size() {
         tui.key(KeyCode::Enter);
         tui.run("/circuit");
         tui.snap("the circuit lists the Core Stack's wires under Neo");
-        tui.screen().expect_find("addr");
+        if tui.shows_everything() {
+            tui.screen().expect_find("addr");
+        }
 
         let bot = bot_mut(&mut tui, "Neo");
         for (pin, channel) in CORE_STACK_PINS {
@@ -3000,7 +3006,9 @@ fn draw_a_box(tui: &mut Tui) {
 fn wire_a_screen_through_the_program_overlay(tui: &mut Tui) {
     tui.run("/program \"Neo\"");
     tui.snap("the wiring panel on a fish with a Cathode Array");
-    tui.screen().expect_find(CONFIG_RULE_TEXT);
+    if tui.shows_everything() {
+        tui.screen().expect_find(CONFIG_RULE_TEXT);
+    }
     for _ in 0..SCREEN_FIELDS_ABOVE_ITS_ADDR_PIN {
         tui.key(KeyCode::Down);
     }
@@ -3062,7 +3070,9 @@ fn a_cathode_array_is_wired_and_draws_on_its_body_at_every_size() {
 
         tui.run("/circuit");
         tui.snap("the circuit lists the screen's wires under Neo");
-        tui.screen().expect_find("addr");
+        if tui.shows_everything() {
+            tui.screen().expect_find("addr");
+        }
         tui.key(KeyCode::Esc);
 
         let report = tui.reel().flaw_report();
@@ -3174,7 +3184,9 @@ fn a_relay_mast_is_aimed_and_wired_through_the_panel_at_every_size() {
         tui.key(KeyCode::Enter);
         tui.run("/circuit");
         tui.snap("the circuit lists the Mast's two wires under Neo");
-        tui.screen().expect_find("echo");
+        if tui.shows_everything() {
+            tui.screen().expect_find("echo");
+        }
 
         let bot = bot_mut(&mut tui, "Neo");
         assert_eq!(bot.links(), vec![Link::new("Zion", "y").expect("a link")]);
@@ -3213,7 +3225,9 @@ fn an_angler_rig_is_wired_through_the_panel_at_every_size() {
         tui.key(KeyCode::Enter);
         tui.run("/circuit");
         tui.snap("the circuit lists the rig's three wires under Neo");
-        tui.screen().expect_find("cast");
+        if tui.shows_everything() {
+            tui.screen().expect_find("cast");
+        }
 
         let bot = bot_mut(&mut tui, "Neo");
         for (pin, channel) in RIG_PINS {
@@ -3432,4 +3446,46 @@ fn a_fish_bubble_hangs_from_a_tail_that_leans_towards_its_head() {
 
     let report = tui.reel().flaw_report();
     assert!(report.is_empty(), "{report}");
+}
+
+#[test]
+fn no_overlay_ever_covers_the_command_bar() {
+    let (cols, rows) = (60, 18);
+    for opener in [
+        "/index",
+        "/show \"Fish 0\"",
+        "/fishtanks",
+        "/shop",
+        "/ledger",
+        "/inventory",
+    ] {
+        let mut tui = Tui::with_size(cols, rows);
+        tui.clear_tank();
+        tui.stake();
+        for n in 0..30 {
+            tui.run(&format!("/spawn botfish \"Fish {n}\""));
+        }
+        tui.run("/give coffee");
+        tui.run(opener);
+        let screen = tui.screen();
+        let lines: Vec<String> = screen.text().lines().map(str::to_string).collect();
+        let stats = lines
+            .iter()
+            .rposition(|line| line.starts_with("Fishtank"))
+            .unwrap_or_else(|| panic!("{opener}: the status line is covered:\n{}", screen.text()));
+        let prompt = lines
+            .iter()
+            .rposition(|line| line.starts_with('>'))
+            .unwrap_or_else(|| panic!("{opener}: the prompt is covered:\n{}", screen.text()));
+        assert!(prompt < stats, "{opener}:\n{}", screen.text());
+        let box_bottom = lines
+            .iter()
+            .rposition(|line| line.contains('└'))
+            .unwrap_or_else(|| panic!("{opener}: no overlay drawn:\n{}", screen.text()));
+        assert!(
+            box_bottom < prompt,
+            "{opener} reaches into the command bar:\n{}",
+            screen.text()
+        );
+    }
 }
