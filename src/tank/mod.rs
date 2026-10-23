@@ -657,9 +657,7 @@ impl Tank {
             }
         }
         for food in &mut self.food {
-            if food.position.y > max_y {
-                food.position.y = max_y;
-            }
+            food.fit(width, height);
         }
         let cow_floor = (height as f32) - (crate::entities::cow::Cow::sprite_height() as f32);
         for cow in &mut self.cows {

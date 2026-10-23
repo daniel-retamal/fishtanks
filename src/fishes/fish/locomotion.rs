@@ -194,9 +194,14 @@ impl Fish {
         self.position.x += self.velocity.dx * dt * speed_mult;
         self.position.y += self.velocity.dy * dt * speed_mult;
         let (min_x, max_x, min_y, max_y) = self.position_bounds(width, height);
+        let heading = self.velocity.dx;
+        let braced = self.brace_against_the_walls(min_x, max_x);
+        if braced {
+            self.velocity.dx = heading;
+        }
         let max_x = max_x.max(min_x);
         let max_y = max_y.max(min_y);
-        let hit_x = self.position.x <= min_x || self.position.x >= max_x;
+        let hit_x = !braced && (self.position.x <= min_x || self.position.x >= max_x);
         let hit_y = self.position.y <= min_y || self.position.y >= max_y;
         if hit_x {
             self.velocity.dx = if self.position.x <= min_x {
@@ -243,8 +248,9 @@ impl Fish {
         self.velocity.dy = 0.0;
         self.position.x += self.velocity.dx * dt * speed_mult;
         let (min_x, max_x, _, _) = self.position_bounds(width, height);
+        let braced = self.brace_against_the_walls(min_x, max_x);
         let max_x = max_x.max(min_x);
-        if self.position.x < min_x || self.position.x > max_x {
+        if !braced && (self.position.x < min_x || self.position.x > max_x) {
             self.position.x = self.position.x.clamp(min_x, max_x);
             self.velocity.dx = -self.velocity.dx;
             if self.locomotion() == Locomotion::Floor {

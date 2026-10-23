@@ -161,11 +161,12 @@ impl Tank {
             let food_y = self.food[idx].position.y;
             let fish_len = self.fish[i].display_width as f32;
             let fish_y = self.fish[i].position.y;
+            let lead = self.fish[i].lead() as f32;
 
             let target_x = if approach_right {
-                food_x - (fish_len - 1.0)
+                food_x - (fish_len - 1.0 - lead)
             } else {
-                food_x
+                food_x - lead
             };
 
             let raw_dx = target_x - self.fish[i].position.x;
@@ -209,8 +210,10 @@ impl Tank {
             }
             let head_x = self.fish[i].head_x();
             let head_y = self.fish[i].position.y as i32;
-            let fx = self.food[idx].position.x as i32;
-            let fy = self.food[idx].position.y as i32;
+            let (fx, fy) = self.fish[i].mouth_reach(self.width, self.height).nearest(
+                self.food[idx].position.x as i32,
+                self.food[idx].position.y as i32,
+            );
             if (head_x - fx).abs() <= 1 && head_y == fy {
                 self.bite(i, idx);
             }
