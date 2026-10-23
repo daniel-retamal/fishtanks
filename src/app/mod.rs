@@ -1305,7 +1305,10 @@ impl App {
                 let variant = crate::entities::cow::random_cow_color(&mut rng);
                 self.plan_cow_delivery(source_idx, variant, &mut rng);
             }
-            Some(UfoRole::AbductsAtNight) if self.tanks[source_idx].background.is_night() => {
+            Some(UfoRole::AbductsAtNight)
+                if self.tanks[source_idx].watched
+                    && self.tanks[source_idx].background.is_night() =>
+            {
                 self.plan_abduction(source_idx, &mut rng);
             }
             _ => {}
@@ -1574,6 +1577,36 @@ fn pick_cow_drop_x(
 mod catch_tests {
     use super::*;
     use crate::loot::ItemKind;
+
+    fn a_desert_night(watched: bool) -> (App, usize) {
+        let mut app = App::launch(Launch::Debug);
+        let mut desert = Tank::new("Desertank".to_string(), TankKind::Desert, &[]);
+        desert.resize(80, 24, &[]);
+        let mut rng = rand::rng();
+        desert.spawn_fish(FishSpecies::Merluza, "Abductee".to_string(), &mut rng);
+        if let crate::tank::TankBackground::Desert { bg } = &mut desert.background {
+            bg.sky_angle = 3.0 * std::f32::consts::FRAC_PI_2;
+        }
+        assert!(desert.background.is_night());
+        desert.watched = watched;
+        app.tanks.push(desert);
+        let at = app.tanks.len() - 1;
+        if watched {
+            app.current_tank = at;
+        }
+        (app, at)
+    }
+
+    #[test]
+    fn a_desert_ufo_abducts_only_while_you_watch() {
+        let (mut away, desert) = a_desert_night(false);
+        away.handle_ufo_timer_fired(desert);
+        assert!(away.tanks[desert].ufos.is_empty());
+        assert!(away.tanks[desert].fish.iter().any(|f| f.name == "Abductee"));
+        let (mut watching, desert) = a_desert_night(true);
+        watching.handle_ufo_timer_fired(desert);
+        assert_eq!(watching.tanks[desert].ufos.len(), 1);
+    }
 
     const ROLLS: usize = 4_000;
 
