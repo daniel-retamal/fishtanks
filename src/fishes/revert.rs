@@ -174,7 +174,9 @@ pub fn revert<M: Mutatable>(target: &mut M, rng: &mut impl RngExt) -> Option<Mut
         return None;
     }
     let index = candidates[rng.random_range(0..candidates.len())];
-    undo(target, index)
+    let undone = undo(target, index)?;
+    target.record_mut().count += 1;
+    Some(undone)
 }
 
 pub fn revert_latest<M: Mutatable>(target: &mut M, mutation: Mutation) -> bool {
@@ -187,7 +189,51 @@ pub fn revert_latest<M: Mutatable>(target: &mut M, mutation: Mutation) -> bool {
         .into_iter()
         .rev()
         .find(|&index| record.history[index] == mutation.token());
-    latest.is_some_and(|index| undo(target, index).is_some())
+    let undone = latest.is_some_and(|index| undo(target, index).is_some());
+    if undone {
+        target.record_mut().count += 1;
+    }
+    undone
+}
+
+pub fn cancel<M: Mutatable>(target: &mut M, mutation: Mutation, rng: &mut impl RngExt) -> bool {
+    settle_old_record(target);
+    let Some(record) = target.record() else {
+        return false;
+    };
+    let token = mutation.token();
+    let Some(index) = record.history.iter().rposition(|entry| entry == token) else {
+        return false;
+    };
+    if record.revertible().contains(&index) {
+        if undo(target, index).is_none() {
+            return false;
+        }
+    } else {
+        let seed: u64 = rng.random();
+        target.apply_one(mutation, &mut SmallRng::seed_from_u64(seed));
+        let settled_with_it = index < target.record_mut().settled;
+        if settled_with_it && let Some(origin) = target.record().and_then(|r| r.origin.clone()) {
+            let now = target.look();
+            target.wear(&origin);
+            target.apply_one(mutation, &mut SmallRng::seed_from_u64(seed));
+            let corrected = target.look();
+            target.wear(&now);
+            target.record_mut().origin = Some(Box::new(corrected));
+        }
+        let record = target.record_mut();
+        record.history.remove(index);
+        if index < record.marks.len() {
+            record.marks.remove(index);
+        }
+        if settled_with_it {
+            record.settled -= 1;
+        }
+        target.refresh_width();
+    }
+    let record = target.record_mut();
+    record.count = record.count.saturating_sub(1);
+    true
 }
 
 fn undo<M: Mutatable>(target: &mut M, index: usize) -> Option<Mutation> {
@@ -222,6 +268,5 @@ fn undo<M: Mutatable>(target: &mut M, index: usize) -> Option<Mutation> {
         bonus_pct.saturating_sub(mark.bonus_pct),
     ));
     target.refresh_width();
-    target.record_mut().count += 1;
     Some(undone)
 }
