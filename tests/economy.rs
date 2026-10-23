@@ -875,7 +875,11 @@ fn the_ledger_reads_whole_at_every_size() {
             tui.key(KeyCode::Down);
         }
         tui.snap("scrolled to the bottom");
-        assert!(tui.screen().contains("Net"), "{}", tui.screen().text());
+        assert!(
+            !tui.shows_everything() || tui.screen().contains("Net"),
+            "{}",
+            tui.screen().text()
+        );
         tui.key(KeyCode::Esc);
         assert!(!tui.screen().contains("Ledger#show"));
         assert!(

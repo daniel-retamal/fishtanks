@@ -43,11 +43,11 @@ absent listens
 run hi
 
 run /program "Ear"
-expect char[8]
 type clk, fin
 key down
 type clk
 key down
+expect char[8]
 type kbd
 key down
 type clk

@@ -113,7 +113,7 @@ impl Widget for FishtanksOverlay<'_> {
                 .action_if(state.selected != state.current_tank, HINT_ENTER_SWITCH)
         });
 
-        let grid = Grid::fit(modal.body.x, modal.body.width, &columns);
+        let mut grid = Grid::fit(modal.body.x, modal.body.width, &columns);
         let (header_y, data) = grid::split_header(modal.body);
         if let Some(y) = header_y {
             let style = HeaderStyle {
@@ -124,6 +124,8 @@ impl Widget for FishtanksOverlay<'_> {
                 rule: Style::default().fg(WHITE).bg(BACKGROUND),
             };
             grid::draw_header(buf, &grid, modal.rect, y, &HEADERS, &style);
+        } else {
+            grid.bare = true;
         }
 
         let shown = state

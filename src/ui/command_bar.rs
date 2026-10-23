@@ -15,6 +15,7 @@ use crate::ui::hint_bar::HintBar;
 use crate::ui::table::{INFINITY, ellipsize, visual_width};
 
 const RULE_ROWS: u16 = 2;
+const SCREEN_SHARE: u16 = 3;
 const EDITOR_ROWS: u16 = 1;
 const ITEM_GAP: &str = "  ";
 const TINY_GAP: &str = " ";
@@ -307,12 +308,26 @@ fn prompt_rows(width: u16, console: Option<&HintBar>) -> u16 {
     console.map_or(EDITOR_ROWS, |bar| bar.height(width))
 }
 
-pub fn height(show_stats: bool, width: u16, stats: &StatsBar, console: Option<&HintBar>) -> u16 {
-    let prompt = RULE_ROWS + prompt_rows(width, console);
+fn content_rows(show_stats: bool, width: u16, stats: &StatsBar, console: Option<&HintBar>) -> u16 {
+    let prompt = prompt_rows(width, console);
     if !show_stats {
         return prompt;
     }
     prompt + stats.rows(width).len() as u16
+}
+
+pub fn height(
+    show_stats: bool,
+    (width, screen_rows): (u16, u16),
+    stats: &StatsBar,
+    console: Option<&HintBar>,
+) -> u16 {
+    let content = content_rows(show_stats, width, stats, console);
+    let ruled = content + RULE_ROWS;
+    if ruled * SCREEN_SHARE > screen_rows {
+        return content;
+    }
+    ruled
 }
 
 pub struct CommandBar<'a> {
@@ -326,10 +341,9 @@ pub struct CommandBar<'a> {
 }
 
 impl CommandBar<'_> {
-    fn render_editor(&self, area: Rect, buf: &mut Buffer) {
+    fn render_editor(&self, area: Rect, row: u16, buf: &mut Buffer) {
         let white = Style::default().fg(WHITE);
         let gray = Style::default().fg(DARK_GRAY);
-        let row = area.y + 1;
         buf.set_string(area.x, row, "> ", white);
 
         let base_x = area.x + 2;
@@ -405,20 +419,30 @@ impl Widget for CommandBar<'_> {
         let sep_style = Style::default().fg(DARK_GRAY);
         let white = Style::default().fg(WHITE);
 
-        buf.set_string(area.x, area.y, &sep, sep_style);
+        let content = content_rows(
+            self.show_stats,
+            area.width,
+            &self.stats,
+            self.console.as_ref(),
+        );
+        let rule = u16::from(area.height >= content + RULE_ROWS);
+        if rule > 0 {
+            buf.set_string(area.x, area.y, &sep, sep_style);
+        }
 
         let prompt = prompt_rows(area.width, self.console.as_ref());
+        let prompt_y = area.y + rule;
         match &self.console {
             Some(bar) => bar.draw(
                 buf,
-                Rect::new(area.x, area.y + 1, area.width, prompt).intersection(area),
+                Rect::new(area.x, prompt_y, area.width, prompt).intersection(area),
                 Color::Reset,
             ),
-            None => self.render_editor(area, buf),
+            None => self.render_editor(area, prompt_y, buf),
         }
 
-        let lower_rule = area.y + 1 + prompt;
-        if lower_rule < area.bottom() {
+        let lower_rule = prompt_y + prompt;
+        if rule > 0 && lower_rule < area.bottom() {
             buf.set_string(area.x, lower_rule, &sep, sep_style);
         }
 
@@ -426,7 +450,7 @@ impl Widget for CommandBar<'_> {
             return;
         }
         for (index, status) in self.stats.rows(area.width).iter().enumerate() {
-            let y = lower_rule + 1 + index as u16;
+            let y = lower_rule + rule + index as u16;
             if y >= area.bottom() {
                 return;
             }

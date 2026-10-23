@@ -36,7 +36,6 @@ absent Name your
 
 run /foundry
 expect ─ Foundry
-expect r, s → -
 expect Fabricator
 snap the latch reads two inputs and no output
 type x
@@ -44,10 +43,11 @@ expect ENTER save
 type q
 snap typing q into exports
 key enter
-expect r, s → q
 snap q is an output pin now
 key tab
 expect TAB list
+key up 20
+expect r, s → q
 key down 20
 snap the preview scrolled down to the schematic
 key tab

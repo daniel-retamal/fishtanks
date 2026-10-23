@@ -24,7 +24,6 @@ absent to the botfishes
 run /freeze "Crt"
 
 run /program "Crt"
-expect glyphs
 key down
 type d0
 key down
@@ -32,6 +31,7 @@ key backspace 2
 type 8
 snap the screen is narrowed to eight dots
 key down 2
+expect glyphs
 type d
 key down
 type d0
@@ -49,7 +49,7 @@ tick 4
 expect ⠊⠀⠀⠀
 snap a dot and a byte on Crt's body
 run /circuit
-expect write_byte
+expect write ◂ d0
 snap the circuit lists the screen's five wires under Crt
 key esc
 absent Circuit#

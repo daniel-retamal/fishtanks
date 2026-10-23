@@ -12,7 +12,7 @@ snap the toy beside its name
 key enter
 expect Toybox#edit
 expect Head
-expect Tail
+expect Under
 expect ENTER save
 key down
 key down
@@ -22,6 +22,7 @@ absent Toybox#edit
 key tab
 expect Toybox#shelf
 expect Colors
+key down 10
 expect ???
 snap the shelf keeps what was never won dark
 key tab

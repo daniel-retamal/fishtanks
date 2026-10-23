@@ -21,6 +21,7 @@ pub use stage::{PLAY_EXTENSION, TerminalSize, play_name, plays_in, review, stage
 
 pub const DEFAULT_COLS: u16 = 100;
 pub const DEFAULT_ROWS: u16 = 30;
+pub const CONTENT_FLOOR: (u16, u16) = (40, 14);
 pub const LAB_STAKE: Money = 40_000;
 
 const SELECTION_MARKER: char = '>';
@@ -139,6 +140,16 @@ impl Tui {
         }
         self.draw();
         self
+    }
+
+    pub fn size(&self) -> (u16, u16) {
+        let area = self.terminal.backend().buffer().area;
+        (area.width, area.height)
+    }
+
+    pub fn shows_everything(&self) -> bool {
+        let (cols, rows) = self.size();
+        cols >= CONTENT_FLOOR.0 && rows >= CONTENT_FLOOR.1
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) -> &mut Self {

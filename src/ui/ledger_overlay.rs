@@ -240,7 +240,7 @@ impl Widget for LedgerOverlay<'_> {
             }
             bar.counted(HINT_SCROLL, Some((top + 1, total)))
         });
-        let grid = Grid::fit(modal.body.x, modal.body.width, &columns);
+        let mut grid = Grid::fit(modal.body.x, modal.body.width, &columns);
         let (header_y, data) = grid::split_header(modal.body);
         let bold = Style::default()
             .fg(WHITE)
@@ -250,6 +250,8 @@ impl Widget for LedgerOverlay<'_> {
         if let Some(y) = header_y {
             let style = HeaderStyle { text: bold, rule };
             grid::draw_header(buf, &grid, modal.rect, y, &HEADERS, &style);
+        } else {
+            grid.bare = true;
         }
         let room = data.height as usize;
         state.room.set(room);

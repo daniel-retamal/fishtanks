@@ -613,9 +613,10 @@ impl Widget for IndexOverlay<'_> {
 
         let mut body = modal.body;
         let page = state.page(body.width);
-        let grid = Grid {
+        let mut grid = Grid {
             x: body.x,
             widths: page.widths.clone(),
+            bare: false,
         };
         let mut query_rule = None;
         if let Some((line, cursor)) = &query
@@ -625,7 +626,7 @@ impl Widget for IndexOverlay<'_> {
             let rows = QUERY_ROWS.min(body.height);
             if rows == QUERY_ROWS {
                 let y = body.y + 1;
-                let hangs = if body.height > QUERY_ROWS {
+                let hangs = if body.height > QUERY_ROWS + HEADER_ROWS {
                     grid.rule_xs()
                 } else {
                     Vec::new()
@@ -661,6 +662,8 @@ impl Widget for IndexOverlay<'_> {
                     .bg(WHITE);
                 grid::put(buf, grid.cell(position, y, 1), &headers[position], focused);
             }
+        } else {
+            grid.bare = true;
         }
 
         if heights.is_empty() && data.height > 0 {

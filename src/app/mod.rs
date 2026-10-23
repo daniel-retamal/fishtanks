@@ -960,7 +960,7 @@ impl App {
         }
         command_bar::height(
             self.settings.show_stats,
-            self.terminal_width,
+            (self.terminal_width, self.terminal_height),
             &self.stats_bar(&self.modes()),
             self.console_bar().as_ref(),
         )
@@ -1122,39 +1122,40 @@ impl App {
             command_area,
         );
 
-        let screen = Screen::new(full_area, tank_area);
+        let whole = Screen::new(full_area, tank_area);
+        let screen = Screen::only(tank_area);
         match &self.active_overlay {
             Some(Overlay::Index(state)) => {
-                frame.render_widget(IndexOverlay::new(state, screen), full_area)
+                frame.render_widget(IndexOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Show { state, .. }) => {
-                frame.render_widget(ShowOverlay::new(state, screen), full_area)
+                frame.render_widget(ShowOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Inventory(state)) => {
-                frame.render_widget(InventoryOverlay::new(state, screen), full_area)
+                frame.render_widget(InventoryOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Fishtanks(state)) => {
-                frame.render_widget(FishtanksOverlay::new(state, screen), full_area)
+                frame.render_widget(FishtanksOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::ConsumePicker(state)) => {
-                frame.render_widget(ConsumePickerOverlay { state, screen }, full_area)
+                frame.render_widget(ConsumePickerOverlay { state, screen }, tank_area)
             }
             Some(Overlay::Fishing(state)) => {
                 frame.render_widget(FishingOverlay::new(state), tank_area)
             }
             Some(Overlay::Catch(state)) => {
-                frame.render_widget(CatchOverlay::new(state, screen), full_area)
+                frame.render_widget(CatchOverlay::new(state, whole), full_area)
             }
             Some(Overlay::Shop(state)) => frame.render_widget(
                 ShopOverlay::new(state, self.shop_access(), screen),
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Circuit(state)) => {
-                frame.render_widget(CircuitOverlay::new(state, screen), full_area)
+                frame.render_widget(CircuitOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Wiring { state, .. }) => frame.render_widget(
                 WiringPanel::new(state, self.editor.visible, screen),
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Foundry(state)) => {
                 let quotes = self.blueprints.get(state.selected).map(|blueprint| Quotes {
@@ -1169,7 +1170,7 @@ impl App {
                         self.editor.visible,
                         screen,
                     ),
-                    full_area,
+                    tank_area,
                 )
             }
             Some(Overlay::Naming { input, kind }) => frame.render_widget(
@@ -1179,7 +1180,7 @@ impl App {
                     cursor_visible: self.editor.visible,
                     screen,
                 },
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Junkfish(popup)) => frame.render_widget(
                 JunkfishPopupWidget {
@@ -1187,7 +1188,7 @@ impl App {
                     cursor_visible: self.editor.visible,
                     screen,
                 },
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Cheat(input)) => frame.render_widget(
                 CheatPopup {
@@ -1195,13 +1196,13 @@ impl App {
                     cursor_visible: self.editor.visible,
                     screen,
                 },
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Notice(state)) => {
-                frame.render_widget(NoticePopup::new(state, screen), full_area)
+                frame.render_widget(NoticePopup::new(state, screen), tank_area)
             }
             Some(Overlay::Ledger(state)) => {
-                frame.render_widget(LedgerOverlay::new(state, screen), full_area)
+                frame.render_widget(LedgerOverlay::new(state, screen), tank_area)
             }
             Some(Overlay::Casino(state)) => {
                 let busy = state.at_risk();
@@ -1213,21 +1214,21 @@ impl App {
                         &self.casino,
                         self.purse.shown(),
                         self.editor.visible,
-                        screen,
+                        whole,
                     ),
                     full_area,
                 )
             }
             Some(Overlay::Toybox(state)) => frame.render_widget(
                 crate::ui::toybox::ToyboxOverlay::new(state, &self.casino.toybox, screen),
-                full_area,
+                tank_area,
             ),
             Some(Overlay::Dungeon(state)) => frame.render_widget(
                 crate::ui::dungeon::DungeonOverlay::new(
                     state,
                     self.dungeon.expedition.as_ref(),
                     self.above(),
-                    screen,
+                    whole,
                     self.editor.visible,
                 ),
                 full_area,

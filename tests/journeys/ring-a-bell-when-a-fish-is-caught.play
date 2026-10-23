@@ -46,8 +46,8 @@ key enter
 absent listens
 
 run /program "Nerve"
-expect abduction[1]
 key down 5
+expect catch[1]
 type ding
 snap the nerve's catch flag is wired to ding
 key enter
@@ -55,11 +55,11 @@ absent listens
 
 run /fps 1
 run /program "Rod"
-expect threshold
 type go
 key down
 type go
 key down 2
+expect threshold
 type go
 snap Rod rings, and every ring casts its line again
 key enter

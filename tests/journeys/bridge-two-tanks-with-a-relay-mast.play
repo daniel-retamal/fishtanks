@@ -24,12 +24,12 @@ key enter
 absent to the botfishes
 
 run /program "Tx"
-expect channel
 key down
 type x
 key down
 type Zion
 key down
+expect channel
 type y
 key down
 type x

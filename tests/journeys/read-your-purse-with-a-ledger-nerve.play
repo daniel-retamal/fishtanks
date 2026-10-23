@@ -14,8 +14,8 @@ key enter
 absent to the botfishes
 
 run /program "Ledger"
-expect tank_value
 key down 5
+expect tank_value
 type flush
 snap the nerve raises flush while the purse is over its threshold
 key enter
@@ -27,6 +27,7 @@ key enter
 
 tick 3
 run /circuit
+key down
 expect ●  Rich
 snap what is left of the purse is still over a thousand, so Rich is lit
 key esc
